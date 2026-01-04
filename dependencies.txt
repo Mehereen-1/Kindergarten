@@ -1,0 +1,5 @@
+1. cd backend
+    npm init -y
+2. npm install express 
+3. cd .. (go to root)
+    npx create-react-app frontend
