@@ -3,3 +3,5 @@
 2. npm install express 
 3. cd .. (go to root)
     npx create-react-app frontend
+4. npm install nodemon
+5. npm install dotenv
