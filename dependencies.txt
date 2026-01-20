@@ -5,3 +5,6 @@
     npx create-react-app frontend
 4. npm install nodemon
 5. npm install dotenv
+6. npm install mongoose
+7. npm install bcrypt
+8. npm install validator
