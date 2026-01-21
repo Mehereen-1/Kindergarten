@@ -1,7 +1,7 @@
-import FormModal from "@/components/FormModal";
-import Pagination from "@/components/Pagination";
-import Table from "@/components/Table";
-import TableSearch from "@/components/TableSearch";
+import FormModal from "@/app/components/FormModal";
+import Pagination from "@/app/components/Pagination";
+import Table from "@/app/components/Table";
+import TableSearch from "@/app/components/TableSearch";
 import { classesData, role } from "@/lib/data";
 import Image from "next/image";
 
