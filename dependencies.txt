@@ -8,3 +8,6 @@
 6. npm install mongoose
 7. npm install bcrypt
 8. npm install validator
+
+admin-
+1. inside frontend-vite :: npm i react-router-dom recharts lucide-react papaparse xlsx
