@@ -25,8 +25,9 @@ export const loginUser = async (email: string, password: string) => {
   }
 
   return {
-    _id: user._id,
-    email: user.email,
-    role: user.role,
+    // _id: user._id,
+    // email: user.email,
+    // role: user.role,
+    "message": "Login successful"
   };
 };
