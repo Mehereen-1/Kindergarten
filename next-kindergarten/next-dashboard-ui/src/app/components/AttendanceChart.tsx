@@ -13,6 +13,11 @@ import {
 } from "recharts";
 
 const data = [
+     {
+    name: "Sun",
+    present: 65,
+    absent: 55,
+  },
   {
     name: "Mon",
     present: 60,
@@ -33,11 +38,7 @@ const data = [
     present: 90,
     absent: 75,
   },
-  {
-    name: "Fri",
-    present: 65,
-    absent: 55,
-  },
+  
 ];
 
 const AttendanceChart = () => {
