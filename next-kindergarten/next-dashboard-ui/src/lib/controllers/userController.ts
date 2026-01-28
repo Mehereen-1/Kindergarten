@@ -25,9 +25,10 @@ export const loginUser = async (email: string, password: string) => {
   }
 
   return {
-    // _id: user._id,
-    // email: user.email,
-    // role: user.role,
-    "message": "Login successful"
+    user: {
+        id: user._id.toString(),
+        email: user.email,
+        role: user.role,
+      },
   };
 };

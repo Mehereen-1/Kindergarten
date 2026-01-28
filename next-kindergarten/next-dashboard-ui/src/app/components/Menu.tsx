@@ -1,6 +1,10 @@
-import { role } from "@/lib/data";
+// import { role } from "@/lib/data";
+"use client";
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+
+type Role = "admin" | "teacher" | "student" | "parent";
 
 const menuItems = [
   {
@@ -16,7 +20,13 @@ const menuItems = [
         icon: "/teacher.png",
         label: "Teachers",
         href: "/list/teachers",
-        visible: ["admin", "teacher"],
+        visible: ["admin"],
+      },
+      {
+        icon: "/student.png",
+        label: "My Class",
+        href: "/list/students",
+        visible: ["teacher"],
       },
       {
         icon: "/student.png",
@@ -118,6 +128,14 @@ const menuItems = [
 ];
 
 const Menu = () => {
+  const [role, setRole] = useState<Role | null>(null);
+
+  useEffect(() => {
+    const storedRole = localStorage.getItem("role") as Role | null;
+    setRole(storedRole);
+  }, []);
+
+  if (!role) return null;
   return (
     <div className="mt-4 text-sm">
       {menuItems.map((i) => (
