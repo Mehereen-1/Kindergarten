@@ -1,3 +1,34 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Teacher Panel Theme */
+@layer base {
+  :root {
+    --color-primary: #4f46e5;
+    --color-accent: #facc15;
+    --color-success: #22c55e;
+    --color-bg-light: #f8faff;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900;
+  }
+}
+
+/* Smooth scrollbar for sidebar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-slate-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-400 rounded-lg;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-500;
+}

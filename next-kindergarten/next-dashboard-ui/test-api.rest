@@ -1,0 +1,92 @@
+### Test MongoDB Connection & APIs
+### Use REST Client extension in VS Code or copy to Postman
+
+### 1. Create a Teacher
+POST http://localhost:3000/api/admin/teachers
+Content-Type: application/json
+
+{
+  "name": "Mrs. Sharma",
+  "email": "sharma@school.com",
+  "phone": "9876543210"
+}
+
+###
+
+### 2. Create a Parent
+POST http://localhost:3000/api/admin/parents
+Content-Type: application/json
+
+{
+  "name": "Mr. Singh",
+  "email": "singh@parent.com",
+  "phone": "8765432109"
+}
+
+###
+
+### 3. Get All Teachers
+GET http://localhost:3000/api/admin/teachers
+
+###
+
+### 4. Get All Parents
+GET http://localhost:3000/api/admin/parents
+
+###
+
+### 5. Create a Student (replace parentId and teacherId from above responses)
+POST http://localhost:3000/api/admin/students
+Content-Type: application/json
+
+{
+  "name": "Arjun Singh",
+  "class": "KG-A",
+  "section": "A",
+  "rollNumber": 15,
+  "parentId": "PASTE_PARENT_ID_HERE",
+  "teacherId": "PASTE_TEACHER_ID_HERE",
+  "dateOfBirth": "2020-05-15"
+}
+
+###
+
+### 6. Get All Students
+GET http://localhost:3000/api/admin/students
+
+###
+
+### 7. Create a Class
+POST http://localhost:3000/api/admin/classes
+Content-Type: application/json
+
+{
+  "className": "Kindergarten A",
+  "section": "A",
+  "teacherId": "PASTE_TEACHER_ID_HERE",
+  "studentIds": ["PASTE_STUDENT_ID_HERE"]
+}
+
+###
+
+### 8. Get All Classes
+GET http://localhost:3000/api/admin/classes
+
+###
+
+### 9. Create an Event
+POST http://localhost:3000/api/admin/events
+Content-Type: application/json
+
+{
+  "title": "Parent-Teacher Meeting",
+  "description": "Quarterly PTM for all classes",
+  "date": "2026-02-15",
+  "type": "PTM",
+  "createdBy": "PASTE_ADMIN_ID_HERE"
+}
+
+###
+
+### 10. Get All Events
+GET http://localhost:3000/api/admin/events

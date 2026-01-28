@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Tester - Kindergarten Dashboard</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .test-section { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        button { background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background: #45a049; }
+        .response { background: #f0f0f0; padding: 10px; margin-top: 10px; border-radius: 4px; white-space: pre-wrap; font-family: monospace; }
+        h2 { color: #333; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 MongoDB API Tester</h1>
+        
+        <div class="test-section">
+            <h2>1. Create Teacher</h2>
+            <button onclick="createTeacher()">Create Mrs. Sharma</button>
+            <div id="teacher-response" class="response"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>2. Create Parent</h2>
+            <button onclick="createParent()">Create Mr. Singh</button>
+            <div id="parent-response" class="response"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>3. Get All Teachers</h2>
+            <button onclick="getTeachers()">Get Teachers</button>
+            <div id="get-teachers-response" class="response"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>4. Get All Parents</h2>
+            <button onclick="getParents()">Get Parents</button>
+            <div id="get-parents-response" class="response"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>5. Create Student</h2>
+            <p>Fill in Teacher ID and Parent ID from above responses:</p>
+            <input type="text" id="teacherId" placeholder="Teacher ID" style="width: 300px; padding: 8px; margin: 5px;">
+            <input type="text" id="parentId" placeholder="Parent ID" style="width: 300px; padding: 8px; margin: 5px;">
+            <button onclick="createStudent()">Create Student</button>
+            <div id="student-response" class="response"></div>
+        </div>
+    </div>
+
+    <script>
+        async function createTeacher() {
+            const response = document.getElementById('teacher-response');
+            try {
+                const res = await fetch('/api/admin/teachers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: "Mrs. Sharma",
+                        email: "sharma@school.com",
+                        phone: "9876543210"
+                    })
+                });
+                const data = await res.json();
+                response.innerHTML = `<span class="success">✅ Success!</span>\n${JSON.stringify(data, null, 2)}`;
+                response.className = 'response success';
+            } catch (error) {
+                response.innerHTML = `<span class="error">❌ Error:</span> ${error.message}`;
+                response.className = 'response error';
+            }
+        }
+
+        async function createParent() {
+            const response = document.getElementById('parent-response');
+            try {
+                const res = await fetch('/api/admin/parents', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: "Mr. Singh",
+                        email: "singh@parent.com",
+                        phone: "8765432109"
+                    })
+                });
+                const data = await res.json();
+                response.innerHTML = `<span class="success">✅ Success!</span>\n${JSON.stringify(data, null, 2)}`;
+                response.className = 'response success';
+            } catch (error) {
+                response.innerHTML = `<span class="error">❌ Error:</span> ${error.message}`;
+                response.className = 'response error';
+            }
+        }
+
+        async function getTeachers() {
+            const response = document.getElementById('get-teachers-response');
+            try {
+                const res = await fetch('/api/admin/teachers');
+                const data = await res.json();
+                response.innerHTML = `<span class="success">✅ Found ${data.length} teacher(s)</span>\n${JSON.stringify(data, null, 2)}`;
+                response.className = 'response success';
+            } catch (error) {
+                response.innerHTML = `<span class="error">❌ Error:</span> ${error.message}`;
+                response.className = 'response error';
+            }
+        }
+
+        async function getParents() {
+            const response = document.getElementById('get-parents-response');
+            try {
+                const res = await fetch('/api/admin/parents');
+                const data = await res.json();
+                response.innerHTML = `<span class="success">✅ Found ${data.length} parent(s)</span>\n${JSON.stringify(data, null, 2)}`;
+                response.className = 'response success';
+            } catch (error) {
+                response.innerHTML = `<span class="error">❌ Error:</span> ${error.message}`;
+                response.className = 'response error';
+            }
+        }
+
+        async function createStudent() {
+            const teacherId = document.getElementById('teacherId').value;
+            const parentId = document.getElementById('parentId').value;
+            const response = document.getElementById('student-response');
+
+            if (!teacherId || !parentId) {
+                response.innerHTML = `<span class="error">❌ Please enter both Teacher ID and Parent ID</span>`;
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/admin/students', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: "Arjun Singh",
+                        class: "KG-A",
+                        section: "A",
+                        rollNumber: 15,
+                        teacherId: teacherId,
+                        parentId: parentId,
+                        dateOfBirth: "2020-05-15"
+                    })
+                });
+                const data = await res.json();
+                response.innerHTML = `<span class="success">✅ Success!</span>\n${JSON.stringify(data, null, 2)}`;
+                response.className = 'response success';
+            } catch (error) {
+                response.innerHTML = `<span class="error">❌ Error:</span> ${error.message}`;
+                response.className = 'response error';
+            }
+        }
+    </script>
+</body>
+</html>
