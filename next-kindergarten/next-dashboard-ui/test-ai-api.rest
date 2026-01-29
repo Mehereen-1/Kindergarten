@@ -1,0 +1,187 @@
+### AI Query System - REST API Tests
+### Use with REST Client extension or copy to test-ai-api.rest
+
+# ============================================
+# GENERAL QUERIES
+# ============================================
+
+### General Query - Natural Language
+POST http://localhost:3000/api/ai/query
+Content-Type: application/json
+
+{
+  "query": "Show me all students in class 5A",
+  "userId": "65a123abc456"
+}
+
+###
+
+### General Query - Student Details
+POST http://localhost:3000/api/ai/query
+Content-Type: application/json
+
+{
+  "query": "What are the details of student John?",
+  "userId": "65a123abc456"
+}
+
+###
+
+### General Query - Teacher Schedule
+POST http://localhost:3000/api/ai/query
+Content-Type: application/json
+
+{
+  "query": "What is my teaching schedule?",
+  "userId": "65a123abc456"
+}
+
+###
+
+### General Query - Parent's Children
+POST http://localhost:3000/api/ai/query
+Content-Type: application/json
+
+{
+  "query": "Show me my children",
+  "userId": "65a789ghi012"
+}
+
+# ============================================
+# TEACHER ENDPOINTS
+# ============================================
+
+### Get Teacher Schedule
+GET http://localhost:3000/api/ai/teacher?teacherId=65a123abc456
+
+###
+
+### Get Students in Class (POST)
+POST http://localhost:3000/api/ai/teacher
+Content-Type: application/json
+
+{
+  "classId": "65a456def789",
+  "teacherId": "65a123abc456"
+}
+
+# ============================================
+# PARENT ENDPOINTS
+# ============================================
+
+### Get Parent's Students
+GET http://localhost:3000/api/ai/parent?parentId=65a789ghi012
+
+###
+
+### Get Student Details (POST)
+POST http://localhost:3000/api/ai/parent
+Content-Type: application/json
+
+{
+  "studentId": "65a333xyz789",
+  "parentId": "65a789ghi012"
+}
+
+# ============================================
+# ADVANCED QUERIES
+# ============================================
+
+### Search for Student by Name
+POST http://localhost:3000/api/ai/query
+Content-Type: application/json
+
+{
+  "query": "Search for student named Jane",
+  "userId": "65a123abc456"
+}
+
+###
+
+### Get Class Attendance
+POST http://localhost:3000/api/ai/query
+Content-Type: application/json
+
+{
+  "query": "Show me attendance for my class",
+  "userId": "65a123abc456"
+}
+
+###
+
+### Get Student Performance
+POST http://localhost:3000/api/ai/query
+Content-Type: application/json
+
+{
+  "query": "What is John's performance in my class?",
+  "userId": "65a123abc456"
+}
+
+###
+
+### Get Students in Grade
+POST http://localhost:3000/api/ai/query
+Content-Type: application/json
+
+{
+  "query": "Show me all students in grade 5",
+  "userId": "65a123abc456"
+}
+
+# ============================================
+# ERROR HANDLING TESTS
+# ============================================
+
+### Missing Query (Should Error)
+POST http://localhost:3000/api/ai/query
+Content-Type: application/json
+
+{
+  "userId": "65a123abc456"
+}
+
+###
+
+### Missing User ID (Should Error)
+POST http://localhost:3000/api/ai/query
+Content-Type: application/json
+
+{
+  "query": "Show me students"
+}
+
+###
+
+### Invalid Endpoint (Should Error)
+POST http://localhost:3000/api/ai/query
+Content-Type: application/json
+
+{
+  "query": "test",
+  "userId": "invalid_id"
+}
+
+# ============================================
+# NOTES
+# ============================================
+
+# Replace the IDs with actual IDs from your database:
+# - 65a123abc456 = Replace with actual teacher ID
+# - 65a456def789 = Replace with actual class ID
+# - 65a789ghi012 = Replace with actual parent ID
+# - 65a333xyz789 = Replace with actual student ID
+
+# Test with REST Client Extension:
+# 1. Install "REST Client" extension in VS Code
+# 2. Open this file
+# 3. Click "Send Request" above any request
+# 4. View response in the new panel
+
+# Or use curl:
+# curl -X POST http://localhost:3000/api/ai/query \
+#   -H "Content-Type: application/json" \
+#   -d '{
+#     "query": "Show me all students",
+#     "userId": "your_user_id"
+#   }'
