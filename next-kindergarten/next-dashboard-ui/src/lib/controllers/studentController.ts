@@ -1,6 +1,6 @@
 import { connectDB } from '../mongodb';
 import { Student } from '../models/Student';
-import { Parent } from '../models/User';
+import ParentProfile from '../models/ParentProfile';
 
 interface CreateStudentInput {
   name: string;

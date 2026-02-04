@@ -3,6 +3,7 @@
 import { useState } from "react";
 import ParentSidebar from "@/app/components/ParentSidebar";
 import MobileParentSidebar from "@/app/components/MobileParentSidebar";
+import NotificationStatusIndicator from "@/app/components/NotificationStatusIndicator";
 
 export default function ParentLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -17,6 +18,7 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* <NotificationStatusIndicator /> */}
         {children}
       </div>
     </div>

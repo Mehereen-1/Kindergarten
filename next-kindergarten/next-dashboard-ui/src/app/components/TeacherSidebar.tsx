@@ -21,13 +21,12 @@ const TeacherSidebar = () => {
         { icon: Users, label: "My Classes", href: "/teacher/classes" },
         { icon: ClipboardList, label: "Attendance", href: "/teacher/attendance" },
         { icon: BarChart3, label: "Results", href: "/teacher/results" },
-        { icon: BookOpen, label: "Assignments", href: "/teacher/assignments" },
       ],
     },
     {
       title: "Communication",
       items: [
-        { icon: MessageSquare, label: "Messages", href: "/teacher/messages" },
+        { icon: MessageSquare, label: "Messages", href: "/teacher/chat" },
         { icon: FileText, label: "Notices", href: "/teacher/notices" },
       ],
     },
@@ -45,7 +44,7 @@ const TeacherSidebar = () => {
   ];
 
   return (
-    <aside className="hidden lg:block w-64 bg-white border-r border-slate-200 overflow-y-auto sticky top-0 h-screen shadow-sm">
+    <aside className="hidden lg:flex lg:flex-col w-64 bg-white border-r border-slate-200 sticky top-0 h-screen shadow-sm">
       {/* Logo Section */}
       <div className="p-6 border-b border-slate-200 relative overflow-hidden group">
         <div className="absolute inset-0 bg-slate-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -64,7 +63,7 @@ const TeacherSidebar = () => {
       </div>
 
       {/* Navigation */}
-      <nav className="space-y-8 px-4 py-8">
+      <nav className="flex-1 space-y-8 px-4 py-8 overflow-y-auto">
         {menuGroups.map((group, idx) => (
           <div key={idx} className="animate-in fade-in slide-in-from-left-5 duration-500" style={{ animationDelay: `${idx * 100}ms` }}>
             {/* Group Title */}
@@ -117,7 +116,7 @@ const TeacherSidebar = () => {
       </nav>
 
       {/* Footer Section */}
-      <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-slate-50 to-transparent border-t border-slate-200">
+      <div className="p-6 bg-gradient-to-t from-slate-50 to-transparent border-t border-slate-200">
         <div className="flex items-center gap-3 p-4 rounded-xl bg-slate-100 hover:bg-slate-200 transition-all duration-300 cursor-pointer group">
           <div className="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold shadow-md group-hover:scale-110 transition-transform">
             T

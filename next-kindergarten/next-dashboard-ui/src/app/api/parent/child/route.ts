@@ -16,17 +16,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const child = await Student.findOne({ parentId })
-      .populate('teacherId', 'name email phone');
+    // Fetch all children for this parent
+    const children = await Student.find({ parentId })
+      .select('name email phone grade roll address bloodGroup birthday sex')
+      .lean();
     
-    if (!child) {
-      return NextResponse.json(
-        { error: 'Child not found' },
-        { status: 404 }
-      );
+    if (!children || children.length === 0) {
+      return NextResponse.json({ children: [] }, { status: 200 });
     }
 
-    return NextResponse.json(child);
+    return NextResponse.json({ children });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

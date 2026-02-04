@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IClass extends Document {
+  classId: string;
   name: string;
   grade: string;
   capacity: number;
@@ -12,6 +13,7 @@ export interface IClass extends Document {
 
 const ClassSchema: Schema = new Schema(
   {
+    classId: { type: String, required: true, unique: true },
     name: { type: String, required: true },
     grade: { type: String, required: true },
     capacity: { type: Number, required: true },

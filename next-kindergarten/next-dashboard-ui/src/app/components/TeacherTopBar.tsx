@@ -14,8 +14,11 @@ import {
   BookOpen,
   Clock,
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import Link from "next/link";
 
 const TeacherTopBar = () => {
+  const { user, signOut } = useAuth();
   const [classDropdown, setClassDropdown] = useState(false);
   const [quickActionMenu, setQuickActionMenu] = useState(false);
   const [profileMenu, setProfileMenu] = useState(false);
@@ -134,13 +137,17 @@ const TeacherTopBar = () => {
           {profileMenu && (
             <div className="absolute top-full mt-2 right-0 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl overflow-hidden z-50 w-56 animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="px-4 py-3 border-b border-slate-700 bg-gradient-to-r from-indigo-600 to-purple-600">
-                <p className="text-sm font-semibold text-white">Teacher Name</p>
-                <p className="text-xs text-indigo-100 mt-0.5">teacher@kindergarten.edu</p>
+                <p className="text-sm font-semibold text-white">{user?.name || 'Teacher'}</p>
+                <p className="text-xs text-indigo-100 mt-0.5">{user?.email || 'teacher@kindergarten.edu'}</p>
               </div>
-              <button className="w-full text-left px-4 py-3 text-sm text-slate-200 hover:bg-indigo-600 hover:text-white flex items-center gap-3 border-b border-slate-700 transition-all">
+              <Link
+                href="/teacher/profile"
+                className="w-full text-left px-4 py-3 text-sm text-slate-200 hover:bg-indigo-600 hover:text-white flex items-center gap-3 border-b border-slate-700 transition-all"
+                onClick={() => setProfileMenu(false)}
+              >
                 <User className="w-4 h-4" />
                 My Profile
-              </button>
+              </Link>
               <button className="w-full text-left px-4 py-3 text-sm text-slate-200 hover:bg-blue-600 hover:text-white flex items-center gap-3 border-b border-slate-700 transition-all">
                 <BookOpen className="w-4 h-4" />
                 My Subjects
@@ -149,9 +156,20 @@ const TeacherTopBar = () => {
                 <Clock className="w-4 h-4" />
                 My Schedule
               </button>
-              <button className="w-full text-left px-4 py-3 text-sm text-slate-200 hover:bg-slate-700 hover:text-white flex items-center gap-3 transition-all">
+              <Link
+                href="/teacher/settings"
+                className="w-full text-left px-4 py-3 text-sm text-slate-200 hover:bg-slate-700 hover:text-white flex items-center gap-3 border-b border-slate-700 transition-all"
+                onClick={() => setProfileMenu(false)}
+              >
                 <Settings className="w-4 h-4" />
                 Settings
+              </Link>
+              <button
+                onClick={signOut}
+                className="w-full text-left px-4 py-3 text-sm text-slate-200 hover:bg-red-600 hover:text-white flex items-center gap-3 transition-all"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
               </button>
             </div>
           )}

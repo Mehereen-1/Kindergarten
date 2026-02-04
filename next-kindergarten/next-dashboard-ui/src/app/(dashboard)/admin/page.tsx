@@ -9,8 +9,9 @@ import FinanceChart from "@/app/components/FinanceChart";
 import UserCard from "@/app/components/UserCard";
 import BulkImport from "@/app/components/BulkImport";
 import { FileSpreadsheet, BarChart3 } from 'lucide-react';
+import BulkImportXML from '@/app/components/BulkImportXML';
 
-type AdminTab = 'dashboard' | 'import-teachers' | 'import-students';
+type AdminTab = 'dashboard' | 'import-teachers' | 'import-parents' | 'import-students';
 
 const AdminPage = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
@@ -40,6 +41,17 @@ const AdminPage = () => {
         >
           <FileSpreadsheet size={20} />
           Import Teachers
+        </button>
+        <button
+          onClick={() => setActiveTab('import-parents')}
+          className={`flex items-center gap-2 px-4 py-3 font-medium transition border-b-2 ${
+            activeTab === 'import-parents'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-gray-600 hover:text-gray-800'
+          }`}
+        >
+          <FileSpreadsheet size={20} />
+          Import Parents
         </button>
         <button
           onClick={() => setActiveTab('import-students')}
@@ -92,12 +104,17 @@ const AdminPage = () => {
 
       {/* Import Teachers Tab */}
       {activeTab === 'import-teachers' && (
-        <BulkImport type="teachers" />
+        <BulkImportXML type="teachers" />
+      )}
+
+      {/* Import Parents Tab */}
+      {activeTab === 'import-parents' && (
+        <BulkImportXML type="parents" />
       )}
 
       {/* Import Students Tab */}
       {activeTab === 'import-students' && (
-        <BulkImport type="students" />
+        <BulkImportXML type="students" />
       )}
     </div>
   );

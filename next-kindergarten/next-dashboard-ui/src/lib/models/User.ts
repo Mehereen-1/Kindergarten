@@ -5,12 +5,16 @@ export interface IUser extends Document {
   email: string;
   password: string;
   phone?: string;
-  role: 'admin' | 'teacher' | 'parent' | 'student';
+  role: 'admin' | 'teacher' | 'parent';
   profilePic?: string;
   address?: string;
   bloodGroup?: string;
   birthday?: Date;
   sex?: 'male' | 'female';
+  passwordExpiry?: Date;
+  importedAt?: Date;
+  firstLogin?: Date;
+  profileUpdated?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,7 +27,7 @@ const UserSchema: Schema = new Schema(
     phone: { type: String },
     role: { 
       type: String, 
-      enum: ['admin', 'teacher', 'parent', 'student'],
+      enum: ['admin', 'teacher', 'parent'],
       required: true 
     },
     profilePic: { type: String },
@@ -31,6 +35,10 @@ const UserSchema: Schema = new Schema(
     bloodGroup: { type: String },
     birthday: { type: Date },
     sex: { type: String, enum: ['male', 'female'] },
+    passwordExpiry: { type: Date },
+    importedAt: { type: Date },
+    firstLogin: { type: Date },
+    profileUpdated: { type: Date },
   },
   {
     timestamps: true,

@@ -117,11 +117,11 @@ export default function AIQueryExample() {
       <div className="mb-6 p-4 bg-gray-100 rounded">
         <h3 className="font-semibold mb-2">Example Queries:</h3>
         <ul className="text-sm text-gray-700 space-y-1">
-          <li>• "Show me all students in class 5A"</li>
-          <li>• "What are John's details?"</li>
-          <li>• "Get my teaching schedule"</li>
-          <li>• "Show me my children"</li>
-          <li>• "Search for student Jane"</li>
+          <li>• &quot;Show me all students in class 5A&quot;</li>
+          <li>• &quot;What are John&apos;s details?&quot;</li>
+          <li>• &quot;Get my teaching schedule&quot;</li>
+          <li>• &quot;Show me my children&quot;</li>
+          <li>• &quot;Search for student Jane&quot;</li>
         </ul>
       </div>
 

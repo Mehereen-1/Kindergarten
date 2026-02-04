@@ -21,7 +21,7 @@ export default function TeacherPage() {
             <div className="space-y-3 mb-8">
               <p className="text-sm font-bold text-indigo-600 uppercase tracking-wider">Welcome Back,</p>
               <h1 className="text-6xl lg:text-7xl font-black text-slate-900 leading-tight">
-                Teacher! 👋
+                Teacher!
               </h1>
             </div>
             <p className="text-slate-600 text-lg font-medium max-w-2xl">

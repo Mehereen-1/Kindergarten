@@ -11,8 +11,11 @@ import {
   Settings,
   Home,
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import Link from "next/link";
 
 const ParentTopBar = () => {
+  const { user, signOut } = useAuth();
   const [profileMenu, setProfileMenu] = useState(false);
   const [selectedChild, setSelectedChild] = useState("Arjun Singh");
 
@@ -66,18 +69,37 @@ const ParentTopBar = () => {
             {profileMenu && (
               <div className="absolute top-full mt-2 right-0 bg-white rounded-xl shadow-2xl border border-slate-200 py-2 z-50 w-56 animate-in fade-in slide-in-from-top-2 duration-200">
                 <div className="px-4 py-3 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-peach-50">
-                  <p className="text-sm font-bold text-slate-900">Parent Name</p>
-                  <p className="text-xs text-slate-500 mt-0.5">parent@kindergarten.edu</p>
+                  <p className="text-sm font-bold text-slate-900">{user?.name || 'Parent Name'}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{user?.email || 'parent@kindergarten.edu'}</p>
                 </div>
-                <button className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 border-b border-slate-100 transition-colors">
+                <Link
+                  href="/parent/profile"
+                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 border-b border-slate-100 transition-colors"
+                  onClick={() => setProfileMenu(false)}
+                >
                   <User className="w-4 h-4" />
                   My Profile
-                </button>
-                <button className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 border-b border-slate-100 transition-colors">
+                </Link>
+                <Link
+                  href="/parent/child-profile"
+                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 border-b border-slate-100 transition-colors"
+                  onClick={() => setProfileMenu(false)}
+                >
+                  <User className="w-4 h-4" />
+                  Child's Profile
+                </Link>
+                <Link
+                  href="/parent/settings"
+                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 border-b border-slate-100 transition-colors"
+                  onClick={() => setProfileMenu(false)}
+                >
                   <Settings className="w-4 h-4" />
                   Settings
-                </button>
-                <button className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors">
+                </Link>
+                <button
+                  onClick={signOut}
+                  className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                >
                   <LogOut className="w-4 h-4" />
                   Logout
                 </button>

@@ -6,11 +6,38 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
+
+    // Check if user is admin
+    const userCookie = request.cookies.get('user')?.value;
+    
+    if (!userCookie) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    try {
+      const user = JSON.parse(decodeURIComponent(userCookie));
+      if (user.role !== 'admin') {
+        return NextResponse.json(
+          { error: 'Permission denied - admin only' },
+          { status: 403 }
+        );
+      }
+    } catch (e) {
+      return NextResponse.json(
+        { error: 'Invalid user cookie' },
+        { status: 401 }
+      );
+    }
+
     const students = await Student.find()
       .populate('parentId', 'name email phone')
-      .populate('teacherId', 'name email');
+      .populate('teacherId', 'name email')
+      .lean();
     
-    return NextResponse.json(students);
+    return NextResponse.json({ students: students || [] });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

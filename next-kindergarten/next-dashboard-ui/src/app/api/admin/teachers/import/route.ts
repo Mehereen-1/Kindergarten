@@ -3,6 +3,7 @@ import { connectDB } from '@/lib/mongodb';
 import User from '@/lib/models/User';
 import TeacherProfile from '@/lib/models/TeacherProfile';
 import { generateEmail, generatePassword, parseCSVLine, isValidEmail, isValidPhone } from '@/lib/utils/generators';
+import bcrypt from 'bcrypt';
 
 /**
  * Bulk Import Teachers from CSV
@@ -92,7 +93,8 @@ export async function POST(request: NextRequest) {
 
         // Auto-generate credentials
         const email = generateEmail(name, 'teacher');
-        const password = generatePassword();
+        const plainPassword = generatePassword();
+        const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
         // Check if already exists
         const existingUser = await User.findOne({ email });
@@ -112,10 +114,9 @@ export async function POST(request: NextRequest) {
         const user = await User.create({
           name,
           email,
-          password, // In production, this should be hashed
+          password: hashedPassword,
           role: 'teacher',
           phone,
-          status: 'active',
           createdAt: new Date()
         });
 
@@ -133,7 +134,7 @@ export async function POST(request: NextRequest) {
           row: i + 1,
           name,
           email,
-          password,
+          password: plainPassword,
           phone,
           employeeId,
           subject,

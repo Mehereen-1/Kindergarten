@@ -7,6 +7,7 @@ interface ITeacherProfile {
   joiningDate?: Date;
   employeeId?: string;
   photo?: string;
+  classes?: mongoose.Types.ObjectId[];
 }
 
 const TeacherProfileSchema: Schema = new Schema({
@@ -15,7 +16,8 @@ const TeacherProfileSchema: Schema = new Schema({
   subjects: [String],
   joiningDate: Date,
   employeeId: String,
-  photo: String
+  photo: String,
+  classes: [{ type: Schema.Types.ObjectId, ref: 'Class' }]
 });
 
 export default mongoose.models.TeacherProfile || mongoose.model<ITeacherProfile>('TeacherProfile', TeacherProfileSchema);

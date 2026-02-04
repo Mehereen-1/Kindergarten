@@ -19,13 +19,13 @@ const ParentSidebar = () => {
     { icon: Calendar, label: "Attendance", href: "/parent/attendance", colorBg: "bg-green-50", colorText: "text-green-600" },
     { icon: BarChart3, label: "Results", href: "/parent/results", colorBg: "bg-amber-50", colorText: "text-amber-600" },
     { icon: Bell, label: "Events", href: "/parent/events", colorBg: "bg-purple-50", colorText: "text-purple-600" },
-    { icon: MessageSquare, label: "Messages", href: "/parent/messages", colorBg: "bg-indigo-50", colorText: "text-indigo-600" },
+    { icon: MessageSquare, label: "Messages", href: "/parent/chat", colorBg: "bg-indigo-50", colorText: "text-indigo-600" },
     { icon: ClipboardList, label: "Notices", href: "/parent/notices", colorBg: "bg-cyan-50", colorText: "text-cyan-600" },
     { icon: Settings, label: "Settings", href: "/parent/settings", colorBg: "bg-slate-100", colorText: "text-slate-600" },
   ];
 
   return (
-    <aside className="hidden lg:block w-72 bg-white border-r border-slate-200 overflow-y-auto sticky top-0 h-screen shadow-sm">
+    <aside className="hidden lg:flex lg:flex-col w-72 bg-white border-r border-slate-200 sticky top-0 h-screen shadow-sm">
       {/* Logo Section */}
       <div className="p-8 border-b border-slate-200 relative overflow-hidden group">
         <div className="absolute inset-0 bg-slate-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -44,7 +44,7 @@ const ParentSidebar = () => {
       </div>
 
       {/* Navigation */}
-      <nav className="space-y-2 px-4 py-8">
+      <nav className="flex-1 space-y-2 px-4 py-8 overflow-y-auto">
         {menuItems.map((item, idx) => {
           const Icon = item.icon;
           return (
@@ -74,7 +74,7 @@ const ParentSidebar = () => {
       </nav>
 
       {/* Footer Section */}
-      <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-slate-50 to-transparent border-t border-slate-200">
+      <div className="p-6 bg-gradient-to-t from-slate-50 to-transparent border-t border-slate-200">
         <div className="flex items-center gap-4 p-4 rounded-xl bg-slate-100 hover:bg-slate-200 transition-all duration-300 cursor-pointer group">
           <div className="w-12 h-12 rounded-full bg-blue-200 flex items-center justify-center text-lg font-bold shadow-md group-hover:scale-110 transition-transform">
             👨

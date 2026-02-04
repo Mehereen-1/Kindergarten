@@ -2,6 +2,7 @@
 
 import TeacherSidebar from "@/app/components/TeacherSidebar";
 import MobileTeacherSidebar from "@/app/components/MobileTeacherSidebar";
+import NotificationStatusIndicator from "@/app/components/NotificationStatusIndicator";
 
 export default function TeacherLayout({
   children,
@@ -22,6 +23,7 @@ export default function TeacherLayout({
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* <NotificationStatusIndicator /> */}
         {children}
       </div>
     </div>

@@ -1,7 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useNotification } from "@/hooks/useNotification";
+import { useAuth } from "@/hooks/useAuth";
+
 const ParentMessagesCard = () => {
-  const messages = [
+  const { user } = useAuth();
+  const { sendMessageNotification } = useNotification();
+  const [messages, setMessages] = useState([
     {
       from: "Mrs. Sharma",
       role: "Class Teacher",
@@ -29,7 +35,100 @@ const ParentMessagesCard = () => {
       unread: false,
       color: "from-green-500 to-emerald-500",
     },
-  ];
+  ]);
+
+  // Set up message listener for notifications
+  useEffect(() => {
+    console.log('[ParentMessagesCard] Effect mounted, user.id:', user?.id);
+    
+    if (!user?.id) {
+      console.log('[ParentMessagesCard] No user ID, skipping message listener');
+      return;
+    }
+
+    console.log('[ParentMessagesCard] Setting up message listener for user:', user.id);
+    
+    // Track previously seen messages to avoid duplicate notifications
+    let previousMessageIds = new Set<string>();
+    let lastCheckTime = Date.now();
+
+    const checkNewMessages = setInterval(async () => {
+      const now = Date.now();
+      const windowFocused = document.hasFocus();
+      const timeSinceLastCheck = now - lastCheckTime;
+      
+      console.log(`[ParentMessagesCard] Checking for new messages... (window focused: ${windowFocused}, time since last check: ${timeSinceLastCheck}ms)`);
+      
+      try {
+        const response = await fetch(`/api/chat/contacts?userId=${user.id}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          const contacts = data.contacts || data; // Handle both { contacts: [] } and [] formats
+          
+          console.log('[ParentMessagesCard] API Response:', {
+            contactsCount: contacts?.length || 0,
+            contacts: contacts?.map((c: any) => ({
+              name: c.name,
+              unreadCount: c.unreadCount,
+              messageId: c.id,
+              hasLastMessage: !!c.lastMessage
+            }))
+          });
+          
+          if (!Array.isArray(contacts)) {
+            console.error('[ParentMessagesCard] Invalid response format, expected array');
+            return;
+          }
+          
+          // Check for new unread messages and notify
+          contacts.forEach((contact: any) => {
+            if (!contact) return;
+            
+            const contactName = contact.name || contact.senderName || 'Unknown';
+            const unreadCount = contact.unreadCount || 0;
+            const messageId = contact.id || contact._id;
+            const messageBody = contact.lastMessage?.message || 'New message received';
+            
+            console.log(`[ParentMessagesCard] Contact: ${contactName}, unreadCount: ${unreadCount}, messageId: ${messageId}, windowFocused: ${windowFocused}`);
+            
+            // ONLY trigger notification if:
+            // 1. Window is NOT focused AND
+            // 2. There are unread messages AND
+            // 3. We haven't notified about this message before AND
+            // 4. Message ID exists
+            if (!windowFocused && unreadCount > 0 && messageId && !previousMessageIds.has(messageId)) {
+              console.log(`[ParentMessagesCard] ✅ TRIGGER: New message from ${contactName} (window not focused, unread: ${unreadCount})`);
+              previousMessageIds.add(messageId);
+              
+              // Send notification with sound
+              sendMessageNotification(contactName, messageBody);
+            } else if (windowFocused && unreadCount > 0 && messageId && !previousMessageIds.has(messageId)) {
+              console.log(`[ParentMessagesCard] 📌 HOLD: Message from ${contactName} but window is focused (unread: ${unreadCount}, not sending)`);
+              // Don't track yet - wait until window loses focus
+            } else if (unreadCount === 0 && messageId && previousMessageIds.has(messageId)) {
+              // Clear message ID if no unread messages
+              console.log(`[ParentMessagesCard] 🗑️ CLEAR: No unread messages from ${contactName}`);
+              previousMessageIds.delete(messageId);
+            }
+          });
+        } else {
+          console.error('[ParentMessagesCard] API response not ok:', response.status, response.statusText);
+        }
+      } catch (error) {
+        console.error('[ParentMessagesCard] Error checking messages:', error);
+      }
+      
+      lastCheckTime = now;
+    }, 2000); // Check every 2 seconds for faster detection
+
+    console.log('[ParentMessagesCard] Message listener started');
+    
+    return () => {
+      console.log('[ParentMessagesCard] Cleaning up message listener');
+      clearInterval(checkNewMessages);
+    };
+  }, [user?.id, sendMessageNotification]);
 
   return (
     <div className="bg-white rounded-2xl border-2 border-blue-200 overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-500 h-full flex flex-col animate-in fade-in slide-in-from-right-5 duration-700">
