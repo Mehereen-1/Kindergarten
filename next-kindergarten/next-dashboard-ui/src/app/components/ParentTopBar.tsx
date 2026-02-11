@@ -17,9 +17,9 @@ import Link from "next/link";
 const ParentTopBar = () => {
   const { user, signOut } = useAuth();
   const [profileMenu, setProfileMenu] = useState(false);
-  const [selectedChild, setSelectedChild] = useState("Arjun Singh");
+  const [selectedChild, setSelectedChild] = useState("Alu");
 
-  const children = ["Arjun Singh", "Aisha Singh"];
+  const children = ["Alu", "Vorta"];
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
