@@ -10,7 +10,7 @@ __pycache__/
 venv/
 env/
 .venv/
-.venv310/
+venv310/
 
 # Environment
 .env
