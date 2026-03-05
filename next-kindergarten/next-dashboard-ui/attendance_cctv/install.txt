@@ -1,0 +1,12 @@
+python -m venv venv
+venv\Scripts\activate
+python -m pip install --upgrade pip setuptools wheel
+pip install onnxruntime
+pip install insightface==0.7.3 --no-deps
+
+pip install numpy
+pip install opencv-python
+pip install pillow
+pip install onnxruntime
+pip install insightface
+

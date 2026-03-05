@@ -4,6 +4,10 @@
     "fast-xml-parser": "^5.3.4",
     "mongoose": "^9.1.2",
     "nodemailer": "^7.0.13",
+    "uuid": "^13.0.0",
     "validator": "^13.15.26"
+  },
+  "devDependencies": {
+    "@types/uuid": "^10.0.0"
   }
 }

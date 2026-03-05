@@ -7,9 +7,8 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    // Check if user is admin
     const userCookie = request.cookies.get('user')?.value;
-    
+
     if (!userCookie) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -17,31 +16,36 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    let user;
     try {
-      const user = JSON.parse(decodeURIComponent(userCookie));
-      if (user.role !== 'admin') {
-        return NextResponse.json(
-          { error: 'Permission denied - admin only' },
-          { status: 403 }
-        );
-      }
-    } catch (e) {
+      user = JSON.parse(decodeURIComponent(userCookie));
+    } catch {
       return NextResponse.json(
         { error: 'Invalid user cookie' },
         { status: 401 }
       );
     }
 
-    const students = await Student.find()
-      .populate('parentId', 'name email phone')
-      .populate('teacherId', 'name email')
-      .lean();
-    
+    // FIXED LOGIC HERE
+    if (user.role !== 'admin' && user.role !== 'teacher') {
+      return NextResponse.json(
+        { error: 'Permission denied' },
+        { status: 403 }
+      );
+    }
+
+    const students = await Student.find().lean();
+
     return NextResponse.json({ students: students || [] });
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500 }
+    );
   }
 }
+
 
 export async function POST(request: NextRequest) {
   try {

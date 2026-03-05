@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Attendance Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h1>Attendance Management System</h1>
+
+<div class="container">
+    <div class="camera-section">
+        <h2>Live Camera Feed</h2>
+        <div class="video">
+            <img id="videoStream" src="" width="600"/>
+        </div>
+        
+        <div class="controls">
+            <button id="startBtn" class="btn btn-start">Start Camera</button>
+            <button id="stopBtn" class="btn btn-stop" disabled>Stop Camera</button>
+        </div>
+
+        <div class="upload-section">
+            <h3>Or Process Video File</h3>
+            <input type="file" id="videoFile" accept="video/*">
+            <button id="processVideoBtn" class="btn btn-process">Process Video</button>
+            <div id="processingStatus" class="status-message"></div>
+        </div>
+    </div>
+
+    <div class="attendance">
+        <h2>Students Present</h2>
+        <ul id="attendanceList"></ul>
+        <button id="clearBtn" class="btn btn-clear">Clear Records</button>
+    </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

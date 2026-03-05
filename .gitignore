@@ -1,2 +1,39 @@
 node_modules/
 .env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual env
+venv/
+env/
+.venv/
+.venv310/
+
+# Environment
+.env
+.env.*
+
+# Videos
+*.mp4
+*.avi
+*.mov
+
+# Logs
+*.log
+
+# InsightFace models
+models/
+.insightface/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node / Next.js
+node_modules/
+.next/
+dist/
+out/
