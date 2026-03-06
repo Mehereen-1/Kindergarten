@@ -25,7 +25,6 @@ venv310/
 *.log
 
 # InsightFace models
-models/
 .insightface/
 
 # OS
