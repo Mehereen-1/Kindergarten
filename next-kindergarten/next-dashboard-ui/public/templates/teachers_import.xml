@@ -1,0 +1,16 @@
+<teachers>
+  <teacher>
+    <email>sadia56017@gmail.com</email>
+    <name>Nazifa Anzum</name>
+    <phone>9876543214</phone>
+    <subject>Mathematics</subject>
+    <qualification>B.Ed</qualification>
+  </teacher>
+  <teacher>
+    <email>sadiamostafa09@gmail.com</email>
+    <name>Rukaiya Islam</name>
+    <phone>9876543215</phone>
+    <subject>English</subject>
+    <qualification>M.Ed</qualification>
+  </teacher>
+</teachers>

@@ -165,7 +165,7 @@ export default function BulkImport({ type, onImportComplete }: BulkImportProps) 
                         <p className="font-medium text-gray-800">👨‍🎓 {item.student.name}</p>
                         <p className="text-gray-600">📧 {item.student.email}</p>
                         <p className="text-gray-600">🔑 Password: <span className="font-mono bg-gray-100 px-2 py-1 rounded">{item.student.password}</span></p>
-                        <p className="text-gray-600">🏫 {item.student.class} - Section {item.student.section} - Roll #{item.student.rollNumber}</p>
+                        <p className="text-gray-600">🏫 Class ID {item.student.classId} - Year {item.student.academicYear} - Roll #{item.student.rollNumber}</p>
                         <p className="text-gray-500 text-xs mt-1">👨‍👩‍👧 Parent: {item.parent.name} ({item.parent.email})</p>
                       </>
                     )}

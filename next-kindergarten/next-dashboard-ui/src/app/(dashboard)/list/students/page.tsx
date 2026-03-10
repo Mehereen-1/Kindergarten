@@ -1,21 +1,25 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import FormModal from "@/app/components/FormModal";
 import Pagination from "@/app/components/Pagination";
 import Table from "@/app/components/Table";
 import TableSearch from "@/app/components/TableSearch";
-import { role, studentsData } from "@/lib/data";
+import { role } from "@/lib/data";
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 type Student = {
-  id: number;
-  studentId: string;
+  id: string;
   name: string;
   email?: string;
   photo: string;
   phone?: string;
-  grade: number;
-  class: string;
-  address: string;
+  grade?: string;
+  classId?: string;
+  className?: string;
+  address?: string;
 };
 
 const columns = [
@@ -26,6 +30,11 @@ const columns = [
   {
     header: "Student ID",
     accessor: "studentId",
+    className: "hidden md:table-cell",
+  },
+  {
+    header: "Class ID",
+    accessor: "classId",
     className: "hidden md:table-cell",
   },
   {
@@ -50,6 +59,65 @@ const columns = [
 ];
 
 const StudentListPage = () => {
+  const searchParams = useSearchParams();
+  const classIdParam = searchParams.get("classId") || "";
+  const academicYearParam = searchParams.get("academicYear") || String(new Date().getFullYear());
+  const [students, setStudents] = useState<Student[]>([]);
+  const [academicYear, setAcademicYear] = useState(academicYearParam);
+
+  const yearOptions = useMemo(() => {
+    const current = new Date().getFullYear();
+    return [current - 1, current, current + 1].map((year) => String(year));
+  }, []);
+
+  useEffect(() => {
+    setAcademicYear(academicYearParam);
+  }, [academicYearParam]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadStudents = async () => {
+      try {
+        const response = await fetch(`/api/admin/students?academicYear=${academicYear}`, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = await response.json();
+        const rawStudents = Array.isArray(data?.students) ? data.students : [];
+        const mapped = rawStudents.map((student: any) => ({
+          id: student._id,
+          name: student.name,
+          email: student.email,
+          phone: student.phone,
+          address: student.address,
+          photo: student.profilePic || "/avatar.png",
+          classId: student.currentClass?.classId || "",
+          className: student.currentClass?.name || "",
+          grade: student.currentClass?.grade || "",
+        }));
+
+        const filtered = classIdParam
+          ? mapped.filter((student) => student.classId === classIdParam)
+          : mapped;
+
+        setStudents(filtered);
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") {
+          console.error("Failed to load students", error);
+        }
+      }
+    };
+
+    loadStudents();
+
+    return () => controller.abort();
+  }, [academicYear, classIdParam]);
+
   const renderRow = (item: Student) => (
     <tr
       key={item.id}
@@ -65,16 +133,17 @@ const StudentListPage = () => {
         />
         <div className="flex flex-col">
           <h3 className="font-semibold">{item.name}</h3>
-          <p className="text-xs text-gray-500">{item.class}</p>
+          <p className="text-xs text-gray-500">{item.className || item.classId || "-"}</p>
         </div>
       </td>
-      <td className="hidden md:table-cell">{item.studentId}</td>
-      <td className="hidden md:table-cell">{item.grade}</td>
+      <td className="hidden md:table-cell">{item.id}</td>
+      <td className="hidden md:table-cell">{item.classId || "-"}</td>
+      <td className="hidden md:table-cell">{item.grade || "-"}</td>
       <td className="hidden md:table-cell">{item.phone}</td>
       <td className="hidden md:table-cell">{item.address}</td>
       <td>
         <div className="flex items-center gap-2">
-          <Link href={`/list/teachers/${item.id}`}>
+          <Link href={`/list/students/${item.id}`}>
             <button className="w-7 h-7 flex items-center justify-center rounded-full bg-lamaSky">
               <Image src="/view.png" alt="" width={16} height={16} />
             </button>
@@ -96,6 +165,21 @@ const StudentListPage = () => {
       <div className="flex items-center justify-between">
         <h1 className="hidden md:block text-lg font-semibold">All Students</h1>
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+          <div className="flex items-center gap-2 text-sm">
+            <label htmlFor="academicYear" className="text-gray-600">Academic Year</label>
+            <select
+              id="academicYear"
+              value={academicYear}
+              onChange={(event) => setAcademicYear(event.target.value)}
+              className="border border-gray-300 rounded px-2 py-1"
+            >
+              {yearOptions.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
           <TableSearch />
           <div className="flex items-center gap-4 self-end">
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-lamaYellow">
@@ -114,7 +198,7 @@ const StudentListPage = () => {
         </div>
       </div>
       {/* LIST */}
-      <Table columns={columns} renderRow={renderRow} data={studentsData} />
+      <Table columns={columns} renderRow={renderRow} data={students} />
       {/* PAGINATION */}
       <Pagination />
     </div>

@@ -1,4 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
+import './User';
 
 interface IParentProfile {
   userId: mongoose.Types.ObjectId;

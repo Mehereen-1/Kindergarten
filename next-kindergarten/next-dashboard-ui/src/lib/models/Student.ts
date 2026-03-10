@@ -1,13 +1,11 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import './User';
 
 export interface IStudent extends Document {
   name: string;
   email?: string;
   phone?: string;
   parentId: mongoose.Types.ObjectId;
-  classId?: mongoose.Types.ObjectId;
-  grade?: string;
-  roll?: string;
   address?: string;
   bloodGroup?: string;
   birthday?: Date;
@@ -23,9 +21,6 @@ const StudentSchema: Schema = new Schema(
     email: { type: String, unique: true, sparse: true },
     phone: { type: String },
     parentId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    classId: { type: Schema.Types.ObjectId, ref: 'Class' },
-    grade: { type: String },
-    roll: { type: String },
     address: { type: String },
     bloodGroup: { type: String },
     birthday: { type: Date },

@@ -1,3 +1,5 @@
+require('dotenv').config({ path: '.env.local' });
+
 const { createServer } = require('http');
 const { parse } = require('url');
 const next = require('next');
@@ -9,7 +11,10 @@ const hostname = 'localhost';
 const port = process.env.PORT || 3000;
 
 // Connect to MongoDB
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/kindergarten';
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) {
+  throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+}
 mongoose.connect(MONGODB_URI).then(() => {
   console.log('Connected to MongoDB');
 }).catch(err => {

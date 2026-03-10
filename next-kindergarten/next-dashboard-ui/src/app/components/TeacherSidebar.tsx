@@ -19,6 +19,7 @@ const TeacherSidebar = () => {
       items: [
         { icon: LayoutDashboard, label: "Dashboard", href: "/teacher" },
         { icon: Users, label: "My Classes", href: "/teacher/classes" },
+        { icon: BookOpen, label: "Class Content", href: "/teacher/ildce" },
         { icon: ClipboardList, label: "Attendance", href: "/teacher/attendance" },
         { icon: BarChart3, label: "Results", href: "/teacher/results" },
       ],

@@ -11,8 +11,14 @@ export interface NotificationOptions {
 }
 
 export function useNotification() {
+  const isBrowser = typeof window !== 'undefined';
+
   // Request notification permission on mount
   useEffect(() => {
+    if (!isBrowser) {
+      return;
+    }
+
     console.log('[Notification] Hook mounted');
     console.log('[Notification] Support check:', 'Notification' in window);
     console.log('[Notification] Current permission:', 'Notification' in window ? Notification.permission : 'N/A');
@@ -32,6 +38,10 @@ export function useNotification() {
   }, []);
 
   const playSound = useCallback(() => {
+    if (!isBrowser) {
+      return;
+    }
+
     try {
       console.log('[Sound] Playing notification sound...');
       // Use Web Audio API to generate a notification sound
@@ -68,6 +78,10 @@ export function useNotification() {
 
   const sendNotification = useCallback(
     (options: NotificationOptions) => {
+      if (!isBrowser) {
+        return;
+      }
+
       console.log('[Notification] Attempting to send notification:', options);
       
       if (!('Notification' in window)) {
@@ -144,7 +158,7 @@ export function useNotification() {
     sendNotification,
     sendMessageNotification,
     playSound,
-    notificationSupported: 'Notification' in window,
-    permissionGranted: 'Notification' in window && Notification.permission === 'granted',
+    notificationSupported: isBrowser && 'Notification' in window,
+    permissionGranted: isBrowser && 'Notification' in window && Notification.permission === 'granted',
   };
 }
