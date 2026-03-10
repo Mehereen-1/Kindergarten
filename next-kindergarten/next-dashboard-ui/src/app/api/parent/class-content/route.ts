@@ -8,6 +8,20 @@ import ClassModel from '@/lib/models/Class';
 import TeacherClassAssignment from '@/lib/models/TeacherClassAssignment';
 import ContentChunk from '@/lib/models/ContentChunk';
 
+function isMongoConnectivityError(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase();
+  const code = String(error?.code || '').toUpperCase();
+
+  return (
+    code === 'ECONNREFUSED' ||
+    code === 'ENOTFOUND' ||
+    code === 'ETIMEDOUT' ||
+    message.includes('querysrv') ||
+    message.includes('server selection timed out') ||
+    message.includes('mongodb connection')
+  );
+}
+
 /**
  * GET /api/parent/class-content?classId=...&academicYear=...
  * Temporary open mode: returns all class-organized teacher-uploaded content.
@@ -226,6 +240,17 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Error fetching parent class content:', error);
+    if (isMongoConnectivityError(error)) {
+      return NextResponse.json(
+        {
+          classes: [],
+          count: 0,
+          warning: 'Class content is temporarily unavailable because the database cannot be reached. Please try again shortly.',
+        },
+        { status: 200 }
+      );
+    }
+
     return NextResponse.json({ error: error.message || 'Failed to fetch class content' }, { status: 500 });
   }
 }

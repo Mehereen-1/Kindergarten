@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
     await connectDB();
     
     // Get all notices (can be filtered by target in frontend)
-    const notices = await Notice.find({ $or: [{ target: 'all' }, { target: 'parents' }] })
+    const notices = await Notice.find({ targetRole: { $in: ['all', 'parent'] } })
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 });
     

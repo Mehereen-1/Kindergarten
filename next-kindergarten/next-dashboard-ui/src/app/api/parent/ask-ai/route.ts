@@ -28,6 +28,19 @@ function lexicalSimilarity(question: string, chunkText: string): number {
   return match / Math.max(cTokens.length, 1);
 }
 
+function isMongoConnectivityError(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase();
+  const code = String(error?.code || '').toUpperCase();
+
+  return (
+    code === 'ECONNREFUSED' ||
+    code === 'ENOTFOUND' ||
+    code === 'ETIMEDOUT' ||
+    message.includes('querysrv') ||
+    message.includes('server selection timed out')
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
     await connectDB();
@@ -100,6 +113,13 @@ Provide a clear, concise answer based only on the context above.`;
     });
   } catch (error: any) {
     console.error('Ask AI error:', error);
+    if (isMongoConnectivityError(error)) {
+      return NextResponse.json(
+        { error: 'Class content database is currently unreachable. Please try again in a few minutes.' },
+        { status: 503 }
+      );
+    }
+
     const message = String(error?.message || 'Ask AI failed');
     const isQuota = message.toLowerCase().includes('quota') || message.includes('429');
     return NextResponse.json(

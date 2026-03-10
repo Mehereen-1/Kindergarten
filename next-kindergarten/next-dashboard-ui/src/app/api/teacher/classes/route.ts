@@ -1,9 +1,21 @@
 import { connectDB } from '@/lib/mongodb';
 import Class from '@/lib/models/Class';
+import '@/lib/models/Student';
 import StudentClassHistory from '@/lib/models/StudentClassHistory';
 import TeacherClassAssignment from '@/lib/models/TeacherClassAssignment';
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
+
+function toIdString(value: any): string | null {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value._id) return String(value._id);
+  try {
+    return String(value);
+  } catch {
+    return null;
+  }
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -40,11 +52,16 @@ export async function GET(request: NextRequest) {
       teacherQuery = { teacherId, academicYear };
     }
 
-    const assignments = await TeacherClassAssignment.find(teacherQuery).lean();
+    const assignments = await TeacherClassAssignment.find({
+      ...teacherQuery,
+      status: 'active',
+    }).lean();
     console.log('Assignments found:', assignments.length);
     console.log('Assignments:', JSON.stringify(assignments, null, 2));
     
-    const assignmentClassIds = assignments.map((assignment) => assignment.classId.toString());
+    const assignmentClassIds = assignments
+      .map((assignment) => toIdString(assignment.classId))
+      .filter((id): id is string => Boolean(id));
 
     const classes = assignmentClassIds.length
       ? await Class.find({ _id: { $in: assignmentClassIds } }).lean()
@@ -53,10 +70,18 @@ export async function GET(request: NextRequest) {
     console.log('Classes found:', classes.length);
     console.log('Classes:', JSON.stringify(classes.map(c => ({ _id: c._id, name: c.name })), null, 2));
 
-    const classIds = classes.map((classDoc) => classDoc._id);
+    const classIds = classes
+      .map((classDoc) => toIdString(classDoc._id))
+      .filter((id): id is string => Boolean(id));
+
+    if (!classIds.length) {
+      return NextResponse.json([]);
+    }
+
     const histories = await StudentClassHistory.find({
       classId: { $in: classIds },
       academicYear,
+      status: 'active',
     })
       .populate('studentId', 'name')
       .lean();
@@ -64,15 +89,20 @@ export async function GET(request: NextRequest) {
     const studentsByClass = new Map<string, Array<{ id: string; name: string; rollNo?: string }>>();
 
     histories.forEach((history) => {
-      const classKey = history.classId.toString();
-      const student = history.studentId as { _id: string; name: string } | null;
-      if (!student) {
+      const classKey = toIdString(history.classId);
+      if (!classKey) {
         return;
       }
 
+      const student = history.studentId as { _id?: string; name?: string } | string | null;
+      const studentId = toIdString(student as any);
+      const studentName = typeof student === 'object' && student?.name ? student.name : 'Student';
+
+      if (!studentId) return;
+
       const entry = {
-        id: student._id.toString(),
-        name: student.name,
+        id: studentId,
+        name: studentName,
         rollNo: history.rollNo,
       };
 
@@ -98,6 +128,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error) {
+    console.error('Teacher classes API error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -1,6 +1,8 @@
 require('dotenv').config({ path: '.env.local' });
 
 const { createServer } = require('http');
+const net = require('net');
+const dns = require('dns');
 const { parse } = require('url');
 const next = require('next');
 const { Server } = require('socket.io');
@@ -8,7 +10,72 @@ const mongoose = require('mongoose');
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
-const port = process.env.PORT || 3000;
+const requestedPort = Number(process.env.PORT) || 3000;
+const remindersIntervalMs = Number(process.env.EVENT_REMINDER_INTERVAL_MS || 60 * 60 * 1000);
+
+const dnsServers = (process.env.DNS_SERVERS || '8.8.8.8,1.1.1.1')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+if (dnsServers.length > 0) {
+  try {
+    dns.setServers(dnsServers);
+  } catch (error) {
+    console.warn('Failed to set custom DNS servers for MongoDB:', error);
+  }
+}
+
+function findAvailablePort(startPort) {
+  return new Promise((resolve, reject) => {
+    const tryPort = (portToTry) => {
+      const tester = net.createServer();
+
+      tester.once('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          tryPort(portToTry + 1);
+          return;
+        }
+        reject(err);
+      });
+
+      tester.once('listening', () => {
+        tester.close(() => resolve(portToTry));
+      });
+
+      tester.listen(portToTry);
+    };
+
+    tryPort(startPort);
+  });
+}
+
+function startEventReminderScheduler(port) {
+  const runReminders = async () => {
+    try {
+      const response = await fetch(`http://${hostname}:${port}/api/events/reminders/run`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('Event reminder job failed:', text);
+        return;
+      }
+
+      const result = await response.json();
+      console.log(
+        `[EventReminder] created=${result.remindersCreated || 0}, dayBefore=${result.dayBeforeEventsProcessed || 0}, dayOf=${result.dayOfEventsProcessed || 0}`
+      );
+    } catch (error) {
+      console.error('Event reminder scheduler error:', error);
+    }
+  };
+
+  // Trigger once on startup, then keep running periodically.
+  runReminders();
+  setInterval(runReminders, remindersIntervalMs);
+}
 
 // Connect to MongoDB
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -21,23 +88,30 @@ mongoose.connect(MONGODB_URI).then(() => {
   console.error('MongoDB connection error:', err);
 });
 
-// Initialize Next.js
-const app = next({ dev, hostname, port });
-const handle = app.getRequestHandler();
+findAvailablePort(requestedPort).then((initialPort) => {
+  let activePort = initialPort;
 
-app.prepare().then(() => {
-  const httpServer = createServer((req, res) => {
-    const parsedUrl = parse(req.url, true);
-    handle(req, res, parsedUrl);
-  });
+  if (activePort !== requestedPort) {
+    console.warn(`Port ${requestedPort} is in use, starting on ${activePort} instead.`);
+  }
 
-  // Initialize Socket.IO
-  const io = new Server(httpServer, {
-    cors: {
-      origin: "http://localhost:3000",
-      methods: ["GET", "POST"]
-    }
-  });
+  // Initialize Next.js
+  const app = next({ dev, hostname, port: activePort });
+  const handle = app.getRequestHandler();
+
+  return app.prepare().then(() => {
+    const httpServer = createServer((req, res) => {
+      const parsedUrl = parse(req.url, true);
+      handle(req, res, parsedUrl);
+    });
+
+    // Initialize Socket.IO
+    const io = new Server(httpServer, {
+      cors: {
+        origin: `http://${hostname}:${activePort}`,
+        methods: ["GET", "POST"]
+      }
+    });
 
   // Socket.IO connection handling
   io.on('connection', (socket) => {
@@ -97,8 +171,29 @@ app.prepare().then(() => {
     });
   });
 
-  httpServer.listen(port, (err) => {
-    if (err) throw err;
-    console.log(`> Ready on http://${hostname}:${port}`);
+    const listenWithFallback = (portToTry) => {
+      httpServer.once('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          const nextPort = portToTry + 1;
+          console.warn(`Port ${portToTry} is in use, retrying on ${nextPort}.`);
+          listenWithFallback(nextPort);
+          return;
+        }
+
+        console.error('Server startup error:', err);
+        process.exit(1);
+      });
+
+      httpServer.listen(portToTry, () => {
+        activePort = portToTry;
+        console.log(`> Ready on http://${hostname}:${activePort}`);
+        startEventReminderScheduler(activePort);
+      });
+    };
+
+    listenWithFallback(activePort);
   });
+}).catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });
