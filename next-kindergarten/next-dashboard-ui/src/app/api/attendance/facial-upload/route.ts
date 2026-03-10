@@ -112,14 +112,13 @@ export async function POST(req: NextRequest) {
 
     // Update or create facial database record
     const facialRecord = await FacialDatabase.findOneAndUpdate(
-      { studentId },
+      { student_id: studentId },
       {
         $set: {
-          classId: student.classId || undefined,
-          numberOfSamples: uploadedCount,
-          lastUpdated: new Date(),
-          isProcessed: embeddingCount > 0,
-          embeddingsCount: embeddingCount,
+          class_id: student.classId || undefined,
+          number_of_samples: uploadedCount,
+          last_updated: new Date(),
+          is_processed: embeddingCount > 0,
         },
       },
       { upsert: true, new: true }

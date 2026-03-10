@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import TeacherTopBar from "@/app/components/TeacherTopBar";
 import { Upload, Camera, Database, Send } from "lucide-react";
 type AttendanceStatus = "present" | "absent" | "late";
@@ -40,67 +41,46 @@ export default function AttendancePage() {
     loadStudents();
   }, []);
 
-  // Handle camera active state - fetch attendance data
+  // Handle camera active state - fetch live detection data from Python backend
   useEffect(() => {
     let interval: NodeJS.Timer;
-    if (cameraActive) {
-      // Reset seen IDs when camera starts
-      seenAttendanceIds.current.clear();
-      
+    if (cameraActive && cctvMode === "live") {
       interval = setInterval(async () => {
         try {
-          const res = await fetch("http://localhost:8000/attendance?limit=50");
-          const data = await res.json();
+          const res = await fetch("http://localhost:8000/video-detections");
+          const detData = await res.json();
+          const data = Array.isArray(detData) ? detData : (detData.detections || []);
           
           if (Array.isArray(data)) {
             setAtd(data);
-            
-            // Update recognition count using functional update pattern
-            setStudentRecognitionCount((prevCount) => {
-              const newRecognitionCount = { ...prevCount };
-              const studentsToMarkPresent: string[] = [];
-              let hasNewData = false;
 
-              data.forEach((record: AttendanceRecord) => {
-                const recordId = record._id || `${record.student_id}-${record.timestamp}`;
-                
-                // Only count if we haven't seen this record before
-                if (!seenAttendanceIds.current.has(recordId)) {
-                  seenAttendanceIds.current.add(recordId);
-                  hasNewData = true;
-                  
-                  const studentId = record.student_id;
-                  newRecognitionCount[studentId] = (newRecognitionCount[studentId] || 0) + 1;
-
-                  // Mark as present after 3 recognitions
-                  if (newRecognitionCount[studentId] >= 3 && !studentsToMarkPresent.includes(studentId)) {
-                    studentsToMarkPresent.push(studentId);
-                    console.log(`✅ ${record.name} marked as present (${newRecognitionCount[studentId]} recognitions)`);
-                  }
-                }
-              });
-
-              if (hasNewData && studentsToMarkPresent.length > 0) {
-                setPresentStudents((prevSet) => {
-                  const newSet = new Set(prevSet);
-                  studentsToMarkPresent.forEach((id) => newSet.add(id));
-                  return newSet;
-                });
-              }
-
-              return hasNewData ? newRecognitionCount : prevCount;
+            // Recompute from current backend detections so UI always matches backend truth.
+            const counts: Record<string, number> = {};
+            data.forEach((record: AttendanceRecord) => {
+              const sid = record.student_id;
+              if (!sid) return;
+              counts[sid] = (counts[sid] || 0) + 1;
             });
+
+            setStudentRecognitionCount(counts);
+            setPresentStudents(
+              new Set(
+                Object.entries(counts)
+                  .filter(([, count]) => count >= 3)
+                  .map(([sid]) => sid)
+              )
+            );
           }
         } catch (err) {
-          console.error("Error fetching attendance:", err);
+          console.error("Error fetching live detections:", err);
         }
-      }, 2000); // fetch every 2 seconds
+      }, 1000); // fetch every second
     }
 
     return () => {
       if (interval) clearInterval(interval as unknown as NodeJS.Timeout);
     };
-  }, [cameraActive]);
+  }, [cameraActive, cctvMode]);
 
   // Handle video playback and detection overlay
   useEffect(() => {
@@ -248,79 +228,80 @@ export default function AttendancePage() {
 
     setLoading(true);
     setMessage("");
-    setBulkImportProgress({ current: 0, total: files.length });
+    setBulkImportProgress({ current: 0, total: 0 });
 
     try {
-      // Group files by student folder name
+      // Group files by the immediate parent folder (student folder)
       const filesByStudent: Record<string, File[]> = {};
-      let csvData: File | null = null;
-      let csvMappings: Record<string, string[]> = {}; // filename -> [studentNames]
+      const imageExt = /\.(jpg|jpeg|png|webp)$/i;
+
+      const normalize = (value: string) =>
+        value
+          .toLowerCase()
+          .replace(/[_-]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
 
       // Process all files
       Array.from(files).forEach((file) => {
-        const filePath = (file as any).webkitRelativePath || file.name;
-        
-        // Check if it's a CSV file
-        if (file.name.endsWith('.csv')) {
-          csvData = file;
+        const rawPath = ((file as any).webkitRelativePath || file.name) as string;
+        const filePath = rawPath.replace(/\\/g, "/");
+
+        // Only import image files for embeddings.
+        if (!imageExt.test(file.name)) {
           return;
         }
 
-        // Extract student folder name from path
-        const pathParts = filePath.split('/');
-        
-        if (pathParts.length > 1) {
-          // File is in a subfolder - use folder name as student identifier
-          const studentFolder = pathParts[0];
-          if (!filesByStudent[studentFolder]) {
-            filesByStudent[studentFolder] = [];
-          }
-          filesByStudent[studentFolder].push(file);
+        const pathParts = filePath.split("/").filter(Boolean);
+        if (pathParts.length < 2) {
+          // Not inside a folder; skip in bulk mode.
+          return;
         }
+
+        // Works for both structures:
+        // - Student/photo.jpg
+        // - MainFolder/Student/photo.jpg
+        const studentFolder = pathParts[pathParts.length - 2];
+        if (!filesByStudent[studentFolder]) {
+          filesByStudent[studentFolder] = [];
+        }
+        filesByStudent[studentFolder].push(file);
       });
 
-      // Parse CSV if present to get student name mappings
-      if (csvData) {
-        const csvText = await csvData.text();
-        const lines = csvText.split('\n').slice(1); // Skip header
-        
-        lines.forEach((line) => {
-          const [studentName, ...imageParts] = line.split(',').map(s => s.trim());
-          const imageFilename = imageParts.join(','); // In case filename has commas
-          
-          if (studentName && imageFilename) {
-            if (!csvMappings[imageFilename]) {
-              csvMappings[imageFilename] = [];
-            }
-            csvMappings[imageFilename].push(studentName);
-          }
-        });
+      const groupEntries = Object.entries(filesByStudent);
+      if (groupEntries.length === 0) {
+        setMessage("❌ No valid student folders/images found. Select a parent folder that contains student subfolders.");
+        setBulkImportProgress(null);
+        return;
       }
+
+      setBulkImportProgress({ current: 0, total: groupEntries.length });
 
       let uploadedCount = 0;
       const results: { studentName: string; status: 'success' | 'error'; message: string }[] = [];
 
       // Upload files for each student folder
-      for (const [studentFolder, folderFiles] of Object.entries(filesByStudent)) {
+      for (const [studentFolder, folderFiles] of groupEntries) {
         try {
-          // Find student by name or ID
+          const folderNorm = normalize(studentFolder);
+
+          // Find student by exact id/name first, then normalized name match.
           const student = students.find(
-            (s) => s.name === studentFolder || s._id === studentFolder || s.name.toLowerCase() === studentFolder.toLowerCase()
+            (s) =>
+              s._id === studentFolder ||
+              s.name === studentFolder ||
+              normalize(String(s.name || "")) === folderNorm
           );
 
           if (!student) {
             results.push({
               studentName: studentFolder,
               status: 'error',
-              message: 'Student not found',
+              message: 'Student not found (folder name/id does not match)',
             });
             setBulkImportProgress((prev) => prev ? { ...prev, current: prev.current + 1 } : null);
             continue;
           }
-
-          // Create a synthetic FileList-like structure
-          const dataTransfer = new DataTransfer();
-          folderFiles.forEach((file) => dataTransfer.items.add(file));
 
           // Upload using existing function
           await new Promise<void>((resolve) => {
@@ -395,10 +376,11 @@ export default function AttendancePage() {
       // Show results
       const successCount = results.filter((r) => r.status === 'success').length;
       const errorCount = results.filter((r) => r.status === 'error').length;
+      const firstErrors = results.filter((r) => r.status === 'error').slice(0, 3);
 
-      setMessage(
-        `✅ Bulk import complete: ${successCount} successful, ${errorCount} failed (${uploadedCount} images)`
-      );
+      setMessage([`✅ Bulk import complete: ${successCount} successful, ${errorCount} failed (${uploadedCount} images)`,
+        ...firstErrors.map((e) => `• ${e.studentName}: ${e.message}`)
+      ].join("\n"));
 
       // Log results
       console.log('📊 Bulk Import Results:', results);
@@ -529,10 +511,11 @@ export default function AttendancePage() {
 //temp
 
 interface AttendanceRecord {
-  _id: string;
+  _id?: string;
   name: string;
   student_id: string;
   timestamp: string;
+  frame_num?: number;
 }
 
 interface CCTVTabProps {
@@ -542,17 +525,43 @@ interface CCTVTabProps {
 
   // Start camera
   const startCamera = async () => {
-    setCameraActive(true);
-    // Optionally call backend to start camera if needed
-    // await fetch("http://localhost:8000/start-camera");
+    setLoading(true);
+    setMessage("");
+    try {
+      const res = await fetch("http://localhost:8000/start-camera", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setMessage(`❌ Error: ${data.error || "Failed to start camera"}`);
+        setCameraActive(false);
+        return;
+      }
+      setCameraActive(true);
+      setMessage("✅ Live camera started");
+    } catch (error) {
+      setCameraActive(false);
+      setMessage(`❌ Error: ${String(error)}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Stop camera
   const stopCamera = async () => {
-    setCameraActive(false);
-    seenAttendanceIds.current.clear();
-    // Optionally call backend to stop camera if needed
-    // await fetch("http://localhost:8000/stop-camera");
+    setLoading(true);
+    try {
+      await fetch("http://localhost:8000/stop-camera", {
+        method: "POST",
+      });
+      setMessage("✅ Camera stopped");
+    } catch (error) {
+      setMessage(`❌ Error: ${String(error)}`);
+    } finally {
+      setCameraActive(false);
+      seenAttendanceIds.current.clear();
+      setLoading(false);
+    }
   };
 
   // Stop video processing
@@ -691,14 +700,63 @@ interface CCTVTabProps {
   // Save Attendance snapshot (can just fetch current attendance)
   const saveAttendance = async () => {
     setLoading(true);
+    setMessage("");
     try {
-      const res = await fetch("http://localhost:8000/attendance?limit=50");
-      const data = await res.json();
-      console.log("Saved Attendance:", data);
-      alert("Attendance saved!");
+      const presentIds = Array.from(presentStudents);
+      if (presentIds.length === 0) {
+        setMessage("⚠️ No recognized present students to save yet.");
+        return;
+      }
+
+      const classId =
+        students.find((s) => presentStudents.has(String(s._id)))?.classId ||
+        students[0]?.classId ||
+        undefined;
+
+      const records = presentIds.map((studentId) => ({
+        studentId,
+        timestamp: new Date().toISOString(),
+        status: "present" as const,
+        source: "cctv" as const,
+        remarks: "Live camera recognition",
+      }));
+
+      const response = await fetch("/api/attendance/cctv-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          records,
+          classId,
+          date: selectedDate,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        setMessage(`❌ Error: ${result.error || "Failed to save attendance"}`);
+        return;
+      }
+
+      const failedRecords = Array.isArray(result.failedRecords) ? result.failedRecords : [];
+      const failedPreview = failedRecords
+        .slice(0, 3)
+        .map((f: { studentId?: string; error?: string }) => `${f.studentId || "unknown"}: ${f.error || "failed"}`)
+        .join(" | ");
+
+      if ((result.synced || 0) === 0) {
+        setMessage(
+          `❌ Attendance save failed (0/${result.total || presentIds.length}). ${failedPreview || "Students may be missing class assignment."}`
+        );
+      } else if ((result.failed || 0) > 0) {
+        setMessage(
+          `⚠️ Attendance partially saved (${result.synced}/${result.total}). Failed: ${result.failed}. ${failedPreview}`
+        );
+      } else {
+        setMessage(`✅ Attendance saved to database (${result.synced}/${result.total} records synced)`);
+      }
     } catch (err) {
       console.error("Error saving attendance:", err);
-      alert("Failed to save attendance.");
+      setMessage(`❌ Error: ${String(err)}`);
     } finally {
       setLoading(false);
     }
@@ -742,6 +800,13 @@ interface CCTVTabProps {
               <Upload size={16} className="inline mr-2" />
               Facial Data
             </button>
+            <Link
+              href="/teacher/video-attendance"
+              className="px-6 py-2 rounded-lg font-semibold transition text-slate-700 hover:bg-slate-100 border border-slate-200"
+            >
+              <Send size={16} className="inline mr-2" />
+              Analyze Video
+            </Link>
           </div>
 
           {/* Message */}

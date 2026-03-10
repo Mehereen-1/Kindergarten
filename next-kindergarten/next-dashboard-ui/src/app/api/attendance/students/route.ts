@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const students = await Student.find().select('_id name class section').lean();
+    const students = await Student.find().select('_id name classId grade roll').lean();
 
     return NextResponse.json(students || []);
 

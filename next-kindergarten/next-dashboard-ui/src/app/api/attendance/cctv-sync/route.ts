@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
     const { records, classId, date }: {
       records: AttendanceRecord[];
-      classId: string;
+      classId?: string;
       date: string;
     } = await req.json();
 
@@ -32,8 +32,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!date) {
+      return NextResponse.json(
+        { error: 'Date is required' },
+        { status: 400 }
+      );
+    }
+
     const attendanceRecords = [];
     const failedRecords = [];
+
+    const dayStart = new Date(date + 'T00:00:00Z');
+    const dayEnd = new Date(date + 'T23:59:59Z');
 
     for (const record of records) {
       try {
@@ -47,12 +57,23 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
+        // Resolve required classId: request classId -> student's classId
+        const resolvedClassId = classId || (student.classId ? String(student.classId) : undefined);
+        if (!resolvedClassId) {
+          failedRecords.push({
+            studentId: record.studentId,
+            error: 'Missing classId (not provided and student has no class assigned)',
+          });
+          continue;
+        }
+
         // Check if attendance already exists for this date
         const existingAttendance = await Attendance.findOne({
           studentId: record.studentId,
+          classId: resolvedClassId,
           date: {
-            $gte: new Date(date + 'T00:00:00Z'),
-            $lt: new Date(date + 'T23:59:59Z'),
+            $gte: dayStart,
+            $lt: dayEnd,
           },
         });
 
@@ -66,7 +87,7 @@ export async function POST(req: NextRequest) {
           // Create new record
           const attendance = new Attendance({
             studentId: record.studentId,
-            classId: classId || student.classId,
+            classId: resolvedClassId,
             date: new Date(date),
             status: record.status,
             remarks: record.remarks || `${record.source} detection`,
