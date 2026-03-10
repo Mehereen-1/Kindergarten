@@ -8,6 +8,19 @@ const { createAutoSummary, generateQuizQuestions, generateLlmText } = require('@
 const TopicModel: any = Topic as any;
 const QuizModel: any = Quiz as any;
 
+function isMongoConnectivityError(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase();
+  const code = String(error?.code || '').toUpperCase();
+
+  return (
+    code === 'ECONNREFUSED' ||
+    code === 'ENOTFOUND' ||
+    code === 'ETIMEDOUT' ||
+    message.includes('querysrv') ||
+    message.includes('server selection timed out')
+  );
+}
+
 function parseJsonSafely(rawText: string) {
   if (!rawText) return null;
 
@@ -106,6 +119,13 @@ export async function GET(
     });
   } catch (error: any) {
     console.error('Error fetching parent class content detail:', error);
+    if (isMongoConnectivityError(error)) {
+      return NextResponse.json(
+        { error: 'Topic details are temporarily unavailable because the database cannot be reached.' },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json({ error: error.message || 'Failed to fetch topic detail' }, { status: 500 });
   }
 }
@@ -205,6 +225,13 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error: any) {
     console.error('Error processing topic AI action:', error);
+    if (isMongoConnectivityError(error)) {
+      return NextResponse.json(
+        { error: 'AI actions are temporarily unavailable because the database cannot be reached.' },
+        { status: 503 }
+      );
+    }
+
     const message = String(error?.message || 'AI processing failed');
     const isQuota = message.toLowerCase().includes('quota') || message.includes('429');
     return NextResponse.json(
