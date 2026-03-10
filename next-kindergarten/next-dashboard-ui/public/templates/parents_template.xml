@@ -1,0 +1,16 @@
+<parents>
+  <parent>
+    <email>nasimac300@gmail.com</email>
+    <name>Nasim Ahmed</name>
+    <phone>1798765432</phone>
+    <address>House 10, Street 5</address>
+    <occupation>Engineer</occupation>
+  </parent>
+  <parent>
+    <email>sadiamostafa601@gmail.com</email>
+    <name>Sadia Mostafa</name>
+    <phone>1887654321</phone>
+    <address>House 12, Street 7</address>
+    <occupation>Doctor</occupation>
+  </parent>
+</parents>

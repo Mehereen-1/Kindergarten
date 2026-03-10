@@ -1,0 +1,17 @@
+<students>
+  <student>
+    <parentemail>nasimac300@gmail.com</parentemail>
+    <name>Aarav Hossain</name>
+    <classid>kg-A</classid>
+    <academicyear>2026</academicyear>
+    <roll>1</roll>
+  </student>
+  <student>
+    <parentemail>sadiamostafa601@gmail.com</parentemail>
+    <name>Zara Rahman</name>
+    <classid>kg-A</classid>
+    <academicyear>2026</academicyear>
+    <roll>2</roll>
+  </student>
+</students>
+
