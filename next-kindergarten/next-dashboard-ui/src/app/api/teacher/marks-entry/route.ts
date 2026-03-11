@@ -4,6 +4,7 @@ import ExamCycle from '@/lib/models/ExamCycle';
 import '@/lib/models/Class';
 import '@/lib/models/Subject';
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveTeacherIdForSetup } from '@/lib/subjectAssignment';
 
 function extractUserIdFromCookie(cookieValue: string | undefined): string | null {
   if (!cookieValue) return null;
@@ -30,9 +31,9 @@ export async function GET(request: NextRequest) {
     const openCycles = await ExamCycle.find({ status: 'open' }).select('_id examName academicYear termName examType').lean();
     const openCycleIds = openCycles.map((c: any) => c._id.toString());
 
-    // Find setups assigned to this teacher in open cycles
+    // Load setups for open cycles and resolve teacher from either explicit exam setup
+    // assignment or the academic class-subject assignment layer.
     const setups = await ExamSubjectSetup.find({
-      teacherId,
       examCycleId: { $in: openCycleIds },
     })
       .populate('examCycleId', 'examName academicYear termName examType status marksEntryStartDate marksEntryEndDate')
@@ -41,7 +42,29 @@ export async function GET(request: NextRequest) {
       .sort({ createdAt: -1 })
       .lean();
 
-    return NextResponse.json({ success: true, data: setups });
+    const visibleSetups = (
+      await Promise.all(
+        setups.map(async (setup: any) => {
+          const resolvedTeacherId = await resolveTeacherIdForSetup({
+            explicitTeacherId: setup.teacherId,
+            classId: setup.classId,
+            subjectId: setup.subjectId,
+            academicYear: setup.examCycleId?.academicYear,
+          });
+
+          if (resolvedTeacherId !== teacherId) {
+            return null;
+          }
+
+          return {
+            ...setup,
+            teacherId: setup.teacherId || resolvedTeacherId,
+          };
+        })
+      )
+    ).filter(Boolean);
+
+    return NextResponse.json({ success: true, data: visibleSetups });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

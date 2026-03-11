@@ -9,6 +9,7 @@ import '@/lib/models/Class';
 import '@/lib/models/Subject';
 import mongoose from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
+import { getCandidateAcademicYears, resolveTeacherIdForSetup } from '@/lib/subjectAssignment';
 
 function extractUserIdFromCookie(cookieValue: string | undefined): string | null {
   if (!cookieValue) return null;
@@ -18,30 +19,6 @@ function extractUserIdFromCookie(cookieValue: string | undefined): string | null
   } catch {
     return cookieValue || null;
   }
-}
-
-// ExamCycle stores "2025-2026" or "2026-2027"; StudentClassHistory stores plain "2026"
-// Build a prioritized list of candidate year strings to try
-function getCandidateYears(examCycleYear: string): string[] {
-  const currentYear = String(new Date().getFullYear());
-  const candidates: string[] = [];
-  if (!examCycleYear) return [currentYear];
-
-  // Add exact value
-  candidates.push(examCycleYear);
-
-  if (examCycleYear.includes('-')) {
-    const parts = examCycleYear.split('-');
-    // Add start year, then end year (e.g. "2026" then "2027" from "2026-2027")
-    for (const p of parts) {
-      if (p && !candidates.includes(p)) candidates.push(p);
-    }
-  }
-
-  // Always include current year as final fallback
-  if (!candidates.includes(currentYear)) candidates.push(currentYear);
-
-  return candidates;
 }
 
 function computeGrade(pct: number, passMarks: number, fullMarks: number): string {
@@ -89,8 +66,14 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Setup not found' }, { status: 404 });
     }
 
-    // Verify teacher owns this setup
-    if (setup.teacherId?.toString() !== teacherId) {
+    const resolvedTeacherId = await resolveTeacherIdForSetup({
+      explicitTeacherId: setup.teacherId,
+      classId: setup.classId,
+      subjectId: setup.subjectId,
+      academicYear: (setup.examCycleId as any)?.academicYear,
+    });
+
+    if (resolvedTeacherId !== teacherId) {
       return NextResponse.json({ success: false, error: 'Not assigned to you' }, { status: 403 });
     }
 
@@ -99,7 +82,7 @@ export async function GET(
     const classIdForQuery = classDoc._id || classDoc;
 
     // Try each candidate year until we find enrolled students
-    const candidateYears = getCandidateYears(examCycle?.academicYear || '');
+    const candidateYears = getCandidateAcademicYears(examCycle?.academicYear || '');
     let histories: any[] = [];
     let resolvedYear = candidateYears[0];
     for (const year of candidateYears) {
@@ -184,6 +167,7 @@ export async function GET(
       success: true,
       data: {
         setup,
+        resolvedAcademicYear: resolvedYear,
         batchId: batch._id.toString(),
         batchStatus: batch.status,
         rows,
@@ -215,7 +199,15 @@ export async function POST(
     if (!setup) {
       return NextResponse.json({ success: false, error: 'Setup not found' }, { status: 404 });
     }
-    if (setup.teacherId?.toString() !== teacherId) {
+
+    const resolvedTeacherId = await resolveTeacherIdForSetup({
+      explicitTeacherId: setup.teacherId,
+      classId: setup.classId,
+      subjectId: setup.subjectId,
+      academicYear: (setup.examCycleId as any)?.academicYear,
+    });
+
+    if (resolvedTeacherId !== teacherId) {
       return NextResponse.json({ success: false, error: 'Not assigned to you' }, { status: 403 });
     }
 

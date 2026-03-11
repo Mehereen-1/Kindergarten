@@ -3,6 +3,7 @@ import ExamSubjectSetup from '@/lib/models/ExamSubjectSetup';
 import ExamCycle from '@/lib/models/ExamCycle';
 import Subject from '@/lib/models/Subject';
 import { connectDB } from '@/lib/mongodb';
+import { resolveTeacherIdForSetup } from '@/lib/subjectAssignment';
 import mongoose from 'mongoose';
 
 function extractUserIdFromCookie(rawUserCookie?: string): string | null {
@@ -142,6 +143,13 @@ export async function POST(req: NextRequest) {
       resolvedSubjectId = subject._id;
     }
 
+    const resolvedTeacherId = await resolveTeacherIdForSetup({
+      explicitTeacherId: teacherId,
+      classId,
+      subjectId: resolvedSubjectId,
+      academicYear: examCycle.academicYear,
+    });
+
     const userId = extractUserIdFromCookie(req.cookies.get('user')?.value);
     if (!userId) {
       return NextResponse.json(
@@ -154,7 +162,7 @@ export async function POST(req: NextRequest) {
       examCycleId,
       classId,
       subjectId: resolvedSubjectId,
-      teacherId: teacherId || undefined,
+      teacherId: resolvedTeacherId || undefined,
       fullMarks,
       passMarks,
       components: components || { theory: fullMarks }, // Default to all theory marks

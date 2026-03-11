@@ -8,11 +8,11 @@ import EventCalendar from "@/app/components/EventCalendar";
 import FinanceChart from "@/app/components/FinanceChart";
 import UserCard from "@/app/components/UserCard";
 import BulkImport from "@/app/components/BulkImport";
-import { FileSpreadsheet, BarChart3, UserPlus } from 'lucide-react';
+import { FileSpreadsheet, BarChart3 } from 'lucide-react';
 import BulkImportXML from '@/app/components/BulkImportXML';
-import TeacherClassAssignment from '@/app/components/TeacherClassAssignment';
+import SubjectTeacherAssignment from '@/app/components/SubjectTeacherAssignment';
 
-type AdminTab = 'dashboard' | 'import-teachers' | 'import-parents' | 'import-students' | 'assign-teachers';
+type AdminTab = 'dashboard' | 'import-teachers' | 'import-parents' | 'import-students' | 'assign-subjects';
 
 const AdminPage = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
@@ -62,15 +62,15 @@ const AdminPage = () => {
           Dashboard
         </button>
         <button
-          onClick={() => setActiveTab('assign-teachers')}
+          onClick={() => setActiveTab('assign-subjects')}
           className={`flex items-center gap-2 px-4 py-3 font-medium transition border-b-2 whitespace-nowrap ${
-            activeTab === 'assign-teachers'
+            activeTab === 'assign-subjects'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-gray-600 hover:text-gray-800'
           }`}
         >
-          <UserPlus size={20} />
-          Assign Teachers
+          <FileSpreadsheet size={20} />
+          Class-Subject-Teacher
         </button>
         <button
           onClick={() => setActiveTab('import-teachers')}
@@ -107,9 +107,8 @@ const AdminPage = () => {
         </button>
       </div>
 
-      {/* Assign Teachers Tab */}
-      {activeTab === 'assign-teachers' && (
-        <TeacherClassAssignment />
+      {activeTab === 'assign-subjects' && (
+        <SubjectTeacherAssignment />
       )}
 
       {/* Dashboard Tab */}

@@ -27,6 +27,12 @@ interface TeacherOption {
   email?: string;
 }
 
+interface SubjectOption {
+  _id: string;
+  name: string;
+  code?: string;
+}
+
 interface SubjectSetupItem {
   _id: string;
   classId?: { _id?: string; name?: string };
@@ -49,6 +55,7 @@ export default function ExamConfigPage() {
   const [cycles, setCycles] = useState<ExamCycle[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const [subjectSetups, setSubjectSetups] = useState<SubjectSetupItem[]>([]);
   const [subjectSetupLoadError, setSubjectSetupLoadError] = useState('');
   const [editingSetupId, setEditingSetupId] = useState<string | null>(null);
@@ -61,6 +68,7 @@ export default function ExamConfigPage() {
   const [subjectSetupForm, setSubjectSetupForm] = useState({
     classId: '',
     teacherId: '',
+    subjectId: '',
     subjectName: '',
     fullMarks: 100,
     passMarks: 35,
@@ -91,6 +99,7 @@ export default function ExamConfigPage() {
     loadCycles();
     loadClasses();
     loadTeachers();
+    loadSubjects();
   }, []);
 
   useEffect(() => {
@@ -144,6 +153,22 @@ export default function ExamConfigPage() {
       );
     } catch {
       setError('Failed to load teachers');
+    }
+  };
+
+  const loadSubjects = async () => {
+    try {
+      const res = await axios.get('/api/admin/subjects');
+      const list = Array.isArray(res.data?.subjects) ? res.data.subjects : [];
+      setSubjects(
+        list.map((subject: any) => ({
+          _id: subject._id,
+          name: subject.name,
+          code: subject.code,
+        }))
+      );
+    } catch {
+      setError('Failed to load subjects');
     }
   };
 
@@ -229,8 +254,8 @@ export default function ExamConfigPage() {
       Number(subjectSetupForm.classTest || 0) +
       Number(subjectSetupForm.attendance || 0);
 
-    if (!subjectSetupForm.classId || !subjectSetupForm.subjectName.trim()) {
-      setError('Please select class and enter subject name');
+    if (!subjectSetupForm.classId || (!subjectSetupForm.subjectId && !subjectSetupForm.subjectName.trim())) {
+      setError('Please select class and choose or create a subject');
       return;
     }
 
@@ -246,7 +271,8 @@ export default function ExamConfigPage() {
         examCycleId: selectedCycle._id,
         classId: subjectSetupForm.classId,
         teacherId: subjectSetupForm.teacherId || undefined,
-        subjectName: subjectSetupForm.subjectName.trim(),
+        subjectId: subjectSetupForm.subjectId || undefined,
+        subjectName: subjectSetupForm.subjectId ? undefined : subjectSetupForm.subjectName.trim(),
         fullMarks: Number(subjectSetupForm.fullMarks),
         passMarks: Number(subjectSetupForm.passMarks),
         components: {
@@ -267,10 +293,12 @@ export default function ExamConfigPage() {
 
       setSuccess(editingSetupId ? 'Subject setup updated' : 'Subject marks setup saved');
       await loadSubjectSetups(selectedCycle._id);
+      await loadSubjects();
       setEditingSetupId(null);
       setSubjectSetupForm({
         classId: '',
         teacherId: '',
+        subjectId: '',
         subjectName: '',
         fullMarks: 100,
         passMarks: 35,
@@ -293,6 +321,7 @@ export default function ExamConfigPage() {
     setSubjectSetupForm({
       classId: item.classId?._id || '',
       teacherId: item.teacherId?._id || '',
+      subjectId: item.subjectId?._id || '',
       subjectName: item.subjectId?.name || '',
       fullMarks: Number(item.fullMarks || 100),
       passMarks: Number(item.passMarks || 35),
@@ -310,6 +339,7 @@ export default function ExamConfigPage() {
     setSubjectSetupForm({
       classId: '',
       teacherId: '',
+      subjectId: '',
       subjectName: '',
       fullMarks: 100,
       passMarks: 35,
@@ -646,13 +676,41 @@ export default function ExamConfigPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-600 mb-1">Subject Name *</label>
+                      <label className="block text-xs text-gray-600 mb-1">Subject *</label>
+                      <select
+                        value={subjectSetupForm.subjectId}
+                        onChange={(e) => {
+                          const nextSubjectId = e.target.value;
+                          const selectedSubject = subjects.find((subject) => subject._id === nextSubjectId);
+                          setSubjectSetupForm({
+                            ...subjectSetupForm,
+                            subjectId: nextSubjectId,
+                            subjectName: nextSubjectId ? '' : subjectSetupForm.subjectName,
+                          });
+                          if (selectedSubject) {
+                            setSuccess(`Selected subject: ${selectedSubject.name}`);
+                          }
+                        }}
+                        className="w-full border rounded px-3 py-2"
+                      >
+                        <option value="">Select subject from DB</option>
+                        {subjects.map((subject) => (
+                          <option key={subject._id} value={subject._id}>
+                            {subject.name}{subject.code ? ` (${subject.code})` : ''}
+                          </option>
+                        ))}
+                      </select>
                       <input
                         value={subjectSetupForm.subjectName}
-                        onChange={(e) => setSubjectSetupForm({ ...subjectSetupForm, subjectName: e.target.value })}
-                        className="w-full border rounded px-3 py-2"
-                        placeholder="e.g. Mathematics"
-                        required
+                        onChange={(e) =>
+                          setSubjectSetupForm({
+                            ...subjectSetupForm,
+                            subjectId: '',
+                            subjectName: e.target.value,
+                          })
+                        }
+                        className="w-full border rounded px-3 py-2 mt-2"
+                        placeholder="Or type a new subject name"
                       />
                     </div>
                     <div>

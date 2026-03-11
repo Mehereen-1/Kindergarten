@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ExamSubjectSetup from '@/lib/models/ExamSubjectSetup';
+import ExamCycle from '@/lib/models/ExamCycle';
 import Subject from '@/lib/models/Subject';
 import { connectDB } from '@/lib/mongodb';
+import { resolveTeacherIdForSetup } from '@/lib/subjectAssignment';
 
 /**
  * PATCH /api/admin/exam-config/subject-setups/[setupId]
@@ -91,8 +93,16 @@ export async function PATCH(
       resolvedSubjectId = subject._id;
     }
 
+    const examCycle = await ExamCycle.findById(existing.examCycleId).lean();
+    const resolvedTeacherId = await resolveTeacherIdForSetup({
+      explicitTeacherId: teacherId,
+      classId,
+      subjectId: resolvedSubjectId,
+      academicYear: examCycle?.academicYear,
+    });
+
     existing.classId = classId;
-    existing.teacherId = teacherId || undefined;
+    existing.teacherId = resolvedTeacherId || undefined;
     existing.subjectId = resolvedSubjectId;
     existing.fullMarks = numericFull;
     existing.passMarks = numericPass;
