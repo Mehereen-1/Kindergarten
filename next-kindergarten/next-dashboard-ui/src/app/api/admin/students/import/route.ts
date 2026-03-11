@@ -3,14 +3,17 @@ import { connectDB } from '@/lib/mongodb';
 import User from '@/lib/models/User';
 import ParentProfile from '@/lib/models/ParentProfile';
 import Student from '@/lib/models/Student';
-import { generateEmail, generatePassword, parseCSVLine, isValidEmail, isValidPhone } from '@/lib/utils/generators';
+import Class from '@/lib/models/Class';
+import StudentClassHistory from '@/lib/models/StudentClassHistory';
+import { generateEmail, generatePassword, parseCSVLine, isValidPhone } from '@/lib/utils/generators';
+import mongoose from 'mongoose';
 
 /**
  * Bulk Import Students from CSV
  * POST /api/admin/students/import
  * 
  * CSV Format:
- * Student Name,Class,Section,Roll Number,Date of Birth,Parent Name,Parent Email,Parent Phone
+ * Student Name,Class ID,Roll Number,Academic Year,Date of Birth,Parent Name,Parent Email,Parent Phone
  * Sadia Ahmed,KG-A,A,1,2020-05-15,Mrs. Ahmed,ahmed@email.com,9876543210
  */
 export async function POST(request: NextRequest) {
@@ -32,7 +35,7 @@ export async function POST(request: NextRequest) {
     const headers = parseCSVLine(lines[0]);
 
     // Validate headers
-    const requiredHeaders = ['Student Name', 'Class', 'Section', 'Roll Number', 'Parent Name', 'Parent Phone'];
+    const requiredHeaders = ['Student Name', 'Class ID', 'Roll Number', 'Academic Year', 'Parent Name', 'Parent Phone'];
     
     const results = {
       success: [],
@@ -55,9 +58,9 @@ export async function POST(request: NextRequest) {
       try {
         // Extract student data
         const studentName = rowData['Student Name'] || rowData['student name'] || rowData['Name'];
-        const className = rowData['Class'] || rowData['class'];
-        const section = rowData['Section'] || rowData['section'];
+        const classIdValue = rowData['Class ID'] || rowData['ClassId'] || rowData['class id'] || rowData['classid'] || rowData['class_id'];
         const rollNumber = parseInt(rowData['Roll Number'] || rowData['roll number'] || rowData['Roll']);
+        const academicYear = rowData['Academic Year'] || rowData['academic year'] || rowData['academic_year'] || rowData['Year'] || rowData['year'];
         const dateOfBirth = rowData['Date of Birth'] || rowData['DOB'] || rowData['date of birth'];
         
         // Extract parent data
@@ -66,11 +69,11 @@ export async function POST(request: NextRequest) {
         const parentPhone = rowData['Parent Phone'] || rowData['parent phone'];
 
         // Validate required fields
-        if (!studentName || !className || !section || !rollNumber || !parentName || !parentPhone) {
+        if (!studentName || !classIdValue || !rollNumber || !academicYear || !parentName || !parentPhone) {
           results.failed.push({
             row: i + 1,
             data: rowData,
-            error: 'Missing required fields: Student Name, Class, Section, Roll Number, Parent Name, Parent Phone'
+            error: 'Missing required fields: Student Name, Class ID, Roll Number, Academic Year, Parent Name, Parent Phone'
           });
           continue;
         }
@@ -116,15 +119,41 @@ export async function POST(request: NextRequest) {
           isNewParent = true;
         }
 
+        // Resolve class
+        const classDocById = mongoose.Types.ObjectId.isValid(String(classIdValue))
+          ? await Class.findById(classIdValue).lean()
+          : null;
+        const classDocByCode = await Class.findOne({ classId: classIdValue }).lean();
+        const classDoc = classDocById || classDocByCode;
+
+        if (!classDoc) {
+          results.failed.push({
+            row: i + 1,
+            data: rowData,
+            error: `Class not found for Class ID: ${classIdValue}`
+          });
+          continue;
+        }
+
         // Create student record
         const student = await Student.create({
           name: studentName,
           email: studentEmail,
-          roll: String(rollNumber),
-          grade: className,
           parentId: parent._id,
           birthday: dateOfBirth ? new Date(dateOfBirth) : undefined
         });
+
+        await StudentClassHistory.findOneAndUpdate(
+          { studentId: student._id, academicYear: String(academicYear) },
+          {
+            studentId: student._id,
+            classId: classDoc._id,
+            academicYear: String(academicYear),
+            rollNo: String(rollNumber),
+            status: 'active'
+          },
+          { upsert: true, new: true }
+        );
 
         results.success.push({
           row: i + 1,
@@ -132,8 +161,8 @@ export async function POST(request: NextRequest) {
             name: studentName,
             email: studentEmail,
             password: studentPassword,
-            class: className,
-            section,
+            classId: classDoc._id,
+            academicYear: String(academicYear),
             rollNumber,
             _id: student._id
           },

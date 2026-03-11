@@ -1,16 +1,18 @@
 import { connectDB } from '../mongodb';
-import { Event } from '../models/Event';
+import Event from '../models/Event';
 
 interface CreateEventInput {
   title: string;
-  description: string;
-  eventDate: Date;
+  description?: string;
+  startDate: Date;
+  endDate?: Date;
 }
 
 interface UpdateEventInput {
   title?: string;
   description?: string;
-  eventDate?: Date;
+  startDate?: Date;
+  endDate?: Date;
 }
 
 /**
@@ -22,8 +24,11 @@ export async function createEvent(input: CreateEventInput) {
 
     const event = new Event({
       title: input.title,
-      description: input.description,
-      eventDate: input.eventDate,
+      description: input.description || '',
+      startDate: input.startDate,
+      endDate: input.endDate || input.startDate,
+      allDay: true,
+      targetRole: 'all',
     });
 
     await event.save();
@@ -74,7 +79,7 @@ export async function getAllEvents() {
   try {
     await connectDB();
 
-    const events = await Event.find().sort({ eventDate: 1 });
+    const events = await Event.find().sort({ startDate: 1 });
 
     return {
       success: true,
@@ -104,11 +109,11 @@ export async function getUpcomingEvents(days: number = 30) {
     endDate.setDate(endDate.getDate() + days);
 
     const events = await Event.find({
-      eventDate: {
+      startDate: {
         $gte: startDate,
         $lte: endDate,
       },
-    }).sort({ eventDate: 1 });
+    }).sort({ startDate: 1 });
 
     return {
       success: true,
@@ -138,11 +143,11 @@ export async function getPastEvents(days: number = 30) {
     startDate.setDate(startDate.getDate() - days);
 
     const events = await Event.find({
-      eventDate: {
+      startDate: {
         $gte: startDate,
         $lte: endDate,
       },
-    }).sort({ eventDate: -1 });
+    }).sort({ startDate: -1 });
 
     return {
       success: true,
@@ -229,7 +234,7 @@ export async function searchEventsByTitle(title: string) {
 
     const events = await Event.find({
       title: { $regex: title, $options: 'i' },
-    }).sort({ eventDate: 1 });
+    }).sort({ startDate: 1 });
 
     return {
       success: true,

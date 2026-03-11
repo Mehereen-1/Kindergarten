@@ -10,8 +10,8 @@ import bcrypt from 'bcrypt';
  * POST /api/admin/teachers/import
  * 
  * CSV Format:
- * Name,Phone,Subject,Qualification
- * Sadia Khan,9876543210,Mathematics,M.Ed
+ * Name,Email,Phone,Subject,Qualification
+ * Sadia Khan,sadia.khan@school.com,9876543210,Mathematics,M.Ed
  */
 export async function POST(request: NextRequest) {
   try {
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     if (!hasAllHeaders) {
       return NextResponse.json(
-        { error: 'CSV must have columns: Name, Phone, Subject, Qualification' },
+        { error: 'CSV must have columns: Name, Phone (Email is optional)' },
         { status: 400 }
       );
     }
@@ -69,8 +69,10 @@ export async function POST(request: NextRequest) {
         // Extract data
         const name = rowData['Name'] || rowData['name'];
         const phone = rowData['Phone'] || rowData['phone'];
+        const emailRaw = rowData['Email'] || rowData['email'] || '';
         const subject = rowData['Subject'] || rowData['subject'] || '';
         const qualification = rowData['Qualification'] || rowData['qualification'] || '';
+        const emailProvided = String(emailRaw || '').trim();
 
         // Validate
         if (!name || !phone) {
@@ -91,8 +93,17 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
+        if (emailProvided && !isValidEmail(emailProvided)) {
+          results.failed.push({
+            row: i + 1,
+            data: rowData,
+            error: 'Invalid email format'
+          });
+          continue;
+        }
+
         // Auto-generate credentials
-        const email = generateEmail(name, 'teacher');
+        const email = emailProvided || generateEmail(name, 'teacher');
         const plainPassword = generatePassword();
         const hashedPassword = await bcrypt.hash(plainPassword, 10);
 

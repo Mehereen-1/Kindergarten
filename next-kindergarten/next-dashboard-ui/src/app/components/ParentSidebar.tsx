@@ -8,6 +8,7 @@ import {
   BarChart3,
   Bell,
   MessageSquare,
+  Brain,
   ClipboardList,
   Settings,
 } from "lucide-react";
@@ -19,6 +20,7 @@ const ParentSidebar = () => {
     { icon: Calendar, label: "Attendance", href: "/parent/attendance", colorBg: "bg-green-50", colorText: "text-green-600" },
     { icon: BarChart3, label: "Results", href: "/parent/results", colorBg: "bg-amber-50", colorText: "text-amber-600" },
     { icon: Bell, label: "Events", href: "/parent/events", colorBg: "bg-purple-50", colorText: "text-purple-600" },
+    { icon: Brain, label: "Class Content", href: "/parent/ask-ai", colorBg: "bg-indigo-50", colorText: "text-indigo-600" },
     { icon: MessageSquare, label: "Messages", href: "/parent/chat", colorBg: "bg-indigo-50", colorText: "text-indigo-600" },
     { icon: ClipboardList, label: "Notices", href: "/parent/notices", colorBg: "bg-cyan-50", colorText: "text-cyan-600" },
     { icon: Settings, label: "Settings", href: "/parent/settings", colorBg: "bg-slate-100", colorText: "text-slate-600" },

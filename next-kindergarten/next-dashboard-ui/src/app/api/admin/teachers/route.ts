@@ -6,8 +6,39 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
-    const teachers = await User.find({ role: 'teacher' }).select('-password');
-    return NextResponse.json(teachers);
+    const teachers = await User.find({ role: 'teacher' }).select('-password').lean();
+    const teacherIds = teachers.map((teacher) => teacher._id);
+
+    const profiles = await TeacherProfile.find({ userId: { $in: teacherIds } })
+      .populate('classes', 'name')
+      .lean();
+
+    const profileByUserId = new Map(
+      profiles.map((profile) => [profile.userId.toString(), profile])
+    );
+
+    const response = teachers.map((teacher) => {
+      const profile = profileByUserId.get(teacher._id.toString());
+      const classes = Array.isArray(profile?.classes)
+        ? profile?.classes.map((classDoc: any) => classDoc?.name).filter(Boolean)
+        : [];
+
+      return {
+        ...teacher,
+        teacherId: profile?.employeeId || '',
+        subjects: profile?.subjects || [],
+        classes,
+        photo: profile?.photo || teacher.profilePic || '',
+      };
+    });
+
+    // Return both array format and object format for compatibility
+    return NextResponse.json({
+      teachers: response,
+      count: response.length,
+      // Also support direct array access for backward compatibility
+      ...response
+    });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

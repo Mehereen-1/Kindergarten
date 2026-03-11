@@ -1,4 +1,6 @@
 import mongoose from 'mongoose';
+import dns from 'dns';
+import './models/User';
 
 const MONGODB_URI = process.env.MONGODB_URI as string;
 
@@ -21,6 +23,19 @@ if (!global.mongoose) {
   global.mongoose = cached;
 }
 
+const dnsServers = (process.env.DNS_SERVERS || '8.8.8.8,1.1.1.1')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+if (dnsServers.length > 0) {
+  try {
+    dns.setServers(dnsServers);
+  } catch (error) {
+    console.warn('Failed to set custom DNS servers for MongoDB:', error);
+  }
+}
+
 export async function connectDB(): Promise<typeof mongoose> {
   if (cached.conn) {
     return cached.conn;
@@ -29,6 +44,7 @@ export async function connectDB(): Promise<typeof mongoose> {
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
+      serverSelectionTimeoutMS: 10000,
     };
 
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
