@@ -10,6 +10,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
+type ClassOption = {
+  _id: string;
+  classId?: string;
+  name: string;
+  grade?: string;
+};
+
 type Student = {
   id: string;
   name: string;
@@ -19,6 +26,8 @@ type Student = {
   grade?: string;
   classId?: string;
   className?: string;
+  classRefId?: string;
+  rollNo?: string;
   address?: string;
 };
 
@@ -33,8 +42,8 @@ const columns = [
     className: "hidden md:table-cell",
   },
   {
-    header: "Class ID",
-    accessor: "classId",
+    header: "Class",
+    accessor: "className",
     className: "hidden md:table-cell",
   },
   {
@@ -63,16 +72,52 @@ const StudentListPage = () => {
   const classIdParam = searchParams.get("classId") || "";
   const academicYearParam = searchParams.get("academicYear") || String(new Date().getFullYear());
   const [students, setStudents] = useState<Student[]>([]);
+  const [classes, setClasses] = useState<ClassOption[]>([]);
   const [academicYear, setAcademicYear] = useState(academicYearParam);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [editClassId, setEditClassId] = useState("");
+  const [editAcademicYear, setEditAcademicYear] = useState(academicYearParam);
+  const [editRollNo, setEditRollNo] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [pendingClassChanges, setPendingClassChanges] = useState<Record<string, string>>({});
+  const [savingAllChanges, setSavingAllChanges] = useState(false);
 
   const yearOptions = useMemo(() => {
     const current = new Date().getFullYear();
-    return [current - 1, current, current + 1].map((year) => String(year));
+    return [current - 2, current - 1, current, current + 1, current + 2].map((year) => String(year));
   }, []);
 
   useEffect(() => {
     setAcademicYear(academicYearParam);
   }, [academicYearParam]);
+
+  useEffect(() => {
+    setPendingClassChanges({});
+  }, [academicYear]);
+
+  const loadClasses = async () => {
+    try {
+      const response = await fetch(`/api/admin/classes?academicYear=${academicYear}`);
+      if (!response.ok) return;
+      const data = await response.json();
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.classes)
+          ? data.classes
+          : [];
+
+      setClasses(
+        list.map((cls: any) => ({
+          _id: cls._id,
+          classId: cls.classId,
+          name: cls.name,
+          grade: cls.grade,
+        }))
+      );
+    } catch (error) {
+      console.error("Failed to load classes", error);
+    }
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -96,9 +141,11 @@ const StudentListPage = () => {
           phone: student.phone,
           address: student.address,
           photo: student.profilePic || "/avatar.png",
+          classRefId: student.currentClass?._id || "",
           classId: student.currentClass?.classId || "",
           className: student.currentClass?.name || "",
           grade: student.currentClass?.grade || "",
+          rollNo: student.rollNo || "",
         }));
 
         const filtered = classIdParam
@@ -114,9 +161,138 @@ const StudentListPage = () => {
     };
 
     loadStudents();
+    loadClasses();
 
     return () => controller.abort();
   }, [academicYear, classIdParam]);
+
+  const openEditModal = (student: Student) => {
+    setEditingStudent(student);
+    setEditClassId(student.classRefId || "");
+    setEditAcademicYear(academicYear);
+    setEditRollNo(student.rollNo || "");
+  };
+
+  const closeEditModal = () => {
+    setEditingStudent(null);
+    setEditClassId("");
+    setEditAcademicYear(academicYear);
+    setEditRollNo("");
+  };
+
+  const handleSaveAssignment = async () => {
+    if (!editingStudent || !editClassId || !editAcademicYear) return;
+    try {
+      setSaving(true);
+      const response = await fetch(`/api/admin/students/${editingStudent.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          classId: editClassId,
+          academicYear: editAcademicYear,
+          rollNo: editRollNo || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        alert(errorBody?.error || "Failed to update student assignment");
+        return;
+      }
+
+      closeEditModal();
+
+      const refresh = await fetch(`/api/admin/students?academicYear=${academicYear}`);
+      if (refresh.ok) {
+        const data = await refresh.json();
+        const rawStudents = Array.isArray(data?.students) ? data.students : [];
+        const mapped = rawStudents.map((student: any) => ({
+          id: student._id,
+          name: student.name,
+          email: student.email,
+          phone: student.phone,
+          address: student.address,
+          photo: student.profilePic || "/avatar.png",
+          classRefId: student.currentClass?._id || "",
+          classId: student.currentClass?.classId || "",
+          className: student.currentClass?.name || "",
+          grade: student.currentClass?.grade || "",
+          rollNo: student.rollNo || "",
+        }));
+
+        const filtered = classIdParam
+          ? mapped.filter((student: Student) => student.classId === classIdParam)
+          : mapped;
+
+        setStudents(filtered);
+      }
+    } catch (error) {
+      console.error("Failed to update student assignment", error);
+      alert("Failed to update student assignment");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleStageClassChange = (studentId: string, nextClassId: string) => {
+    setPendingClassChanges((prev) => ({
+      ...prev,
+      [studentId]: nextClassId,
+    }));
+  };
+
+  const handleSaveAllClassChanges = async () => {
+    const pendingEntries = Object.entries(pendingClassChanges).filter(([, classId]) => Boolean(classId));
+    if (!pendingEntries.length) {
+      return;
+    }
+
+    try {
+      setSavingAllChanges(true);
+
+      for (const [studentId, classId] of pendingEntries) {
+        const student = students.find((row) => row.id === studentId);
+        const response = await fetch(`/api/admin/students/${studentId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            classId,
+            academicYear,
+            rollNo: student?.rollNo || undefined,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorBody = await response.json().catch(() => ({}));
+          throw new Error(errorBody?.error || "Failed to save class assignments");
+        }
+      }
+
+      setStudents((prev) =>
+        prev.map((row) => {
+          const nextClassId = pendingClassChanges[row.id];
+          if (!nextClassId) {
+            return row;
+          }
+
+          const selectedClass = classes.find((cls) => cls._id === nextClassId);
+          return {
+            ...row,
+            classRefId: nextClassId,
+            className: selectedClass?.name || row.className,
+            classId: selectedClass?.classId || row.classId,
+            grade: selectedClass?.grade || row.grade,
+          };
+        })
+      );
+
+      setPendingClassChanges({});
+    } catch (error: any) {
+      alert(error?.message || "Failed to save class assignments");
+    } finally {
+      setSavingAllChanges(false);
+    }
+  };
 
   const renderRow = (item: Student) => (
     <tr
@@ -137,7 +313,28 @@ const StudentListPage = () => {
         </div>
       </td>
       <td className="hidden md:table-cell">{item.id}</td>
-      <td className="hidden md:table-cell">{item.classId || "-"}</td>
+      <td className="hidden md:table-cell">
+        {role === "admin" ? (
+          <select
+            value={pendingClassChanges[item.id] ?? item.classRefId ?? ""}
+            onChange={(event) => handleStageClassChange(item.id, event.target.value)}
+            className="min-w-[150px] border border-gray-300 rounded px-2 py-1 text-xs"
+            disabled={savingAllChanges}
+          >
+            <option value="">Select class</option>
+            {classes.map((cls) => (
+              <option key={cls._id} value={cls._id}>
+                {cls.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          item.className || "-"
+        )}
+        {pendingClassChanges[item.id] && (
+          <div className="text-[10px] text-orange-600 mt-1">Unsaved change</div>
+        )}
+      </td>
       <td className="hidden md:table-cell">{item.grade || "-"}</td>
       <td className="hidden md:table-cell">{item.phone}</td>
       <td className="hidden md:table-cell">{item.address}</td>
@@ -148,6 +345,15 @@ const StudentListPage = () => {
               <Image src="/view.png" alt="" width={16} height={16} />
             </button>
           </Link>
+          {role === "admin" && (
+            <button
+              onClick={() => openEditModal(item)}
+              className="w-7 h-7 flex items-center justify-center rounded-full bg-lamaYellow"
+              title="Edit class assignment"
+            >
+              <Image src="/edit.png" alt="" width={16} height={16} />
+            </button>
+          )}
           {role === "admin" && (
             // <button className="w-7 h-7 flex items-center justify-center rounded-full bg-lamaPurple">
             //   <Image src="/delete.png" alt="" width={16} height={16} />
@@ -180,6 +386,17 @@ const StudentListPage = () => {
               ))}
             </select>
           </div>
+          {role === "admin" && (
+            <button
+              onClick={handleSaveAllClassChanges}
+              disabled={savingAllChanges || Object.keys(pendingClassChanges).length === 0}
+              className="px-3 py-1.5 rounded text-sm bg-blue-600 text-white disabled:opacity-50"
+            >
+              {savingAllChanges
+                ? "Saving..."
+                : `Save All Changes (${Object.keys(pendingClassChanges).length})`}
+            </button>
+          )}
           <TableSearch />
           <div className="flex items-center gap-4 self-end">
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-lamaYellow">
@@ -201,6 +418,75 @@ const StudentListPage = () => {
       <Table columns={columns} renderRow={renderRow} data={students} />
       {/* PAGINATION */}
       <Pagination />
+
+      {editingStudent && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg w-[95%] max-w-md p-5">
+            <h2 className="text-lg font-bold mb-4">Assign Class & Academic Year</h2>
+            <p className="text-sm text-gray-600 mb-4">Student: {editingStudent.name}</p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Academic Year</label>
+                <select
+                  value={editAcademicYear}
+                  onChange={(event) => setEditAcademicYear(event.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2"
+                >
+                  {yearOptions.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Class</label>
+                <select
+                  value={editClassId}
+                  onChange={(event) => setEditClassId(event.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2"
+                >
+                  <option value="">Select class</option>
+                  {classes.map((cls) => (
+                    <option key={cls._id} value={cls._id}>
+                      {cls.name} {cls.classId ? `(${cls.classId})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Roll No (optional)</label>
+                <input
+                  value={editRollNo}
+                  onChange={(event) => setEditRollNo(event.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  placeholder="e.g. 15"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={closeEditModal}
+                className="px-4 py-2 border rounded hover:bg-gray-50"
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveAssignment}
+                disabled={saving || !editClassId || !editAcademicYear}
+                className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+              >
+                {saving ? "Saving..." : "Save Assignment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

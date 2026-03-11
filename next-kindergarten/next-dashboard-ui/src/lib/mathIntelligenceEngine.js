@@ -21,10 +21,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-const StudentMetrics = require('../models/StudentMetrics');
-const StudentQuizAttempt = require('../models/StudentQuizAttempt');
-const Topic = require('../models/Topic');
-const TopicMetrics = require('../models/TopicMetrics');
+const StudentMetrics = require('./models/StudentMetrics');
+const StudentQuizAttempt = require('./models/StudentQuizAttempt');
+const Topic = require('./models/Topic');
+const TopicMetrics = require('./models/TopicMetrics');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTION 1: PERSONALIZED FORGETTING RATE (λ) CALCULATION

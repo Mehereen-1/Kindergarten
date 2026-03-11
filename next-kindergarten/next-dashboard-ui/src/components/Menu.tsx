@@ -59,8 +59,26 @@ const menuItems = [
       {
         icon: "/result.png",
         label: "Results",
+        href: "/admin/exam-config",
+        visible: ["admin"],
+      },
+      {
+        icon: "/result.png",
+        label: "Results",
+        href: "/teacher/marksheets",
+        visible: ["teacher"],
+      },
+      {
+        icon: "/result.png",
+        label: "Results",
+        href: "/parent/results",
+        visible: ["parent"],
+      },
+      {
+        icon: "/result.png",
+        label: "Results",
         href: "/list/results",
-        visible: ["admin", "teacher", "student", "parent"],
+        visible: ["student"],
       },
       {
         icon: "/attendance.png",
