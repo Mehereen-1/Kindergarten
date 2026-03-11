@@ -63,8 +63,26 @@ const menuItems = [
       {
         icon: "/result.png",
         label: "Results",
+        href: "/admin/exam-config",
+        visible: ["admin"],
+      },
+      {
+        icon: "/result.png",
+        label: "Results",
+        href: "/teacher/marksheets",
+        visible: ["teacher"],
+      },
+      {
+        icon: "/result.png",
+        label: "Results",
+        href: "/parent/results",
+        visible: ["parent"],
+      },
+      {
+        icon: "/result.png",
+        label: "Results",
         href: "/list/results",
-        visible: ["admin", "teacher", "student", "parent"],
+        visible: ["student"],
       },
       {
         icon: "/attendance.png",
@@ -142,7 +160,7 @@ const Menu = () => {
               return (
                 <Link
                   href={item.href}
-                  key={item.label}
+                  key={`${item.label}-${item.href}`}
                   className="flex items-center justify-center lg:justify-start gap-4 text-gray-500 py-2 md:px-2 rounded-md hover:bg-lamaSkyLight"
                 >
                   <Image src={item.icon} alt="" width={20} height={20} />
