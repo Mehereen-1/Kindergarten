@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { X, Home, Users, Calendar, BarChart3, Bell, Brain, MessageSquare, ClipboardList, Settings } from "lucide-react";
+import { X, Home, Users, Calendar, BarChart3, Trophy, Bell, Brain, MessageSquare, ClipboardList, Settings } from "lucide-react";
 
 const MobileParentSidebar = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
   const menuItems = [
@@ -9,6 +9,7 @@ const MobileParentSidebar = ({ open, onClose }: { open: boolean; onClose: () => 
     { icon: Users, label: "My Child", href: "/parent/child" },
     { icon: Calendar, label: "Attendance", href: "/parent/attendance" },
     { icon: BarChart3, label: "Results", href: "/parent/results" },
+    { icon: Trophy, label: "Activities", href: "/parent/progress" },
     { icon: Bell, label: "Events", href: "/parent/events" },
     { icon: Brain, label: "Class Content", href: "/parent/ask-ai" },
     { icon: MessageSquare, label: "Messages", href: "/parent/chat" },
