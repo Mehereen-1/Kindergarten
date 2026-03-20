@@ -24,7 +24,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     };
 
     const role = getCookie('userRole') || 'all';
-    const seenKey = 'seen-event-reminder-ids';
+    const seenKey = 'seen-notice-ids';
 
     const getSeen = (): Set<string> => {
       try {
@@ -113,13 +113,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const seen = getSeen();
         const notices: any[] = Array.isArray(data.notices) ? data.notices : [];
         for (const notice of notices) {
-          if (notice?.type !== 'event-reminder') continue;
+          if (!['event-reminder', 'anomaly-alert'].includes(String(notice?.type || ''))) continue;
           const id = String(notice?._id || '');
           if (!id || seen.has(id)) continue;
+
+          const isAnomaly = notice?.type === 'anomaly-alert';
           sendNotification({
-            title: notice.title || 'Event Reminder',
-            body: notice.description || 'You have an upcoming school event.',
-            tag: 'event-reminder-' + id,
+            title: notice.title || (isAnomaly ? 'Security Alert' : 'Event Reminder'),
+            body: notice.description || (isAnomaly
+              ? 'Anomaly detection has raised a new alert.'
+              : 'You have an upcoming school event.'),
+            tag: (isAnomaly ? 'anomaly-alert-' : 'event-reminder-') + id,
           });
           seen.add(id);
         }
