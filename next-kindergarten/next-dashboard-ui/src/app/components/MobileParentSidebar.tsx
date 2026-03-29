@@ -1,9 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { Menu, X } from "lucide-react";
+import Link from "next/link";
+import { X, Home, Users, Calendar, BarChart3, Bell, Brain, MessageSquare, ClipboardList, Settings } from "lucide-react";
 
 const MobileParentSidebar = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+  const menuItems = [
+    { icon: Home, label: "Dashboard", href: "/parent" },
+    { icon: Users, label: "My Child", href: "/parent/child" },
+    { icon: Calendar, label: "Attendance", href: "/parent/attendance" },
+    { icon: BarChart3, label: "Results", href: "/parent/results" },
+    { icon: Bell, label: "Events", href: "/parent/events" },
+    { icon: Brain, label: "Class Content", href: "/parent/ask-ai" },
+    { icon: MessageSquare, label: "Messages", href: "/parent/chat" },
+    { icon: ClipboardList, label: "Notices", href: "/parent/notices" },
+    { icon: Settings, label: "Settings", href: "/parent/settings" },
+  ];
+
   return (
     <>
       {open && (
@@ -20,6 +32,23 @@ const MobileParentSidebar = ({ open, onClose }: { open: boolean; onClose: () => 
             <X className="w-6 h-6" />
           </button>
         </div>
+
+        <nav className="p-4 space-y-2">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={onClose}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-white hover:bg-white/15 transition"
+              >
+                <Icon className="w-5 h-5" />
+                <span className="text-sm font-semibold">{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
       </div>
     </>
   );

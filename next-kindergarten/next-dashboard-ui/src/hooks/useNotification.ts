@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { addToast } from '@/app/components/ToastNotification';
 
 export interface NotificationOptions {
@@ -11,27 +11,19 @@ export interface NotificationOptions {
 }
 
 export function useNotification() {
-  // Request notification permission on mount
-  useEffect(() => {
-    console.log('[Notification] Hook mounted');
-    console.log('[Notification] Support check:', 'Notification' in window);
-    console.log('[Notification] Current permission:', 'Notification' in window ? Notification.permission : 'N/A');
-    
-    if ('Notification' in window) {
-      if (Notification.permission === 'default') {
-        console.log('[Notification] Requesting permission...');
-        Notification.requestPermission().then((permission) => {
-          console.log('[Notification] Permission result:', permission);
-        });
-      } else {
-        console.log('[Notification] Permission already set to:', Notification.permission);
-      }
-    } else {
-      console.error('[Notification] Notifications not supported in this browser');
-    }
-  }, []);
+  const isBrowser = typeof window !== 'undefined';
+
+  const requestPermission = useCallback(async (): Promise<NotificationPermission> => {
+    if (!isBrowser || !('Notification' in window)) return 'denied';
+    if (Notification.permission === 'granted') return 'granted';
+    return Notification.requestPermission();
+  }, [isBrowser]);
 
   const playSound = useCallback(() => {
+    if (!isBrowser) {
+      return;
+    }
+
     try {
       console.log('[Sound] Playing notification sound...');
       // Use Web Audio API to generate a notification sound
@@ -64,10 +56,14 @@ export function useNotification() {
     } catch (error) {
       console.error('[Sound] Failed to play notification sound:', error);
     }
-  }, []);
+  }, [isBrowser]);
 
   const sendNotification = useCallback(
     (options: NotificationOptions) => {
+      if (!isBrowser) {
+        return;
+      }
+
       console.log('[Notification] Attempting to send notification:', options);
       
       if (!('Notification' in window)) {
@@ -126,7 +122,7 @@ export function useNotification() {
         console.error('[Notification] Failed to send notification:', error);
       }
     },
-    [playSound]
+    [isBrowser, playSound]
   );
 
   const sendMessageNotification = useCallback(
@@ -143,8 +139,9 @@ export function useNotification() {
   return {
     sendNotification,
     sendMessageNotification,
+    requestPermission,
     playSound,
-    notificationSupported: 'Notification' in window,
-    permissionGranted: 'Notification' in window && Notification.permission === 'granted',
+    notificationSupported: isBrowser && 'Notification' in window,
+    permissionGranted: isBrowser && 'Notification' in window && Notification.permission === 'granted',
   };
 }

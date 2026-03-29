@@ -6,9 +6,9 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
     
-    const events = await Event.find()
+    const events = await Event.find({ targetRole: { $in: ['all', 'parent'] } })
       .populate('createdBy', 'name email')
-      .sort({ date: -1 });
+      .sort({ startDate: 1 });
     
     return NextResponse.json(events);
   } catch (error) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Announcements from "@/app/components/Announcements";
 import AttendanceChart from "@/app/components/AttendanceChart";
 import CountChart from "@/app/components/CountChart";
@@ -10,19 +10,49 @@ import UserCard from "@/app/components/UserCard";
 import BulkImport from "@/app/components/BulkImport";
 import { FileSpreadsheet, BarChart3 } from 'lucide-react';
 import BulkImportXML from '@/app/components/BulkImportXML';
+import SubjectTeacherAssignment from '@/app/components/SubjectTeacherAssignment';
 
-type AdminTab = 'dashboard' | 'import-teachers' | 'import-parents' | 'import-students';
+type AdminTab = 'dashboard' | 'import-teachers' | 'import-parents' | 'import-students' | 'assign-subjects';
 
 const AdminPage = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
+  const [studentCount, setStudentCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadStudentCount = async () => {
+      try {
+        const response = await fetch('/api/admin/students');
+        if (!response.ok) {
+          throw new Error('Failed to load students');
+        }
+        const data = await response.json();
+        const count = Array.isArray(data?.students) ? data.students.length : 0;
+        if (isActive) {
+          setStudentCount(count);
+        }
+      } catch {
+        if (isActive) {
+          setStudentCount(null);
+        }
+      }
+    };
+
+    loadStudentCount();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   return (
     <div className="p-4">
       {/* Tab Navigation */}
-      <div className="flex gap-2 mb-6 border-b border-gray-300">
+      <div className="flex gap-2 mb-6 border-b border-gray-300 overflow-x-auto">
         <button
           onClick={() => setActiveTab('dashboard')}
-          className={`flex items-center gap-2 px-4 py-3 font-medium transition border-b-2 ${
+          className={`flex items-center gap-2 px-4 py-3 font-medium transition border-b-2 whitespace-nowrap ${
             activeTab === 'dashboard'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-gray-600 hover:text-gray-800'
@@ -32,8 +62,19 @@ const AdminPage = () => {
           Dashboard
         </button>
         <button
+          onClick={() => setActiveTab('assign-subjects')}
+          className={`flex items-center gap-2 px-4 py-3 font-medium transition border-b-2 whitespace-nowrap ${
+            activeTab === 'assign-subjects'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-gray-600 hover:text-gray-800'
+          }`}
+        >
+          <FileSpreadsheet size={20} />
+          Class-Subject-Teacher
+        </button>
+        <button
           onClick={() => setActiveTab('import-teachers')}
-          className={`flex items-center gap-2 px-4 py-3 font-medium transition border-b-2 ${
+          className={`flex items-center gap-2 px-4 py-3 font-medium transition border-b-2 whitespace-nowrap ${
             activeTab === 'import-teachers'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-gray-600 hover:text-gray-800'
@@ -44,7 +85,7 @@ const AdminPage = () => {
         </button>
         <button
           onClick={() => setActiveTab('import-parents')}
-          className={`flex items-center gap-2 px-4 py-3 font-medium transition border-b-2 ${
+          className={`flex items-center gap-2 px-4 py-3 font-medium transition border-b-2 whitespace-nowrap ${
             activeTab === 'import-parents'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-gray-600 hover:text-gray-800'
@@ -55,7 +96,7 @@ const AdminPage = () => {
         </button>
         <button
           onClick={() => setActiveTab('import-students')}
-          className={`flex items-center gap-2 px-4 py-3 font-medium transition border-b-2 ${
+          className={`flex items-center gap-2 px-4 py-3 font-medium transition border-b-2 whitespace-nowrap ${
             activeTab === 'import-students'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-gray-600 hover:text-gray-800'
@@ -66,6 +107,10 @@ const AdminPage = () => {
         </button>
       </div>
 
+      {activeTab === 'assign-subjects' && (
+        <SubjectTeacherAssignment />
+      )}
+
       {/* Dashboard Tab */}
       {activeTab === 'dashboard' && (
         <div className="flex gap-4 flex-col md:flex-row">
@@ -73,7 +118,7 @@ const AdminPage = () => {
           <div className="w-full lg:w-2/3 flex flex-col gap-8">
             {/* USER CARDS */}
             <div className="flex gap-4 justify-between flex-wrap">
-              <UserCard type="student" />
+              <UserCard type="student" count={studentCount} />
               <UserCard type="teacher" />
               <UserCard type="parent" />
               <UserCard type="staff" />

@@ -15,12 +15,16 @@ const TeacherForm = dynamic(() => import("./forms/TeacherForm"), {
 const StudentForm = dynamic(() => import("./forms/StudentForm"), {
   loading: () => <h1>Loading...</h1>,
 });
+const ClassForm = dynamic(() => import("./forms/ClassForm"), {
+  loading: () => <h1>Loading...</h1>,
+});
 
 const forms: {
   [key: string]: (type: "create" | "update", data?: any) => JSX.Element;
 } = {
   teacher: (type, data) => <TeacherForm type={type} data={data} />,
-  student: (type, data) => <StudentForm type={type} data={data} />
+  student: (type, data) => <StudentForm type={type} data={data} />,
+  class: (type, data) => <ClassForm type={type} data={data} />,
 };
 
 const FormModal = ({
@@ -44,7 +48,7 @@ const FormModal = ({
     | "announcement";
   type: "create" | "update" | "delete";
   data?: any;
-  id?: number;
+  id?: number | string;
 }) => {
   const size = type === "create" ? "w-8 h-8" : "w-7 h-7";
   const bgColor =
@@ -53,10 +57,17 @@ const FormModal = ({
       : type === "update"
       ? "bg-lamaSky"
       : "bg-lamaPurple";
+  const iconByType: Record<"create" | "update" | "delete", string> = {
+    create: "/plus.png",
+    update: "/edit.png",
+    delete: "/delete.png",
+  };
 
   const [open, setOpen] = useState(false);
 
   const Form = () => {
+    const formHandler = forms[table];
+
     return type === "delete" && id ? (
       <form action="" className="p-4 flex flex-col gap-4">
         <span className="text-center font-medium">
@@ -67,7 +78,7 @@ const FormModal = ({
         </button>
       </form>
     ) : type === "create" || type === "update" ? (
-      forms[table](type, data)
+      formHandler ? formHandler(type, data) : "Form not found!"
     ) : (
       "Form not found!"
     );
@@ -79,7 +90,7 @@ const FormModal = ({
         className={`${size} flex items-center justify-center rounded-full ${bgColor}`}
         onClick={() => setOpen(true)}
       >
-        <Image src={`/${type}.png`} alt="" width={16} height={16} />
+        <Image src={iconByType[type]} alt="" width={16} height={16} />
       </button>
       {open && (
         <div className="w-screen h-screen absolute left-0 top-0 bg-black bg-opacity-60 z-50 flex items-center justify-center">
