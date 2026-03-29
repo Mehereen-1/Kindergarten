@@ -104,6 +104,12 @@ const menuItems = [
         href: "/list/announcements",
         visible: ["admin", "teacher", "student", "parent"],
       },
+      {
+        icon: "/announcement.png",
+        label: "Security Alerts",
+        href: "/admin/security-alerts",
+        visible: ["admin"],
+      },
     ],
   },
   {
