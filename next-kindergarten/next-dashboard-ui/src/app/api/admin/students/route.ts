@@ -9,38 +9,45 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    // Authorization temporarily disabled.
+    const userCookie = request.cookies.get('user')?.value;
 
-    const { searchParams } = new URL(request.url);
-    const academicYear = searchParams.get('academicYear') || String(new Date().getFullYear());
+    if (!userCookie) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
 
-    const students = await Student.find()
-      .populate('parentId', 'name email phone')
-      .lean();
+    let user;
+    try {
+      user = JSON.parse(decodeURIComponent(userCookie));
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid user cookie' },
+        { status: 401 }
+      );
+    }
 
-    const histories = await StudentClassHistory.find({ academicYear })
-      .populate('classId', 'name classId grade')
-      .lean();
+    // FIXED LOGIC HERE
+    if (user.role !== 'admin' && user.role !== 'teacher') {
+      return NextResponse.json(
+        { error: 'Permission denied' },
+        { status: 403 }
+      );
+    }
 
-    const historyByStudent = new Map(
-      histories.map((history) => [history.studentId.toString(), history])
+    const students = await Student.find().lean();
+
+    return NextResponse.json({ students: students || [] });
+
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500 }
     );
-
-    const response = (students || []).map((student) => {
-      const history = historyByStudent.get(student._id.toString());
-      return {
-        ...student,
-        currentClass: history?.classId || null,
-        academicYear: history?.academicYear || academicYear,
-        rollNo: history?.rollNo || null,
-      };
-    });
-
-    return NextResponse.json({ students: response });
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
 
 export async function POST(request: NextRequest) {
   try {

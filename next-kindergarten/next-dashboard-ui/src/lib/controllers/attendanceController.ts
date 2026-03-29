@@ -1,6 +1,5 @@
 import { connectDB } from '../mongodb';
-import { Attendance } from '../models/Attendance';
-import { Student } from '../models/Student';
+import Attendance, { IAttendance } from '../models/Attendance';
 
 interface CreateAttendanceInput {
   studentId: string;
