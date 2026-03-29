@@ -1,38 +1,70 @@
-node_modules/
+# Environment files
 .env
+.env.*
 
-# Python
-__pycache__/
+# Node dependencies and package manager artifacts
+**/node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# Build and framework output
+**/.next/
+**/out/
+**/dist/
+**/build/
+**/coverage/
+**/.turbo/
+**/.cache/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python caches and virtual environments
+**/__pycache__/
 *.pyc
 *.pyo
-
-# Virtual env
+*.pyd
+*.py,cover
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.python-version
 venv/
 env/
 .venv/
 venv310/
+**/venv/
+**/env/
+**/.venv/
+**/attendance_env/
 
-# Environment
-.env
-.env.*
+# Model and local library assets
+.insightface/
 
-# Videos
+# Generated uploads and temporary files
+**/tmp/
+**/temp/
+**/uploads/
+
+# Large local media
 *.mp4
 *.avi
 *.mov
 
-# Logs
-*.log
-
-# InsightFace models
-.insightface/
-
-# OS
+# OS files
 .DS_Store
 Thumbs.db
-
-# Node / Next.js
-node_modules/
-.next/
-dist/
-out/
