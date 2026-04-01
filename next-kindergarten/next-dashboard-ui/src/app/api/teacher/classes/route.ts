@@ -3,6 +3,7 @@ import Class from '@/lib/models/Class';
 import '@/lib/models/Student';
 import StudentClassHistory from '@/lib/models/StudentClassHistory';
 import TeacherClassAssignment from '@/lib/models/TeacherClassAssignment';
+import ClassSubjectAssignment from '@/lib/models/ClassSubjectAssignment';
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 
@@ -52,16 +53,29 @@ export async function GET(request: NextRequest) {
       teacherQuery = { teacherId, academicYear };
     }
 
-    const assignments = await TeacherClassAssignment.find({
+    // Primary source: class-subject-teacher assignments (single source of truth)
+    const subjectAssignments = await ClassSubjectAssignment.find({
       ...teacherQuery,
       status: 'active',
-    }).lean();
-    console.log('Assignments found:', assignments.length);
-    console.log('Assignments:', JSON.stringify(assignments, null, 2));
-    
-    const assignmentClassIds = assignments
+    })
+      .populate('subjectId', 'name')
+      .lean();
+
+    let assignmentClassIds = subjectAssignments
       .map((assignment) => toIdString(assignment.classId))
       .filter((id): id is string => Boolean(id));
+
+    // Backward-compatible fallback for older data
+    if (!assignmentClassIds.length) {
+      const assignments = await TeacherClassAssignment.find({
+        ...teacherQuery,
+        status: 'active',
+      }).lean();
+
+      assignmentClassIds = assignments
+        .map((assignment) => toIdString(assignment.classId))
+        .filter((id): id is string => Boolean(id));
+    }
 
     const classes = assignmentClassIds.length
       ? await Class.find({ _id: { $in: assignmentClassIds } }).lean()
@@ -117,11 +131,16 @@ export async function GET(request: NextRequest) {
     const response = classes.map((classDoc) => {
       const classKey = classDoc._id.toString();
       const students = studentsByClass.get(classKey) || [];
+      const subjects = subjectAssignments
+        .filter((assignment) => toIdString(assignment.classId) === classKey)
+        .map((assignment: any) => assignment.subjectId?.name)
+        .filter(Boolean);
 
       return {
         ...classDoc,
         academicYear,
         students,
+        subjects: Array.from(new Set(subjects)),
         studentCount: students.length,
       };
     });

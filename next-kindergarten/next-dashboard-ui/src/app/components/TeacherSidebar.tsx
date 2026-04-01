@@ -10,6 +10,7 @@ import {
   MessageSquare,
   FileText,
   Clock,
+  ShieldAlert,
   Settings,
 } from "lucide-react";
 
@@ -31,6 +32,7 @@ const TeacherSidebar = () => {
       items: [
         { icon: MessageSquare, label: "Messages", href: "/teacher/chat" },
         { icon: FileText, label: "Notices", href: "/teacher/notices" },
+        { icon: ShieldAlert, label: "Security Alerts", href: "/teacher/security-alerts" },
       ],
     },
     {

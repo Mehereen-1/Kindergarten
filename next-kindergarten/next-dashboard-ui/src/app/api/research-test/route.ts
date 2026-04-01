@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import StudentQuizAttempt from '@/models/StudentQuizAttempt';
-import StudentMetrics from '@/models/StudentMetrics';
+import { connectDB } from '@/lib/mongodb';
+import StudentQuizAttempt from '@/lib/models/StudentQuizAttempt';
+import StudentMetrics from '@/lib/models/StudentMetrics';
 
 const {
   calculatePersonalizedForgettingRate,
