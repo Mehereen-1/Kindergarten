@@ -1,6 +1,7 @@
 import { connectDB } from '@/lib/mongodb';
 import Class from '@/lib/models/Class';
 import '@/lib/models/Student';
+import '@/lib/models/Subject';
 import StudentClassHistory from '@/lib/models/StudentClassHistory';
 import TeacherClassAssignment from '@/lib/models/TeacherClassAssignment';
 import ClassSubjectAssignment from '@/lib/models/ClassSubjectAssignment';

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import TeacherTopBar from '@/app/components/TeacherTopBar';
 import { useAuth } from '@/hooks/useAuth';
+import Link from 'next/link';
 
 interface ClassStudent {
   id: string;
@@ -131,6 +132,14 @@ export default function TeacherClassesPage() {
                     <p className="text-indigo-100 text-sm mt-1">
                       Subjects: {classDoc.subjects?.length ? classDoc.subjects.join(', ') : 'No subject assigned'}
                     </p>
+                    <div className="mt-4">
+                      <Link
+                        href={`/teacher/attendance?classId=${encodeURIComponent(classDoc._id)}&academicYear=${encodeURIComponent(academicYear)}`}
+                        className="inline-flex items-center rounded-lg bg-white text-indigo-700 px-3 py-2 text-sm font-bold hover:bg-indigo-50 transition"
+                      >
+                        Take Attendance
+                      </Link>
+                    </div>
                   </div>
 
                   <div className="p-4">

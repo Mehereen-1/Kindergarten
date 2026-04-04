@@ -6,6 +6,7 @@ import TeacherUpcomingClasses from "@/app/components/TeacherUpcomingClasses";
 import TeacherRecentActivity from "@/app/components/TeacherRecentActivity";
 import TeacherMiniCalendar from "@/app/components/TeacherMiniCalendar";
 import BigCalendar from "@/app/components/BigCalender";
+import Link from "next/link";
 
 export default function TeacherPage() {
   return (
@@ -27,6 +28,14 @@ export default function TeacherPage() {
             <p className="text-slate-600 text-lg font-medium max-w-2xl">
               Here&apos;s a complete overview of what&apos;s happening in your classes today
             </p>
+            <div className="mt-6">
+              <Link
+                href="/teacher/attendance-reports"
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition"
+              >
+                📄 Attendance Reports
+              </Link>
+            </div>
           </div>
 
           {/* Stats Grid */}

@@ -5,6 +5,7 @@
 import time
 import cv2
 from datetime import datetime
+from .liveness_engine import LivenessEngine
 
 from config.settings import (
     RECOG_WIDTH,
@@ -27,6 +28,7 @@ def recognition_thread(video_state, video_analytics, analytics_lock, results_loc
     """
     print(f"🔍 Recognition started  window={SLIDING_WINDOW_SIZE} "
           f"min={MIN_CONFIRMATIONS} threshold={RECOG_THRESHOLD}")
+    liveness_engine = LivenessEngine()
 
     while not video_state["stop_event"].is_set():
         frame_data = None
@@ -66,6 +68,41 @@ def recognition_thread(video_state, video_analytics, analytics_lock, results_loc
 
             scaled = []
             for bbox, name, student_id, score in raw_results:
+                x1 = max(0, int(bbox[0]))
+                y1 = max(0, int(bbox[1]))
+                x2 = min(RECOG_WIDTH, int(bbox[2]))
+                y2 = min(RECOG_HEIGHT, int(bbox[3]))
+
+                face_crop = small[y1:y2, x1:x2]
+                sid = str(student_id) if student_id else None
+                if sid:
+                    face_id = sid
+                else:
+                    cx = (x1 + x2) // 2
+                    cy = (y1 + y2) // 2
+                    face_id = f"u_{cx // 32}_{cy // 32}"
+
+                is_live = liveness_engine.check_liveness(face_crop, face_id)
+                if not is_live:
+                    orig_bbox = (
+                        int(bbox[0] * sx), int(bbox[1] * sy),
+                        int(bbox[2] * sx), int(bbox[3] * sy),
+                    )
+                    scaled.append({
+                        "bbox": orig_bbox,
+                        "name": "Spoof",
+                        "detected_at_frame": frame_num,
+                    })
+                    video_state["detections"].append({
+                        "name": "Spoof",
+                        "student_id": None,
+                        "timestamp": datetime.now().isoformat(),
+                        "frame_num": frame_num,
+                    })
+                    with analytics_lock:
+                        video_analytics["unknown_faces"] += 1
+                    continue
+
                 is_confirmed = False
                 display_name = name
 

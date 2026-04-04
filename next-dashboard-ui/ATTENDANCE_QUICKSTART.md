@@ -7,7 +7,7 @@
 cd attendance_cctv
 venv310\Scripts\activate
 cd backend
-uvicorn main_v2:app --reload
+uvicorn main:app --reload
 
 # Verify dependencies installed
 
