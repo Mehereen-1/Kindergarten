@@ -23,6 +23,7 @@ import time
 import glob
 import uuid
 import base64
+from pathlib import Path
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import List, Optional
@@ -31,8 +32,8 @@ from collections import deque
 # Third-party
 import cv2
 import numpy as np
-from fastapi import FastAPI, File, UploadFile, Form
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, File, UploadFile, Form, Query
+from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -40,6 +41,8 @@ from bson import ObjectId
 
 # Local module
 from face_engine import FaceEngine
+from liveness_engine import LivenessEngine
+from attendance_export import export_daily_attendance, export_monthly_attendance, EXPORT_DIR
 
 
 # ═══════════════════════════════════════════════════════
@@ -55,6 +58,9 @@ RECOG_WIDTH          = 640
 RECOG_HEIGHT         = 480
 PROCESS_EVERY_N      = 3        # recognition every Nth frame
 RECOG_THRESHOLD      = 0.4
+SYNC_BACKLOG_HIGH    = 4        # keep rendering close to recognition throughput
+SYNC_WAIT_STEP       = 0.005
+SYNC_WAIT_MAX        = 0.12
 
 # Encoding
 JPEG_QUALITY         = 75
@@ -74,13 +80,21 @@ ATTENDANCE_COOLDOWN  = 60
 # DATABASE CONNECTION
 # ═══════════════════════════════════════════════════════
 
+# Load env from backend context first, then project root .env.local used by Next.js.
 load_dotenv()
+root_env_local = Path(__file__).resolve().parents[2] / ".env.local"
+if root_env_local.exists():
+    load_dotenv(dotenv_path=root_env_local)
 
 db = None
 client = None
 
 try:
-    client = MongoClient(os.getenv("MONGODB_URI"), serverSelectionTimeoutMS=5000)
+    mongo_uri = os.getenv("MONGODB_URI")
+    if not mongo_uri:
+        raise RuntimeError("MONGODB_URI is not set. Add it to attendance_cctv/backend/.env or project root .env.local")
+
+    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
     client.admin.command("ping")
     db = client[os.getenv("DB_NAME", "test")]
     print("✅ MongoDB connected")
@@ -246,6 +260,33 @@ class BoundingBoxSmoother:
 # ═══════════════════════════════════════════════════════
 
 _attendance_ts: dict = {}
+_student_name_cache: dict = {}
+
+
+def _resolve_student_name(database, student_id, fallback_name: str):
+    if not student_id:
+        return fallback_name
+
+    sid = str(student_id)
+    if sid in _student_name_cache:
+        return _student_name_cache[sid]
+
+    resolved = fallback_name
+    if database is not None:
+        try:
+            students_coll = database.get_collection("students")
+            lookup_id = student_id
+            if isinstance(student_id, str) and ObjectId.is_valid(student_id):
+                lookup_id = ObjectId(student_id)
+
+            student_doc = students_coll.find_one({"_id": lookup_id}, {"name": 1})
+            if student_doc and student_doc.get("name"):
+                resolved = student_doc["name"]
+        except Exception:
+            pass
+
+    _student_name_cache[sid] = resolved
+    return resolved
 
 
 def save_attendance(database, name: str, student_id):
@@ -265,6 +306,7 @@ def save_attendance(database, name: str, student_id):
 
 def clear_attendance_timestamps():
     _attendance_ts.clear()
+    _student_name_cache.clear()
 
 
 def get_attendance_logic(database, limit: int = 100):
@@ -344,7 +386,7 @@ def draw_boxes(frame: np.ndarray, results: list,
             continue
 
         # Determine color based on recognition status
-        if "Unknown" in name:
+        if "Unknown" in name or "Spoof" in name:
             color = (0, 0, 255)      # Red for unknown
         else:
             color = (0, 200, 0)      # Green for recognized
@@ -387,7 +429,7 @@ def extract_and_store_face(frame, bbox, name, student_id, score, frame_num, is_c
             "name": name,
             "student_id": str(student_id) if student_id else None,
             "score": round(score, 3),
-            "is_match": name != "Unknown",
+            "is_match": name not in ("Unknown", "Spoof"),
             "frame_num": frame_num,
             "confirmed": is_confirmed,
             "timestamp": datetime.now().isoformat(),
@@ -456,6 +498,13 @@ def playback_thread(video_path: str, draw_boxes_func):
         if frame_number % PROCESS_EVERY_N == 0:
             video_state["recognition_queue"].append((frame_number, frame.copy()))
 
+        backlog_waited = 0.0
+        while (len(video_state["recognition_queue"]) >= SYNC_BACKLOG_HIGH
+               and not video_state["stop_event"].is_set()
+               and backlog_waited < SYNC_WAIT_MAX):
+            time.sleep(SYNC_WAIT_STEP)
+            backlog_waited += SYNC_WAIT_STEP
+
         # Get latest recognition results and draw them
         with results_lock:
             current_results = list(video_state["latest_results"])
@@ -479,7 +528,7 @@ def playback_thread(video_path: str, draw_boxes_func):
             video_state["frame_queue"].append(buf.tobytes())
 
         # Absolute-time scheduling — immune to per-frame jitter
-        next_frame_time += frame_delay
+        next_frame_time += frame_delay + backlog_waited
         sleep_time = next_frame_time - time.perf_counter()
         if sleep_time > 0:
             time.sleep(sleep_time)
@@ -536,6 +585,13 @@ def camera_playback_thread(camera_index: int, draw_boxes_func):
         if frame_number % PROCESS_EVERY_N == 0:
             video_state["recognition_queue"].append((frame_number, frame.copy()))
 
+        backlog_waited = 0.0
+        while (len(video_state["recognition_queue"]) >= SYNC_BACKLOG_HIGH
+               and not video_state["stop_event"].is_set()
+               and backlog_waited < SYNC_WAIT_MAX):
+            time.sleep(SYNC_WAIT_STEP)
+            backlog_waited += SYNC_WAIT_STEP
+
         with results_lock:
             current_results = list(video_state["latest_results"])
 
@@ -551,7 +607,7 @@ def camera_playback_thread(camera_index: int, draw_boxes_func):
         if ok:
             video_state["frame_queue"].append(buf.tobytes())
 
-        next_frame_time += frame_delay
+        next_frame_time += frame_delay + backlog_waited
         sleep_time = next_frame_time - time.perf_counter()
         if sleep_time > 0:
             time.sleep(sleep_time)
@@ -642,6 +698,7 @@ def recognition_thread(video_state_dict, video_analytics_dict, analytics_lock_ob
     """
     print(f"🔍 Recognition started  window={SLIDING_WINDOW_SIZE} "
           f"min={MIN_CONFIRMATIONS} threshold={RECOG_THRESHOLD}")
+    liveness_engine = LivenessEngine()
 
     while not video_state_dict["stop_event"].is_set():
         frame_data = None
@@ -689,20 +746,74 @@ def recognition_thread(video_state_dict, video_analytics_dict, analytics_lock_ob
                 else:
                     continue
 
+                x1 = max(0, int(bbox[0]))
+                y1 = max(0, int(bbox[1]))
+                x2 = min(RECOG_WIDTH, int(bbox[2]))
+                y2 = min(RECOG_HEIGHT, int(bbox[3]))
+
+                face_crop = small[y1:y2, x1:x2]
+                sid = str(student_id) if student_id else None
+                if sid:
+                    face_id = sid
+                else:
+                    cx = (x1 + x2) // 2
+                    cy = (y1 + y2) // 2
+                    face_id = f"u_{cx // 32}_{cy // 32}"
+
+                is_live = liveness_engine.check_liveness(face_crop, face_id)
+                if not is_live:
+                    orig_bbox = (
+                        int(bbox[0] * sx), int(bbox[1] * sy),
+                        int(bbox[2] * sx), int(bbox[3] * sy),
+                    )
+                    if orig_bbox[2] <= orig_bbox[0] or orig_bbox[3] <= orig_bbox[1]:
+                        continue
+
+                    scaled.append({
+                        "bbox": orig_bbox,
+                        "name": "Spoof",
+                        "student_id": None,
+                        "detected_at_frame": frame_num,
+                    })
+
+                    video_state_dict["detections"].append({
+                        "name": "Spoof",
+                        "student_name": "Spoof",
+                        "student_id": None,
+                        "timestamp": datetime.now().isoformat(),
+                        "frame_num": frame_num,
+                    })
+
+                    with analytics_lock_obj:
+                        video_analytics_dict["unknown_faces"] += 1
+
+                    extract_and_store_face_func(
+                        frame,
+                        orig_bbox,
+                        "Spoof",
+                        None,
+                        0.0,
+                        frame_num,
+                        False,
+                    )
+                    continue
+
                 is_confirmed = False
                 display_name = name
+                resolved_name = name
 
                 if name != "Unknown" and student_id:
                     sid = str(student_id)
+                    resolved_name = _resolve_student_name(db, student_id, name)
                     pending = attendance_tracker.get_pending_count(sid, frame_num)
                     is_confirmed = attendance_tracker.is_confirmed(sid)
-                    display_name = f"{name} [{sid}]"
+                    display_name = f"{resolved_name} [{sid}]"
                     with analytics_lock_obj:
                         video_analytics_dict["matched_faces"] += 1
 
                     should_save = attendance_tracker.add_detection(sid, frame_num, score)
                     if should_save:
-                        save_attendance_func(name, student_id)
+                        save_attendance_func(resolved_name, student_id)
                 else:
                     with analytics_lock_obj:
                         video_analytics_dict["unknown_faces"] += 1
@@ -722,7 +833,8 @@ def recognition_thread(video_state_dict, video_analytics_dict, analytics_lock_ob
                 })
 
                 video_state_dict["detections"].append({
-                    "name": name,
+                    "name": resolved_name,
+                    "student_name": resolved_name,
                     "student_id": str(student_id) if student_id else None,
                     "timestamp": datetime.now().isoformat(),
                     "frame_num": frame_num,
@@ -1180,6 +1292,90 @@ def reload_embeddings():
     engine.load_embeddings_from_db(db)
     return {"success": True, "embeddings_loaded": _embedding_count(),
             "unique_students": engine.student_count}
+
+
+# ═══════════════════════════════════════════════════════
+# API — EXPORTS
+# ═══════════════════════════════════════════════════════
+
+@app.get("/export/daily")
+def export_daily(class_name: str = Query(..., alias="class"), date: str = Query(...)):
+    if db is None:
+        return {"error": "MongoDB not connected", "success": False}
+
+    try:
+        # Validate date format strictly (YYYY-MM-DD)
+        datetime.strptime(date, "%Y-%m-%d")
+        file_path = export_daily_attendance(db, class_name, date)
+        return FileResponse(
+            path=str(file_path),
+            filename=file_path.name,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    except ValueError:
+        return {"error": "Invalid date format. Use YYYY-MM-DD", "success": False}
+    except Exception as e:
+        return {"error": str(e), "success": False}
+
+
+@app.get("/export/monthly")
+def export_monthly(class_name: str = Query(..., alias="class"), month: int = Query(...), year: int = Query(...)):
+    if db is None:
+        return {"error": "MongoDB not connected", "success": False}
+
+    try:
+        if month < 1 or month > 12:
+            return {"error": "Month must be between 1 and 12", "success": False}
+        if year < 2000 or year > 2100:
+            return {"error": "Year must be between 2000 and 2100", "success": False}
+
+        file_path = export_monthly_attendance(db, class_name, month, year)
+        return FileResponse(
+            path=str(file_path),
+            filename=file_path.name,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    except Exception as e:
+        return {"error": str(e), "success": False}
+
+
+@app.get("/export/files")
+def list_export_files(kind: str = "all"):
+    try:
+        if not EXPORT_DIR.exists():
+            return {"files": []}
+
+        files = []
+        for p in sorted(EXPORT_DIR.glob("attendance_*.xlsx"), reverse=True):
+            name = p.name
+            if kind == "daily" and len(name.split("_")) != 2:
+                continue
+            if kind == "monthly" and len(name.split("_")) != 3:
+                continue
+            stat = p.stat()
+            files.append({
+                "filename": name,
+                "size": stat.st_size,
+                "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            })
+
+        return {"files": files}
+    except Exception as e:
+        return {"error": str(e), "files": []}
+
+
+@app.get("/export/download")
+def download_export_file(filename: str):
+    safe_name = Path(filename).name
+    file_path = EXPORT_DIR / safe_name
+    if not file_path.exists() or not file_path.is_file() or not safe_name.endswith(".xlsx"):
+        return {"error": "File not found", "success": False}
+
+    return FileResponse(
+        path=str(file_path),
+        filename=safe_name,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 # ═══════════════════════════════════════════════════════
