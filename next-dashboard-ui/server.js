@@ -120,17 +120,102 @@ findAvailablePort(requestedPort).then((initialPort) => {
     // Join room based on user role and ID
     socket.on('join', (data) => {
       const { userId, role } = data;
+      socket.data.userId = userId;
+      socket.data.role = role;
       socket.join(`${role}-${userId}`);
       console.log(`User ${userId} (${role}) joined room ${role}-${userId}`);
     });
 
-    // Handle private messages
-    socket.on('private-message', async (data) => {
-      const { senderId, receiverId, message, senderRole, receiverRole } = data;
+    socket.on('typing-start', (data) => {
+      const { senderId, receiverId, receiverRole } = data || {};
+      if (!senderId || !receiverId || !receiverRole) return;
+      socket.to(`${receiverRole}-${receiverId}`).emit('typing-start', { senderId });
+    });
 
-      console.log('Received message event:', { senderId, receiverId, senderRole, receiverRole, messageLength: message?.length });
+    socket.on('typing-stop', (data) => {
+      const { senderId, receiverId, receiverRole } = data || {};
+      if (!senderId || !receiverId || !receiverRole) return;
+      socket.to(`${receiverRole}-${receiverId}`).emit('typing-stop', { senderId });
+    });
+
+    socket.on('messages-read', async (data) => {
+      const { readerId, readerRole, otherUserId, otherUserRole } = data || {};
+      if (!readerId || !readerRole || !otherUserId || !otherUserRole) {
+        return;
+      }
 
       try {
+        const ChatMessage = require('./src/lib/models/ChatMessage');
+        const unreadMessages = await ChatMessage.find({
+          senderId: otherUserId,
+          receiverId: readerId,
+          read: false,
+        }).select('_id');
+
+        if (!unreadMessages.length) {
+          return;
+        }
+
+        const messageIds = unreadMessages.map((m) => String(m._id));
+        const now = new Date();
+
+        await ChatMessage.updateMany(
+          { _id: { $in: messageIds } },
+          {
+            read: true,
+            deliveryStatus: 'seen',
+            seenAt: now,
+          }
+        );
+
+        io.to(`${otherUserRole}-${otherUserId}`).emit('messages-seen', {
+          readerId,
+          messageIds,
+          seenAt: now,
+        });
+      } catch (error) {
+        console.error('Error updating seen status:', error.message);
+      }
+    });
+
+    // Handle private messages
+    socket.on('private-message', async (data) => {
+      const {
+        senderId,
+        receiverId,
+        message,
+        senderRole,
+        receiverRole,
+        attachments = [],
+      } = data;
+
+      console.log('Received message event:', {
+        senderId,
+        receiverId,
+        senderRole,
+        receiverRole,
+        messageLength: message?.length,
+        attachmentCount: Array.isArray(attachments) ? attachments.length : 0,
+      });
+
+      try {
+        const normalizedAttachments = Array.isArray(attachments) ? attachments : [];
+        const normalizedMessage = typeof message === 'string' ? message.trim() : '';
+
+        // Keep compatibility with old compiled schemas where `message` is required.
+        // For attachment-only payloads, store a small placeholder text.
+        const messageForStorage = normalizedMessage || (normalizedAttachments.length ? '[Attachment]' : '');
+
+        if (!messageForStorage) {
+          socket.emit('message-error', { error: 'Message or attachment is required' });
+          return;
+        }
+
+        const receiverRoom = `${receiverRole}-${receiverId}`;
+        const receiverRoomSockets = io.sockets.adapter.rooms.get(receiverRoom);
+        const isDelivered = Boolean(receiverRoomSockets && receiverRoomSockets.size > 0);
+        const deliveryStatus = isDelivered ? 'delivered' : 'sent';
+
         // Save message to database
         const ChatMessage = require('./src/lib/models/ChatMessage');
         const newMessage = new ChatMessage({
@@ -138,17 +223,21 @@ findAvailablePort(requestedPort).then((initialPort) => {
           receiverId,
           senderRole,
           receiverRole,
-          message,
+          message: messageForStorage,
+          attachments: normalizedAttachments,
+          deliveryStatus,
+          deliveredAt: isDelivered ? new Date() : undefined,
         });
         await newMessage.save();
         console.log('Message saved:', newMessage._id);
 
         // Emit to receiver in their room
-        const receiverRoom = `${receiverRole}-${receiverId}`;
         console.log(`Emitting to receiver room: ${receiverRoom}`);
         socket.to(receiverRoom).emit('private-message', {
           senderId,
-          message,
+          message: messageForStorage,
+          attachments: newMessage.attachments || [],
+          deliveryStatus: newMessage.deliveryStatus || 'sent',
           timestamp: newMessage.timestamp,
           messageId: newMessage._id,
         });
@@ -156,7 +245,9 @@ findAvailablePort(requestedPort).then((initialPort) => {
         // Emit back to sender for confirmation
         socket.emit('message-sent', {
           receiverId,
-          message,
+          message: messageForStorage,
+          attachments: newMessage.attachments || [],
+          deliveryStatus: newMessage.deliveryStatus || 'sent',
           timestamp: newMessage.timestamp,
           messageId: newMessage._id,
         });

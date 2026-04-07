@@ -56,14 +56,14 @@ DISPLAY_HEIGHT       = 480
 # Recognition
 RECOG_WIDTH          = 640
 RECOG_HEIGHT         = 480
-PROCESS_EVERY_N      = 3        # recognition every Nth frame
+PROCESS_EVERY_N      = 1        # recognition every frame for better accuracy
 RECOG_THRESHOLD      = 0.4
-SYNC_BACKLOG_HIGH    = 4        # keep rendering close to recognition throughput
+SYNC_BACKLOG_HIGH    = 3        # start throttling earlier when recognition lags
 SYNC_WAIT_STEP       = 0.005
-SYNC_WAIT_MAX        = 0.12
+SYNC_WAIT_MAX        = 0.25
 
 # Encoding
-JPEG_QUALITY         = 75
+JPEG_QUALITY         = 80
 
 # Bounding Box
 BOX_TTL              = 60       # Boxes stay visible this many frames after last detection
@@ -468,7 +468,7 @@ def playback_thread(video_path: str, draw_boxes_func):
     - Single timing source: absolute-time scheduler prevents drift
     """
     cap = cv2.VideoCapture(video_path)
-    fps = min(cap.get(cv2.CAP_PROP_FPS) or 30, 30)
+    fps = min(cap.get(cv2.CAP_PROP_FPS) or 20, 20)
     frame_delay = 1.0 / fps
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -556,7 +556,7 @@ def camera_playback_thread(camera_index: int, draw_boxes_func):
         return
 
     fps_raw = cap.get(cv2.CAP_PROP_FPS)
-    fps = min(fps_raw if fps_raw and fps_raw > 0 else 30, 30)
+    fps = min(fps_raw if fps_raw and fps_raw > 0 else 20, 20)
     frame_delay = 1.0 / fps
     orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or RECOG_WIDTH
     orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or RECOG_HEIGHT

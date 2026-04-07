@@ -1,10 +1,24 @@
 import { Users, BarChart3, BookOpen, Clock, TrendingUp, ArrowUpRight } from "lucide-react";
 
-const TeacherDashboardStats = () => {
+interface TeacherDashboardStatsProps {
+  totalClasses: number;
+  attendanceRate: number;
+  todayClasses: number;
+  attendanceSubtitle?: string;
+  nextClassSubtitle?: string;
+}
+
+const TeacherDashboardStats = ({
+  totalClasses,
+  attendanceRate,
+  todayClasses,
+  attendanceSubtitle,
+  nextClassSubtitle,
+}: TeacherDashboardStatsProps) => {
   const stats = [
     {
       title: "My Classes",
-      value: "4",
+      value: String(totalClasses),
       subtitle: "Active Classes",
       icon: Users,
       bgColor: "bg-[#f2f2e8]",
@@ -15,8 +29,8 @@ const TeacherDashboardStats = () => {
     },
     {
       title: "Attendance Rate",
-      value: "94%",
-      subtitle: "This Month",
+      value: `${attendanceRate}%`,
+      subtitle: attendanceSubtitle || "This Month",
       icon: BarChart3,
       bgColor: "bg-[#f4f7f2]",
       iconBgColor: "bg-white",
@@ -26,8 +40,8 @@ const TeacherDashboardStats = () => {
     },
     {
       title: "Today's Classes",
-      value: "3",
-      subtitle: "Next: 10:30 AM",
+      value: String(todayClasses),
+      subtitle: nextClassSubtitle || "No class scheduled",
       icon: Clock,
       bgColor: "bg-[#fff9f4]",
       iconBgColor: "bg-white",
