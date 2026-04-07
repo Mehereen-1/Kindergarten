@@ -1,50 +1,111 @@
-# Security Alerts ONNX Setup
+# Security Alerts Anomaly Service
 
-This folder runs your uploaded ONNX model and sends alerts to the website.
+This folder now contains a standalone, production-style hybrid classroom security service.
 
-## 1) Model files
-Place model files in:
-- secuirty-alerts/
+## What it does
 
-or in:
-- src/app/api/security-alerts/
+- Loads fight, fall, fire, audio-security, and crowd-motion branches once at startup
+- Runs unified inference over uploaded video or live stream sources
+- Standardizes model outputs into one schema
+- Fuses multiple detectors into final alert decisions
+- Can forward fused alerts to the existing website ingest route
 
-If your export has both files, keep both with original names:
-- model.onnx
-- model.onnx.data
+## Folder layout
 
-## 2) Install packages
-Use your existing Python env and install:
-- onnxruntime
-- opencv-python
-- numpy
-- requests
+- `secuirty-alerts/main.py`: FastAPI app entrypoint and CLI runner
+- `secuirty-alerts/anomaly_system/`: modular inference package
+- `secuirty-alerts/anomalyModels/`: trained checkpoints
 
-## 3) Run
-Example command:
+## Checkpoint placement
 
-python secuirty-alerts/main.py \
-  --video "C:/videos/cctv_sample.mp4" \
-  --camera "Front Gate Camera" \
-  --class-name "star (kg)" \
-  --threshold 0.65 \
-  --api-url "http://localhost:3000/api/security-alerts/ingest"
+Place trained checkpoints in:
 
-Optional:
-- --model "C:/path/to/model.onnx"
-- --labels "C:/path/to/labels.txt"
-- --mobile-class-ids "0"   (if class 0 is mobile in your model)
-- --api-token "your-token-if-set"
-- --fps 2
-- --cooldown 30
+- `next-dashboard-ui/secuirty-alerts/anomalyModels/`
 
-## 4) Threshold rule
-Alert is sent only when:
-- detected class label includes mobile/phone/cell/smartphone
-- OR class ID is in --mobile-class-ids
-- confidence >= 0.65
+Default filenames already wired:
 
-## 5) Where alerts appear
-- Admin page: /admin/security-alerts
-- Teacher page: /teacher/security-alerts
-- Email and push are triggered through the ingest API.
+- `best_fight_binary_mobilenetv3_gru.pth`
+- `best_payutch_final_refined_model _fall.pth`
+- `fire_best.onnx`
+- `final_audio_model_extratune.keras`
+- `final_audio_config_extratune.json`
+
+Any extra `.onnx` file dropped into `anomalyModels/` is auto-discovered as an additional visual detector.
+
+## Install
+
+From the security alert environment:
+
+```powershell
+cd next-dashboard-ui/secuirty-alerts
+pip install -r requirements.txt
+```
+
+## Start the app
+
+```powershell
+cd next-dashboard-ui/secuirty-alerts
+python main.py --serve --port 8010
+```
+
+## Test the API
+
+Health:
+
+```powershell
+curl http://localhost:8010/anomaly/health
+```
+
+List models:
+
+```powershell
+curl http://localhost:8010/anomaly/models
+```
+
+Analyze uploaded audio:
+
+```powershell
+curl -X POST http://localhost:8010/anomaly/analyze-audio `
+  -F "audio=@C:/audio/security_clip.wav"
+```
+
+Analyze uploaded video:
+
+```powershell
+curl -X POST http://localhost:8010/anomaly/analyze-video `
+  -F "video=@C:/videos/classroom.mp4" `
+  -F "camera_name=Star Classroom Camera" `
+  -F "class_name=star (kg)"
+```
+
+Analyze stream / RTSP / webcam URL:
+
+```powershell
+curl -X POST http://localhost:8010/anomaly/analyze-stream `
+  -H "Content-Type: application/json" `
+  -d "{\"stream_url\":\"rtsp://camera/stream\",\"camera_name\":\"Gate Camera\",\"class_name\":\"corridor\",\"max_frames\":240}"
+```
+
+## Optional website ingest integration
+
+To forward fused alerts into the Next.js security-alert notice system, set:
+
+- `ANOMALY_NOTIFY_INGEST=true`
+- `ANOMALY_INGEST_URL=http://localhost:3000/api/security-alerts/ingest`
+- `MODEL_ALERT_TOKEN=...` if your ingest route expects it
+
+Then either:
+
+- call the API with `notify_ingest=true`
+- or run CLI with `--notify-ingest`
+
+## Where checkpoint-specific work belongs
+
+If a checkpoint needs custom tensor shape, frame sampling, normalization, or output parsing, update only the wrapper adapter sections:
+
+- `anomaly_system/fight_wrapper.py`
+- `anomaly_system/fall_wrapper.py`
+- `anomaly_system/other_anomaly_wrapper.py`
+- `anomaly_system/audio_wrapper.py`
+
+That keeps model-specific uncertainty isolated instead of spreading hacks across the whole pipeline.

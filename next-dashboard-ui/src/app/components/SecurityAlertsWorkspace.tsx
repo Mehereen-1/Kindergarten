@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Bell, Clock3, Mail, ShieldAlert } from 'lucide-react';
 
 type AlertRole = 'admin' | 'teacher';
-type AlertSeverity = 'critical' | 'high' | 'medium';
+type AlertSeverity = 'critical' | 'high' | 'medium' | 'low';
 type ScanState = 'idle' | 'scanning' | 'done' | 'error';
 
 type AlertItem = {
@@ -36,6 +36,7 @@ type NoticeApiItem = {
   metadata?: {
     label?: string;
     confidence?: number;
+    severity?: AlertSeverity | 'low';
     cameraName?: string;
     className?: string;
     imageUrl?: string;
@@ -49,12 +50,43 @@ type NoticeApiItem = {
 };
 
 type StreamScanResult = {
-  detected: boolean;
-  label: string;
-  confidence: number;
-  overallMax: number;
-  totalDetections: number;
-  topDetections: { classId: number; score: number }[];
+  status: 'ok' | 'warning' | 'error';
+  alerts: Array<{
+    type: string;
+    severity: AlertSeverity;
+    summary: string;
+    confidence: number;
+    triggered_by?: string[];
+    metadata?: Record<string, unknown>;
+  }>;
+  model_results: Array<{
+    model_name: string;
+    event_type: string;
+    label: string;
+    confidence: number;
+    detected: boolean;
+    frame_index: number;
+    timestamp: number;
+    metadata?: Record<string, unknown>;
+  }>;
+  system_metrics?: {
+    fps?: number;
+    processing_time_ms?: number;
+    active_models?: string[];
+  };
+  errors?: string[];
+  progress_percent?: number;
+  processed_frames?: number;
+  total_frames?: number | null;
+};
+
+type ServiceControlStatus = {
+  running: boolean;
+  pid: number | null;
+  startedAt: string | null;
+  serviceUrl: string;
+  health: any;
+  logs: string[];
 };
 
 type ClassroomStream = {
@@ -66,14 +98,11 @@ type ClassroomStream = {
   scanState: ScanState;
   scanResult: StreamScanResult | null;
   message: string;
-  isPaused: boolean;
-  lastAlertAt: number;
+  isAnalyzing: boolean;
+  progressPercent?: number;
 };
 
-const ALERT_AUTO_GENERATE_THRESHOLD = 0.1;
 const UI_CONFIDENCE_REDUCTION_POINTS = 12;
-const ALERT_COOLDOWN_MS = 15000;
-const AUTO_SCAN_INTERVAL_MS = 3000;
 
 const CLASSROOM_BLUEPRINT: Array<Pick<ClassroomStream, 'id' | 'className' | 'cameraName'>> = [
   { id: 'star-kg', className: 'star (kg)', cameraName: 'Star Classroom Camera' },
@@ -92,8 +121,8 @@ function createInitialStreams(): ClassroomStream[] {
     scanState: 'idle',
     scanResult: null,
     message: '',
-    isPaused: false,
-    lastAlertAt: 0,
+    isAnalyzing: false,
+    progressPercent: 0,
   }));
 }
 
@@ -105,6 +134,11 @@ function displayAlertTitle(title: string, rawPercent: number) {
   const adjusted = Math.round(adjustDisplayedPercent(rawPercent));
   const stripped = title.replace(/\s*\(\d+(?:\.\d+)?%\)\s*$/, '').trim();
   return `${stripped} (${adjusted}%)`;
+}
+
+function formatSeconds(value: number | null | undefined) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '0.0s';
+  return `${value.toFixed(1)}s`;
 }
 
 function mapAssignedTo(targetRole?: string) {
@@ -125,7 +159,17 @@ function mapDeliveryStatus(value: unknown): 'sent' | 'pending' | 'unknown' {
 function mapNoticeToAlert(notice: NoticeApiItem): AlertItem {
   const confidenceScore = Number(notice?.metadata?.confidence || 0);
   const confidencePercent = confidenceScore > 1 ? confidenceScore : Math.round(confidenceScore * 100);
-  const severity: AlertSeverity = confidencePercent >= 90 ? 'critical' : confidencePercent >= 80 ? 'high' : 'medium';
+  const severityRaw = String(notice?.metadata?.severity || '').toLowerCase();
+  const severity: AlertSeverity =
+    severityRaw === 'critical'
+      ? 'critical'
+      : severityRaw === 'high'
+        ? 'high'
+        : confidencePercent >= 90
+          ? 'critical'
+          : confidencePercent >= 80
+            ? 'high'
+            : 'medium';
 
   return {
     id: String(notice._id),
@@ -151,10 +195,12 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
   const [serverAlerts, setServerAlerts] = useState<AlertItem[]>([]);
   const [selectedAlert, setSelectedAlert] = useState<AlertItem | null>(null);
   const [focusStreamId, setFocusStreamId] = useState<string | null>(null);
+  const [serviceStatus, setServiceStatus] = useState<ServiceControlStatus | null>(null);
+  const [serviceBusy, setServiceBusy] = useState(false);
+  const [serviceMessage, setServiceMessage] = useState('');
 
   const incidentModalPlayerRef = useRef<HTMLVideoElement | null>(null);
-  const streamPlayersRef = useRef<Record<string, HTMLVideoElement | null>>({});
-  const scanningLockRef = useRef<Record<string, boolean>>({});
+  const uploadedFilesRef = useRef<Record<string, File | null>>({});
   const streamsRef = useRef<ClassroomStream[]>(streams);
 
   useEffect(() => {
@@ -197,6 +243,26 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
     setStreams((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   }, []);
 
+  const primaryConfidence = useCallback((result: StreamScanResult | null) => {
+    if (!result) return null;
+    const topAlert = [...(result.alerts || [])].sort((a, b) => b.confidence - a.confidence)[0];
+    if (topAlert) return topAlert.confidence;
+    const topModel = [...(result.model_results || [])]
+      .filter((item) => item.detected)
+      .sort((a, b) => b.confidence - a.confidence)[0];
+    return topModel?.confidence ?? null;
+  }, []);
+
+  const refreshServiceStatus = useCallback(async () => {
+    const response = await fetch('/api/security-alerts/service/status', { cache: 'no-store' });
+    const data = await response.json().catch(() => null);
+    if (response.ok && data) {
+      setServiceStatus(data);
+      return data;
+    }
+    throw new Error(data?.error || 'Failed to fetch anomaly service status');
+  }, []);
+
   const refreshAlertsFromServer = useCallback(async () => {
     const response = await fetch(`/api/notices?role=${role}&limit=300`, { cache: 'no-store' });
     const data = await response.json();
@@ -218,6 +284,9 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
     const sync = async () => {
       try {
         await refreshAlertsFromServer();
+        if (role === 'admin') {
+          await refreshServiceStatus();
+        }
       } catch {
         /* ignore polling errors */
       }
@@ -234,7 +303,7 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
       mounted = false;
       clearInterval(timer);
     };
-  }, [refreshAlertsFromServer]);
+  }, [refreshAlertsFromServer, refreshServiceStatus, role]);
 
   useEffect(() => {
     return () => {
@@ -246,131 +315,193 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
     };
   }, []);
 
-  const ingestAlertForStream = useCallback(
-    async (stream: ClassroomStream, confidence: number, playbackAtSec: number) => {
-      const now = Date.now();
-      if (now - stream.lastAlertAt < ALERT_COOLDOWN_MS) {
-        return;
-      }
+  const analyzeOneStream = useCallback(
+    async (streamId: string) => {
+      const stream = streamsRef.current.find((item) => item.id === streamId);
+      const file = uploadedFilesRef.current[streamId];
+      if (!stream || !file) return;
 
-      updateStream(stream.id, { lastAlertAt: now });
-
-      const ingestResponse = await fetch('/api/security-alerts/ingest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          label: 'mobile phone',
-          confidence,
-          cameraName: stream.cameraName,
-          className: stream.className,
-          videoName: stream.videoName,
-          playbackAtSec,
-          detectedAt: new Date().toISOString(),
-        }),
+      updateStream(streamId, {
+        scanState: 'scanning',
+        isAnalyzing: true,
+        progressPercent: 0,
+        message: 'Starting streamed anomaly analysis...',
       });
 
-      if (!ingestResponse.ok) {
-        const body = await ingestResponse.json().catch(() => ({}));
-        updateStream(stream.id, {
-          message: `Failed to save alert: ${body?.error || ingestResponse.statusText}`,
+      try {
+        const formData = new FormData();
+        formData.set('video', file);
+        formData.set('camera_name', stream.cameraName);
+        formData.set('class_name', stream.className);
+        const response = await fetch('/api/security-alerts/analyze-video-progress', {
+          method: 'POST',
+          body: formData,
         });
-        return;
-      }
+        if (!response.ok || !response.body) {
+          const body = await response.json().catch(() => ({}));
+          updateStream(streamId, {
+            scanState: 'error',
+            isAnalyzing: false,
+            message: `Analysis failed: ${body?.error || response.statusText}`,
+          });
+          return;
+        }
 
-      updateStream(stream.id, {
-        message: `Alert auto-generated at ${playbackAtSec}s with confidence ${Math.round(
-          adjustDisplayedPercent(confidence * 100)
-        )}%.`,
-      });
-      await refreshAlertsFromServer();
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            let event: any = null;
+            try {
+              event = JSON.parse(trimmed);
+            } catch {
+              continue;
+            }
+
+            if (event.type === 'started') {
+              updateStream(streamId, {
+                message: event.message || 'Video analysis started...',
+                progressPercent: Number(event.progress_percent || 0),
+              });
+              continue;
+            }
+
+            if (event.type === 'progress') {
+              const partialResult: StreamScanResult = {
+                status: 'ok',
+                alerts: Array.isArray(event.alerts) ? event.alerts : [],
+                model_results: Array.isArray(event.model_results) ? event.model_results : [],
+                system_metrics: undefined,
+                errors: Array.isArray(event.errors) ? event.errors : [],
+                progress_percent: Number(event.progress_percent || 0),
+                processed_frames: Number(event.processed_frames || 0),
+                total_frames: event.total_frames ?? null,
+              };
+
+              const latestAlert = partialResult.alerts[0];
+              const progressText =
+                partialResult.total_frames && partialResult.total_frames > 0
+                  ? `${partialResult.processed_frames}/${partialResult.total_frames} frames`
+                  : `${partialResult.processed_frames} frames`;
+
+              updateStream(streamId, {
+                scanResult: partialResult,
+                progressPercent: partialResult.progress_percent || 0,
+                message: latestAlert
+                  ? `Detected ${latestAlert.type} while processing (${progressText})`
+                  : `Analyzing video... ${progressText}`,
+              });
+              continue;
+            }
+
+            if (event.type === 'final') {
+              const result = event.result || {};
+              const alertCount = Array.isArray(result?.alerts) ? result.alerts.length : 0;
+              const topAlert = Array.isArray(result?.alerts)
+                ? [...result.alerts].sort((a, b) => Number(b.confidence || 0) - Number(a.confidence || 0))[0]
+                : null;
+              const topMessage = topAlert
+                ? `${topAlert.summary} (${adjustDisplayedPercent(Number(topAlert.confidence || 0) * 100).toFixed(1)}%)`
+                : 'No alert raised for this clip.';
+
+              updateStream(streamId, {
+                scanState: 'done',
+                isAnalyzing: false,
+                scanResult: { ...result, progress_percent: 100, processed_frames: result.frame_index, total_frames: result.frame_index },
+                progressPercent: 100,
+                message:
+                  alertCount > 0
+                    ? `${alertCount} alert${alertCount > 1 ? 's' : ''}: ${topMessage}`
+                    : `Analysis finished. ${topMessage}`,
+              });
+
+              if (alertCount > 0) {
+                await refreshAlertsFromServer();
+              }
+              return;
+            }
+
+            if (event.type === 'error') {
+              updateStream(streamId, {
+                scanState: 'error',
+                isAnalyzing: false,
+                message: `Analysis failed: ${event.error || 'Unknown stream error'}`,
+              });
+              return;
+            }
+          }
+        }
+
+        updateStream(streamId, {
+          scanState: 'error',
+          isAnalyzing: false,
+          message: 'Analysis stream ended before a final result was received.',
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        updateStream(streamId, {
+          scanState: 'error',
+          isAnalyzing: false,
+          message: `Analysis failed: ${message}`,
+        });
+      }
     },
     [refreshAlertsFromServer, updateStream]
   );
 
-  const scanOneStream = useCallback(
-    async (streamId: string) => {
-      if (scanningLockRef.current[streamId]) return;
-
-      const stream = streamsRef.current.find((item) => item.id === streamId);
-      if (!stream || !stream.videoUrl || stream.isPaused) return;
-
-      const player = streamPlayersRef.current[streamId];
-      if (!player || player.readyState < 2) return;
-
-      scanningLockRef.current[streamId] = true;
-      updateStream(streamId, { scanState: 'scanning' });
-
+  const handleServiceAction = useCallback(
+    async (action: 'start' | 'stop' | 'refresh') => {
+      setServiceBusy(true);
       try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 640;
-        canvas.height = 640;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('Canvas context unavailable');
-        ctx.drawImage(player, 0, 0, 640, 640);
+        const response =
+          action === 'refresh'
+            ? await fetch('/api/security-alerts/service/status', { cache: 'no-store' })
+            : await fetch(`/api/security-alerts/service/${action}`, {
+                method: 'POST',
+              });
 
-        const imageData = ctx.getImageData(0, 0, 640, 640);
-        const bytes = new Uint8Array(imageData.data.buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i += 65536) {
-          binary += String.fromCharCode(...(bytes.subarray(i, i + 65536) as unknown as number[]));
-        }
-        const base64 = btoa(binary);
-
-        const response = await fetch('/api/security-alerts/run-inference', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pixels: base64, width: 640, height: 640 }),
-        });
-
-        const result = await response.json();
+        const data = await response.json().catch(() => null);
         if (!response.ok) {
-          updateStream(streamId, { scanState: 'error', message: `Model error: ${result.error}` });
-          return;
+          throw new Error(data?.error || `Failed to ${action} anomaly service`);
         }
 
-        const confidence = Number(result.confidence || 0);
-        const adjusted = adjustDisplayedPercent(confidence * 100);
+        if (data?.status) {
+          setServiceStatus(data.status);
+        } else if (action === 'refresh' && data) {
+          setServiceStatus(data);
+        } else {
+          await refreshServiceStatus();
+        }
 
-        updateStream(streamId, {
-          scanState: 'done',
-          scanResult: result,
-          message: result.detected
-            ? `Detected mobile pattern: ${adjusted.toFixed(1)}%`
-            : `No mobile detected (max ${adjustDisplayedPercent(Number(result.overallMax || 0) * 100).toFixed(1)}%)`,
-        });
-
-        if (result.detected && confidence >= ALERT_AUTO_GENERATE_THRESHOLD) {
-          const latest = streamsRef.current.find((item) => item.id === streamId);
-          const playbackAtSec = Math.max(0, Math.floor(player.currentTime || 0));
-          if (latest) {
-            await ingestAlertForStream(latest, confidence, playbackAtSec);
-          }
+        if (action === 'start') {
+          setServiceMessage(data?.reason || 'Anomaly service start requested.');
+        } else if (action === 'stop') {
+          setServiceMessage(data?.reason || 'Anomaly service stop requested.');
+        } else {
+          setServiceMessage('Service status refreshed.');
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        updateStream(streamId, { scanState: 'error', message: `Scan failed: ${message}` });
+        setServiceMessage(message);
       } finally {
-        scanningLockRef.current[streamId] = false;
+        setServiceBusy(false);
       }
     },
-    [ingestAlertForStream, updateStream]
+    [refreshServiceStatus]
   );
-
-  useEffect(() => {
-    if (role !== 'admin') return;
-
-    const tick = () => {
-      for (const stream of streamsRef.current) {
-        if (stream.videoUrl && !stream.isPaused) {
-          void scanOneStream(stream.id);
-        }
-      }
-    };
-
-    tick();
-    const timer = setInterval(tick, AUTO_SCAN_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [role, scanOneStream]);
 
   useEffect(() => {
     if (!selectedAlert || !incidentModalPlayerRef.current) return;
@@ -399,6 +530,7 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    uploadedFilesRef.current[streamId] = file;
     const current = streamsRef.current.find((item) => item.id === streamId);
     if (current?.videoUrl) {
       URL.revokeObjectURL(current.videoUrl);
@@ -410,23 +542,10 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
       videoName: file.name,
       scanState: 'idle',
       scanResult: null,
-      message: `Loaded footage: ${file.name}. Auto-scanning active.`,
-      isPaused: false,
+      message: `Loaded footage: ${file.name}. Ready to run anomaly test.`,
+      isAnalyzing: false,
+      progressPercent: 0,
     });
-  };
-
-  const toggleStreamPause = (streamId: string) => {
-    const stream = streamsRef.current.find((item) => item.id === streamId);
-    if (!stream) return;
-    const nextPaused = !stream.isPaused;
-    updateStream(streamId, {
-      isPaused: nextPaused,
-      message: nextPaused ? 'Auto-scanning stopped.' : 'Auto-scanning resumed.',
-    });
-  };
-
-  const setStreamPlayer = (streamId: string, element: HTMLVideoElement | null) => {
-    streamPlayersRef.current[streamId] = element;
   };
 
   return (
@@ -480,9 +599,114 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
 
       {role === 'admin' && (
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-black text-slate-900">Anomaly Service Control</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Start the Python security service here before testing uploaded classroom clips.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void handleServiceAction('start')}
+                disabled={serviceBusy || serviceStatus?.running}
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {serviceBusy && !serviceStatus?.running ? 'Starting...' : 'Start service'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleServiceAction('stop')}
+                disabled={serviceBusy || !serviceStatus?.running}
+                className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Stop service
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleServiceAction('refresh')}
+                disabled={serviceBusy}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Refresh status
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Service</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">
+                {serviceStatus?.running ? 'Running' : 'Stopped'}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">PID</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{serviceStatus?.pid ?? 'N/A'}</p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Service URL</p>
+              <p className="mt-1 break-all text-sm font-bold text-slate-900">
+                {serviceStatus?.serviceUrl || 'http://127.0.0.1:8010'}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Health</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">
+                {serviceStatus?.health?.status || 'Unknown'}
+              </p>
+            </div>
+          </div>
+
+          {serviceMessage && (
+            <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">{serviceMessage}</p>
+          )}
+
+          {serviceStatus?.logs?.length ? (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-950 p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Recent service logs</p>
+              <div className="max-h-44 space-y-1 overflow-auto font-mono text-xs text-slate-200">
+                {serviceStatus.logs.slice(-10).map((line, index) => (
+                  <p key={`${index}-${line}`} className="break-all">
+                    {line}
+                  </p>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </section>
+      )}
+
+      {role === 'admin' && (
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-xl font-black text-slate-900">All Classroom CCTV Feeds</h2>
-            <p className="text-sm text-slate-500">All classes are scanned in parallel every 3 seconds.</p>
+            <div>
+              <h2 className="text-xl font-black text-slate-900">Classroom Security Test Lab</h2>
+              <p className="text-sm text-slate-500">Upload a class video, run the anomaly pipeline, and review the stored alerts below.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  serviceStatus?.running
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-amber-100 text-amber-700'
+                }`}
+              >
+                {serviceStatus?.running ? 'Service running' : 'Service stopped'}
+              </span>
+              {!serviceStatus?.running && (
+                <button
+                  type="button"
+                  onClick={() => void handleServiceAction('start')}
+                  disabled={serviceBusy}
+                  className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {serviceBusy ? 'Starting...' : 'Start here'}
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
@@ -503,11 +727,11 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => toggleStreamPause(stream.id)}
-                      disabled={!stream.videoUrl}
-                      className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+                      onClick={() => void analyzeOneStream(stream.id)}
+                      disabled={!stream.videoUrl || stream.isAnalyzing}
+                      className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {stream.isPaused ? 'Resume' : 'Stop'}
+                      {stream.isAnalyzing ? 'Testing...' : 'Run test'}
                     </button>
                   </div>
                 </div>
@@ -515,9 +739,7 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
                 <div className="rounded-xl border border-slate-200 bg-slate-900 p-2">
                   {stream.videoUrl ? (
                     <video
-                      ref={(el) => setStreamPlayer(stream.id, el)}
                       controls
-                      autoPlay
                       muted
                       className="h-40 w-full rounded-lg bg-black object-contain"
                       src={stream.videoUrl}
@@ -543,30 +765,100 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
                     <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Confidence output</label>
                     <div className="flex h-[34px] items-center rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700">
                       {stream.scanResult
-                        ? stream.scanResult.detected
-                          ? `${adjustDisplayedPercent(stream.scanResult.confidence * 100).toFixed(1)}%`
-                          : `No mobile (${adjustDisplayedPercent(stream.scanResult.overallMax * 100).toFixed(1)}%)`
+                        ? (() => {
+                            const confidence = primaryConfidence(stream.scanResult);
+                            return confidence !== null
+                              ? `${adjustDisplayedPercent(confidence * 100).toFixed(1)}%`
+                              : 'No alert';
+                          })()
                         : 'Waiting for scan'}
                     </div>
                   </div>
                 </div>
 
-                {stream.scanResult && stream.scanResult.topDetections.length > 0 && (
+                {stream.isAnalyzing && (
+                  <div className="mt-3">
+                    <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                      <span>Analysis progress</span>
+                      <span>{Math.round(stream.progressPercent || 0)}%</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-red-500 transition-all"
+                        style={{ width: `${Math.max(4, Math.min(100, stream.progressPercent || 0))}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {stream.scanResult && stream.scanResult.alerts.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {stream.scanResult.topDetections.slice(0, 3).map((det, idx) => (
+                    {stream.scanResult.alerts.slice(0, 3).map((alert, idx) => (
                       <span
                         key={`${stream.id}-${idx}`}
                         className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700"
                       >
-                        c{det.classId}: {adjustDisplayedPercent(det.score * 100).toFixed(1)}%
+                        {alert.type}: {adjustDisplayedPercent(Number(alert.confidence || 0) * 100).toFixed(1)}%
                       </span>
                     ))}
                   </div>
                 )}
 
-                {stream.message && (
-                  <p className="mt-2 rounded-lg bg-white px-2.5 py-1.5 text-xs text-slate-600">{stream.message}</p>
+                {stream.scanResult && stream.scanResult.model_results.filter((result) => result.detected).length > 0 && (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                      Detected timeline
+                    </p>
+                    <div className="space-y-2">
+                      {stream.scanResult.model_results
+                        .filter((result) => result.detected)
+                        .sort((a, b) => b.confidence - a.confidence)
+                        .slice(0, 4)
+                        .map((result, idx) => (
+                          <div
+                            key={`${stream.id}-result-${idx}-${result.model_name}-${result.event_type}`}
+                            className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-2.5 py-2 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-slate-800">
+                                {result.label || result.event_type}
+                              </p>
+                              <p className="truncate text-slate-500">
+                                {result.model_name} • frame {result.frame_index} • {formatSeconds(result.timestamp)}
+                              </p>
+                            </div>
+                            <span className="shrink-0 font-semibold text-slate-700">
+                              {adjustDisplayedPercent(result.confidence * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
                 )}
+
+                {stream.message && (
+                  <div className="mt-2 rounded-lg bg-white px-2.5 py-1.5 text-xs text-slate-600">
+                    <p>{stream.message}</p>
+                    {!serviceStatus?.running && !stream.isAnalyzing && (
+                      <button
+                        type="button"
+                        onClick={() => void handleServiceAction('start')}
+                        disabled={serviceBusy}
+                        className="mt-2 rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {serviceBusy ? 'Starting service...' : 'Start anomaly service'}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {stream.scanResult?.errors?.length ? (
+                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+                    {stream.scanResult.errors.slice(0, 2).map((error, idx) => (
+                      <p key={`${stream.id}-error-${idx}`}>{error}</p>
+                    ))}
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>
