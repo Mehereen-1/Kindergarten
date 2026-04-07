@@ -7,86 +7,82 @@ const TeacherDashboardStats = () => {
       value: "4",
       subtitle: "Active Classes",
       icon: Users,
-      bgColor: "bg-blue-50",
-      borderColor: "border-blue-200",
-      iconColor: "bg-blue-600",
-      textColor: "text-blue-600",
+      bgColor: "bg-[#f2f2e8]",
+      iconBgColor: "bg-white",
+      textColor: "text-[#352f00]",
+      accentColor: "#705900",
+      iconElement: "school",
     },
     {
       title: "Attendance Rate",
       value: "94%",
       subtitle: "This Month",
       icon: BarChart3,
-      bgColor: "bg-green-50",
-      borderColor: "border-green-200",
-      iconColor: "bg-green-600",
-      textColor: "text-green-600",
+      bgColor: "bg-[#f4f7f2]",
+      iconBgColor: "bg-white",
+      textColor: "text-[#352f00]",
+      accentColor: "#466337",
+      iconElement: "monitoring",
     },
-    // {
-    //   title: "Assignments",
-    //   value: "12",
-    //   subtitle: "Pending Review",
-    //   icon: BookOpen,
-    //   bgColor: "bg-amber-50",
-    //   borderColor: "border-amber-200",
-    //   iconColor: "bg-amber-600",
-    //   textColor: "text-amber-600",
-    // },
     {
       title: "Today's Classes",
       value: "3",
       subtitle: "Next: 10:30 AM",
       icon: Clock,
-      bgColor: "bg-purple-50",
-      borderColor: "border-purple-200",
-      iconColor: "bg-purple-600",
-      textColor: "text-purple-600",
+      bgColor: "bg-[#fff9f4]",
+      iconBgColor: "bg-white",
+      textColor: "text-[#352f00]",
+      accentColor: "#904800",
+      iconElement: "schedule",
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       {stats.map((stat, idx) => {
         const Icon = stat.icon;
         return (
           <div
             key={idx}
-            className={`group relative overflow-hidden rounded-2xl bg-white p-6 ${stat.borderColor} border transition-all duration-500 hover:shadow-lg hover:-translate-y-1 animate-in fade-in zoom-in duration-700`}
-            style={{ animationDelay: `${idx * 100}ms` }}
+            className={`${stat.bgColor} p-8 sketched-border flex flex-col items-center text-center transition-transform duration-500 hover:-translate-y-2 group`}
+            style={{
+              border: "2px solid #5a4a3a",
+              borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px",
+            }}
           >
-            {/* Subtle background on hover */}
-            <div className={`absolute inset-0 ${stat.bgColor} opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl`}></div>
+            {/* Icon with blob container */}
+            <div className={`w-16 h-16 ${stat.iconBgColor} blob-container flex items-center justify-center mb-4 shadow-sm`}
+              style={{
+                borderRadius: "40% 60% 70% 30% / 40% 50% 60% 50%",
+              }}
+            >
+              <span className="material-symbols-outlined text-on-surface-variant text-3xl" style={{ fontVariationSettings: "'wght' 300" }}>
+                {stat.iconElement}
+              </span>
+            </div>
 
-            {/* Top accent bar */}
-            <div className={`absolute top-0 left-0 right-0 h-1 ${stat.iconColor} shadow-md`}></div>
+            {/* Title */}
+            <h3 className="text-2xl font-accent font-bold text-on-surface mb-1">
+              {stat.title}
+            </h3>
 
-            <div className="relative z-10">
-              {/* Header */}
-              <div className="flex items-start justify-between mb-6">
-                <div className="flex-1">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
-                    {stat.title}
-                  </p>
-                  <div className="flex items-baseline gap-2">
-                    <span className={`text-5xl font-bold ${stat.textColor} group-hover:scale-110 transition-transform duration-300 inline-block`}>
-                      {stat.value}
-                    </span>
-                  </div>
-                </div>
-                <div className={`p-4 rounded-2xl ${stat.bgColor} shadow-md group-hover:scale-110 transition-all duration-500`}>
-                  <Icon className={`w-6 h-6 ${stat.textColor}`} strokeWidth={2.5} />
-                </div>
-              </div>
+            {/* Value */}
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-4xl font-black text-on-surface tracking-tight">
+                {stat.value}
+              </span>
+            </div>
 
-              {/* Footer with trend */}
-              <div className="flex items-center justify-between pt-4 border-t border-slate-100 group-hover:border-slate-200 transition-colors duration-300">
-                <p className="text-sm text-slate-600 font-semibold">
-                  {stat.subtitle}
-                </p>
-                <div className={`p-2 rounded-full ${stat.iconColor} text-white opacity-0 group-hover:opacity-100 transition-all duration-300 group-hover:animate-bounce`}>
-                  <ArrowUpRight className="w-4 h-4" />
-                </div>
-              </div>
+            {/* Subtitle */}
+            <p className="text-on-surface-variant text-sm font-medium leading-relaxed mt-2">
+              {stat.subtitle}
+            </p>
+
+            {/* Decorative line at bottom */}
+            <div className="mt-6 flex items-center gap-2">
+              <div className="h-0.5 w-6 bg-on-surface/20"></div>
+              <span className="material-symbols-outlined text-xs text-on-surface/30">circle</span>
+              <div className="h-0.5 w-6 bg-on-surface/20"></div>
             </div>
           </div>
         );
