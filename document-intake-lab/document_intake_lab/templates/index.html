@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document Intake Lab</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+    .card {
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    h1, h2, h3 {
+      margin-top: 0;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 220px 220px;
+      gap: 12px;
+      align-items: end;
+    }
+    input, select, button {
+      width: 100%;
+      box-sizing: border-box;
+      border-radius: 8px;
+      border: 1px solid #475569;
+      padding: 10px 12px;
+      background: #020617;
+      color: #e2e8f0;
+      font-size: 14px;
+    }
+    button {
+      cursor: pointer;
+      background: #2563eb;
+      border: 0;
+      font-weight: 700;
+    }
+    button:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .pill {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .ok { background: #14532d; color: #dcfce7; }
+    .warn { background: #78350f; color: #fef3c7; }
+    .bad { background: #7f1d1d; color: #fee2e2; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px;
+      border-bottom: 1px solid #334155;
+      vertical-align: top;
+      font-size: 14px;
+    }
+    img {
+      max-width: 100%;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: white;
+    }
+    ul {
+      padding-left: 18px;
+    }
+    .muted {
+      color: #94a3b8;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #020617;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 12px;
+      max-height: 280px;
+      overflow: auto;
+    }
+    @media (max-width: 900px) {
+      .row, .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Document Intake Lab</h1>
+      <p class="muted">
+        Separate, review-first registration prototype. It rejects bad images, cleans the page, extracts text,
+        and asks for review instead of pretending low-confidence OCR is final truth.
+      </p>
+      <form id="analyze-form">
+        <div class="row">
+          <div>
+            <label for="image">Document image</label>
+            <input id="image" name="image" type="file" accept="image/*" required />
+          </div>
+          <div>
+            <label for="document_type">Document type</label>
+            <select id="document_type" name="document_type">
+              {% for value, label in document_types %}
+              <option value="{{ value }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="ocr_backend">OCR backend</label>
+            <select id="ocr_backend" name="ocr_backend">
+              {% for backend in ocr_backends %}
+              <option value="{{ backend }}">{{ backend }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div style="margin-top: 14px;">
+          <button id="submit-btn" type="submit">Analyze document</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="status-card" class="card" style="display:none;">
+      <h2>Analysis Result</h2>
+      <div id="status-line"></div>
+      <div class="grid" style="margin-top: 14px;">
+        <div>
+          <h3>Cleaned Preview</h3>
+          <img id="preview" alt="Cleaned document preview" />
+        </div>
+        <div>
+          <h3>Warnings</h3>
+          <ul id="warnings"></ul>
+          <h3>Quality Issues</h3>
+          <ul id="issues"></ul>
+        </div>
+      </div>
+    </div>
+
+    <div id="fields-card" class="card" style="display:none;">
+      <h2>Extracted Fields</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Value</th>
+            <th>Confidence</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody id="fields-body"></tbody>
+      </table>
+    </div>
+
+    <div id="text-card" class="card" style="display:none;">
+      <h2>Raw OCR Text</h2>
+      <pre id="raw-text"></pre>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('analyze-form');
+    const submitBtn = document.getElementById('submit-btn');
+    const statusCard = document.getElementById('status-card');
+    const fieldsCard = document.getElementById('fields-card');
+    const textCard = document.getElementById('text-card');
+    const statusLine = document.getElementById('status-line');
+    const preview = document.getElementById('preview');
+    const warnings = document.getElementById('warnings');
+    const issues = document.getElementById('issues');
+    const fieldsBody = document.getElementById('fields-body');
+    const rawText = document.getElementById('raw-text');
+
+    function setList(element, items) {
+      element.innerHTML = '';
+      if (!items || !items.length) {
+        element.innerHTML = '<li class="muted">None</li>';
+        return;
+      }
+      for (const item of items) {
+        const li = document.createElement('li');
+        li.textContent = item;
+        element.appendChild(li);
+      }
+    }
+
+    function setStatusPill(status) {
+      const cls = status === 'high_confidence_prefill' ? 'ok' : (status === 'review_required' ? 'warn' : 'bad');
+      const label = status === 'high_confidence_prefill' ? 'High confidence prefill' : (status === 'review_required' ? 'Review required' : 'Rejected');
+      return '<span class="pill ' + cls + '">' + label + '</span>';
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Analyzing...';
+
+      const data = new FormData(form);
+      const response = await fetch('/api/analyze-document', {
+        method: 'POST',
+        body: data,
+      });
+      const payload = await response.json();
+
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Analyze document';
+
+      statusCard.style.display = 'block';
+      fieldsCard.style.display = 'block';
+      textCard.style.display = 'block';
+
+      if (!response.ok) {
+        statusLine.innerHTML = '<span class="pill bad">Error</span> ' + (payload.detail || 'Analysis failed');
+        setList(warnings, [payload.detail || 'Analysis failed']);
+        setList(issues, []);
+        preview.removeAttribute('src');
+        fieldsBody.innerHTML = '<tr><td colspan="4" class="muted">No structured fields found.</td></tr>';
+        rawText.textContent = '';
+        return;
+      }
+
+      statusLine.innerHTML =
+        setStatusPill(payload.status) +
+        ' Document type: <strong>' + payload.document_type + '</strong>' +
+        ' (' + Math.round((payload.document_type_confidence || 0) * 100) + '%)' +
+        ' | OCR: <strong>' + payload.ocr_backend + '</strong>' +
+        ' | Quality score: <strong>' + Math.round((payload.quality?.score || 0) * 100) + '%</strong>';
+
+      preview.src = payload.cleaned_preview_base64 ? 'data:image/jpeg;base64,' + payload.cleaned_preview_base64 : '';
+      setList(warnings, payload.warnings || []);
+      setList(issues, (payload.quality?.issues || []).map((item) => item.severity.toUpperCase() + ': ' + item.message));
+
+      fieldsBody.innerHTML = '';
+      for (const field of payload.fields || []) {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + field.label + '</td>' +
+          '<td>' + field.value + '</td>' +
+          '<td>' + Math.round((field.confidence || 0) * 100) + '%</td>' +
+          '<td>' + (field.source_text || '') + '</td>';
+        fieldsBody.appendChild(tr);
+      }
+      if (!payload.fields || !payload.fields.length) {
+        fieldsBody.innerHTML = '<tr><td colspan="4" class="muted">No structured fields found yet.</td></tr>';
+      }
+
+      rawText.textContent = payload.raw_text || 'No OCR text returned.';
+    });
+  </script>
+</body>
+</html>
