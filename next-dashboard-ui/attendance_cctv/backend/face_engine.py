@@ -21,6 +21,7 @@ import os
 import cv2
 import numpy as np
 from insightface.app import FaceAnalysis
+from bson import ObjectId
 
 
 DEFAULT_INSIGHTFACE_HOME = os.getenv(
@@ -61,7 +62,10 @@ def load_embeddings_from_db(db):
             student_name = str(student_id)
             if students_collection is not None:
                 try:
-                    student = students_collection.find_one({"_id": student_id})
+                    lookup_id = student_id
+                    if isinstance(student_id, str) and ObjectId.is_valid(student_id):
+                        lookup_id = ObjectId(student_id)
+                    student = students_collection.find_one({"_id": lookup_id})
                     if student and student.get("name"):
                         student_name = student["name"]
                 except Exception:

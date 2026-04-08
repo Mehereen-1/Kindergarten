@@ -10,19 +10,19 @@ export default function TeacherLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className="teacher-theme flex h-screen bg-[#fff7d6]">
       {/* Desktop Sidebar */}
-      <div className="hidden md:block md:w-64 lg:w-72 bg-white border-r border-slate-200">
+      <div className="hidden lg:block lg:w-80 shrink-0">
         <TeacherSidebar />
       </div>
 
       {/* Mobile Sidebar */}
-      <div className="md:hidden">
+      <div className="lg:hidden">
         <MobileTeacherSidebar />
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-y-auto">
+      <div className="flex-1 min-w-0 flex flex-col overflow-y-auto">
         {/* <NotificationStatusIndicator /> */}
         {children}
       </div>

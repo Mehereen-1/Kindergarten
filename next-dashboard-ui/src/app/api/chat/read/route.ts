@@ -26,7 +26,11 @@ export async function POST(request: NextRequest) {
         receiverId,
         read: false
       },
-      { read: true }
+      {
+        read: true,
+        deliveryStatus: 'seen',
+        seenAt: new Date(),
+      }
     );
 
     return NextResponse.json({ success: true }, { status: 200 });

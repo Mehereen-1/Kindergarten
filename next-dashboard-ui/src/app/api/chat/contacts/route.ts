@@ -84,7 +84,11 @@ export async function GET(request: NextRequest) {
           ]
         })
         .sort({ timestamp: -1 })
-        .select('message timestamp read senderId');
+        .select('message attachments timestamp read senderId');
+
+        const previewMessage = lastMessage
+          ? (lastMessage.message || (lastMessage.attachments?.length ? `📎 ${lastMessage.attachments.length} attachment${lastMessage.attachments.length > 1 ? 's' : ''}` : ''))
+          : null;
 
         const unreadCount = await ChatMessage.countDocuments({
           senderId: contact._id,
@@ -98,7 +102,7 @@ export async function GET(request: NextRequest) {
           email: contact.email,
           role: contact.role,
           lastMessage: lastMessage ? {
-            message: lastMessage.message,
+            message: previewMessage,
             timestamp: lastMessage.timestamp,
             isFromMe: lastMessage.senderId.toString() === currentUserId
           } : null,

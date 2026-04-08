@@ -50,7 +50,7 @@ def draw_boxes(frame: np.ndarray, results: list,
         y2 = int(smoothed[3] * sy)
 
         # Determine color based on recognition status
-        if "Unknown" in name:
+        if "Unknown" in name or "Spoof" in name:
             color = (0, 0, 255)      # Red for unknown
         elif "✓" in name:
             color = (0, 200, 0)      # Green for confirmed

@@ -1,10 +1,12 @@
 fastapi
 uvicorn[standard]
-python-multipart
-python-dotenv
-pymongo
 numpy
-pillow
+opencv-python-headless==4.10.0.84
+pymongo
+python-dotenv
+python-multipart
 onnxruntime
-opencv-python-headless
 insightface==0.7.3
+pillow
+pandas
+openpyxl

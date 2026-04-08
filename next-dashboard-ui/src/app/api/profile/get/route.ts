@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import User from '@/lib/models/User';
 import Student from '@/lib/models/Student';
-import mongoose from 'mongoose';
+import StudentClassHistory from '@/lib/models/StudentClassHistory';
 
 /**
  * GET /api/profile/get?userId={id}&targetRole={admin|teacher|parent}&targetId={id}&childId={id}
@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
     let profileId = targetId || currentUserId;
     let isOwnProfile = profileId === currentUserId;
     let profileType = 'user'; // 'user' for User model, 'student' for Student model
+    const academicYear = request.nextUrl.searchParams.get('academicYear') || String(new Date().getFullYear());
 
     // If childId is provided, this is a student profile request
     if (childId) {
@@ -48,7 +49,15 @@ export async function GET(request: NextRequest) {
       if (currentUserRole === 'admin') {
         // Admin can view anyone's profile (including students)
       } else if (currentUserRole === 'parent' && childId) {
-        // Parent can only view their child's profile - permission already granted above
+        const ownedChild = await Student.findOne({ _id: childId, parentId: currentUserId }).select('_id').lean();
+        if (!ownedChild) {
+          return NextResponse.json(
+            { error: 'Permission denied' },
+            { status: 403 }
+          );
+        }
+      } else if (currentUserRole === 'teacher' && childId) {
+        // Teacher can view student profile in read-only mode.
       } else {
         return NextResponse.json(
           { error: 'Permission denied' },
@@ -61,6 +70,26 @@ export async function GET(request: NextRequest) {
 
     if (profileType === 'student') {
       profile = await Student.findById(profileId).select('-createdAt -updatedAt');
+
+      if (profile) {
+        const history = await StudentClassHistory.findOne({
+          studentId: profile._id,
+          academicYear,
+          status: 'active',
+        })
+          .populate('classId', 'name classId grade')
+          .lean();
+
+        const classDoc = history?.classId as any;
+        profile = {
+          ...profile.toObject(),
+          grade: classDoc?.grade || null,
+          classId: classDoc?.classId || null,
+          className: classDoc?.name || null,
+          roll: history?.rollNo || null,
+          academicYear,
+        };
+      }
     } else {
       profile = await User.findById(profileId).select('-password -createdAt -updatedAt');
     }
@@ -73,7 +102,10 @@ export async function GET(request: NextRequest) {
       profile,
       profileType,
       isOwnProfile,
-      canEdit: isOwnProfile || currentUserRole === 'admin'
+      canEdit:
+        isOwnProfile ||
+        currentUserRole === 'admin' ||
+        (currentUserRole === 'parent' && profileType === 'student' && Boolean(childId))
     });
   } catch (error: any) {
     console.error('Error getting profile:', error);

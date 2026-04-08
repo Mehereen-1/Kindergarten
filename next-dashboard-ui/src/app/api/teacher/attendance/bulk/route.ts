@@ -52,10 +52,11 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      if (!['Present', 'Absent', 'Late'].includes(status)) {
+      const normalizedStatus = String(status || '').toLowerCase();
+      if (!['present', 'absent', 'late'].includes(normalizedStatus)) {
         results.failed.push({
           studentId,
-          error: 'Status must be Present, Absent, or Late'
+          error: 'Status must be present, absent, or late'
         });
         continue;
       }
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
 
         if (existingAttendance) {
           // Update existing
-          existingAttendance.status = status;
+          existingAttendance.status = normalizedStatus as 'present' | 'absent' | 'late';
           if (teacherId) existingAttendance.markedBy = teacherId;
           await existingAttendance.save();
           
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
             studentId,
             classId: classId || undefined,
             date: attendanceDate,
-            status,
+            status: normalizedStatus,
             markedBy: teacherId || undefined
           });
 

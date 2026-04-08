@@ -110,20 +110,21 @@ const ParentTopBar = () => {
   };
 
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+    <header className="bg-[#fefcf5]/90 backdrop-blur-md border-b border-[#e3dfc0] sticky top-0 z-40 shadow-[0_4px_20px_rgba(58,57,39,0.04)]">
       <div className="flex items-center justify-between px-6 py-4 gap-4">
         {/* Logo */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-xl">
+          <div className="w-10 h-10 rounded-full bg-[#d9a777]/30 flex items-center justify-center text-xl">
             👨‍👩‍👧
           </div>
-          <h2 className="text-xl font-black text-slate-900 hidden sm:block">KinderVision</h2>
+          <h2 className="text-xl font-black text-[#3a3927] hidden sm:block">KinderVision</h2>
         </div>
 
         {/* Child Selector */}
         <div className="flex-1 max-w-xs">
           <div className="relative">
-            <button className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200 transition-all shadow-sm border border-slate-300">
+            
+            <button className="w-full flex items-center justify-between px-4 py-2.5 rounded-full bg-[#fefade] text-[#3a3927] font-semibold hover:bg-[#ede9c8] transition-all shadow-sm border border-[#d6d2b5]">
               <span className="text-sm">{selectedChild}</span>
               <ChevronDown className="w-4 h-4" />
             </button>
@@ -136,7 +137,7 @@ const ParentTopBar = () => {
           <div className="relative" ref={notificationRef}>
             <button
               onClick={openNotifications}
-              className="relative p-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all hover:scale-110 shadow-sm"
+              className="relative p-2.5 rounded-lg bg-[#fefade] hover:bg-[#ede9c8] text-[#676551] transition-all hover:scale-110 shadow-sm"
             >
               <Bell className="w-5 h-5" />
               {unreadNoticeCount > 0 && (
@@ -147,38 +148,38 @@ const ParentTopBar = () => {
             </button>
 
             {notificationMenu && (
-              <div className="absolute top-full mt-2 right-0 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 w-[360px] max-w-[90vw] overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
-                  <p className="text-sm font-bold text-slate-900">Notifications</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Latest announcements and reminders</p>
+              <div className="absolute top-full mt-2 right-0 bg-[#fefade] rounded-xl shadow-2xl border border-[#d6d2b5] z-50 w-[360px] max-w-[90vw] overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#e3dfc0] bg-[#f8f5df]">
+                  <p className="text-sm font-bold text-[#3a3927]">Notifications</p>
+                  <p className="text-xs text-[#676551] mt-0.5">Latest announcements and reminders</p>
                 </div>
 
-                <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                <div className="max-h-80 overflow-y-auto divide-y divide-[#ece7ca]">
                   {notices.length === 0 && (
-                    <div className="p-4 text-sm text-slate-500">No notifications yet.</div>
+                    <div className="p-4 text-sm text-[#676551]">No notifications yet.</div>
                   )}
 
                   {notices.slice(0, 8).map((notice) => (
-                    <div key={notice._id} className="p-4 hover:bg-slate-50 transition-colors">
+                    <div key={notice._id} className="p-4 hover:bg-[#f4efd5] transition-colors">
                       <div className="flex items-start justify-between gap-3">
-                        <p className="text-sm font-semibold text-slate-900 leading-5">{notice.title}</p>
-                        <span className="text-[11px] text-slate-400 whitespace-nowrap">
+                        <p className="text-sm font-semibold text-[#3a3927] leading-5">{notice.title}</p>
+                        <span className="text-[11px] text-[#9b977f] whitespace-nowrap">
                           {getRelativeTime(notice.createdAt || notice.date)}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-600 mt-1 line-clamp-2">{notice.description}</p>
-                      <span className="inline-block mt-2 text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold uppercase tracking-wide">
+                      <p className="text-xs text-[#676551] mt-1 line-clamp-2">{notice.description}</p>
+                      <span className="inline-block mt-2 text-[10px] px-2 py-0.5 rounded-full bg-[#ede9c8] text-[#705900] font-semibold uppercase tracking-wide">
                         {notice.type === "event-reminder" ? "Event Reminder" : "Announcement"}
                       </span>
                     </div>
                   ))}
                 </div>
 
-                <div className="px-4 py-3 border-t border-slate-100">
+                <div className="px-4 py-3 border-t border-[#ece7ca]">
                   <Link
                     href="/parent/events"
                     onClick={() => setNotificationMenu(false)}
-                    className="text-sm font-semibold text-blue-600 hover:text-blue-500"
+                    className="text-sm font-semibold text-[#845c32] hover:text-[#6b4a28]"
                   >
                     View all event notices
                   </Link>
@@ -188,30 +189,30 @@ const ParentTopBar = () => {
           </div>
 
           {/* Messages */}
-          <button className="relative p-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all hover:scale-110 shadow-sm">
+          <button className="relative p-2.5 rounded-lg bg-[#fefade] hover:bg-[#ede9c8] text-[#676551] transition-all hover:scale-110 shadow-sm">
             <MessageCircle className="w-5 h-5" />
-            <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-blue-300 rounded-full animate-pulse shadow-lg"></span>
+            <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#5f6843] rounded-full animate-pulse shadow-lg"></span>
           </button>
 
           {/* Profile */}
           <div className="relative" ref={profileRef}>
             <button
               onClick={() => setProfileMenu(!profileMenu)}
-              className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-white/20 transition-all group"
+              className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-[#ede9c8]/70 transition-all group"
             >
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-300 to-peach-300 flex items-center justify-center text-white font-bold shadow-lg group-hover:scale-110 transition-transform">
+              <div className="w-9 h-9 rounded-full bg-[#d9a777] flex items-center justify-center text-[#271300] font-bold shadow-md group-hover:scale-110 transition-transform">
                 👤
               </div>
             </button>
             {profileMenu && (
-              <div className="absolute top-full mt-2 right-0 bg-white rounded-xl shadow-2xl border border-slate-200 py-2 z-50 w-56 animate-in fade-in slide-in-from-top-2 duration-200">
-                <div className="px-4 py-3 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-peach-50">
-                  <p className="text-sm font-bold text-slate-900">{user?.name || 'Parent Name'}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{user?.email || 'parent@kindergarten.edu'}</p>
+              <div className="absolute top-full mt-2 right-0 bg-[#fefade] rounded-xl shadow-2xl border border-[#d6d2b5] py-2 z-50 w-56 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="px-4 py-3 border-b border-[#e3dfc0] bg-[#d9a777]/20">
+                  <p className="text-sm font-bold text-[#3a3927]">{user?.name || 'Parent Name'}</p>
+                  <p className="text-xs text-[#676551] mt-0.5">{user?.email || 'parent@kindergarten.edu'}</p>
                 </div>
                 <Link
                   href="/parent/profile"
-                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 border-b border-slate-100 transition-colors"
+                  className="w-full text-left px-4 py-3 text-sm text-[#3a3927] hover:bg-[#ede9c8] flex items-center gap-3 border-b border-[#e3dfc0] transition-colors"
                   onClick={() => setProfileMenu(false)}
                 >
                   <User className="w-4 h-4" />
@@ -219,7 +220,7 @@ const ParentTopBar = () => {
                 </Link>
                 <Link
                   href="/parent/child-profile"
-                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 border-b border-slate-100 transition-colors"
+                  className="w-full text-left px-4 py-3 text-sm text-[#3a3927] hover:bg-[#ede9c8] flex items-center gap-3 border-b border-[#e3dfc0] transition-colors"
                   onClick={() => setProfileMenu(false)}
                 >
                   <User className="w-4 h-4" />
@@ -227,7 +228,7 @@ const ParentTopBar = () => {
                 </Link>
                 <Link
                   href="/parent/settings"
-                  className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 border-b border-slate-100 transition-colors"
+                  className="w-full text-left px-4 py-3 text-sm text-[#3a3927] hover:bg-[#ede9c8] flex items-center gap-3 border-b border-[#e3dfc0] transition-colors"
                   onClick={() => setProfileMenu(false)}
                 >
                   <Settings className="w-4 h-4" />
@@ -235,7 +236,7 @@ const ParentTopBar = () => {
                 </Link>
                 <button
                   onClick={signOut}
-                  className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                  className="w-full text-left px-4 py-3 text-sm text-[#3a3927] hover:bg-[#be2d06] hover:text-white flex items-center gap-3 transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
                   Logout

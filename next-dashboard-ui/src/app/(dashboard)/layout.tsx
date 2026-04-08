@@ -10,20 +10,22 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <div className="h-screen flex">
+    <div className="h-screen flex overflow-hidden bg-[#f6f0d8]">
       {/* LEFT */}
-      <div className="w-[14%] md:w-[8%] lg:w-[16%] xl:w-[14%] p-4">
+      <div className="w-[88px] lg:w-[270px] p-3 lg:p-4 bg-[#fefade] border-r border-[#ddd8b8] shadow-[8px_0_28px_-16px_rgba(58,57,39,0.24)] flex flex-col min-h-0 shrink-0">
         <Link
-          href="/"
-          className="flex items-center justify-center lg:justify-start gap-2"
+          href="/dashboard/admin"
+          className="flex items-center justify-center lg:justify-start gap-2 rounded-xl p-2 hover:bg-[#ede9c8] transition-colors"
         >
           <Image src="/logo.png" alt="logo" width={32} height={32} />
-          <span className="hidden lg:block font-bold">Kinder Vision</span>
+          <span className="hidden lg:block font-black text-[#4f5838]">Kinder Vision</span>
         </Link>
-        <Menu />
+        <div className="mt-2 min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
+          <Menu />
+        </div>
       </div>
       {/* RIGHT */}
-      <div className="w-[86%] md:w-[92%] lg:w-[84%] xl:w-[86%] bg-[#F7F8FA] overflow-scroll flex flex-col">
+      <div className="min-w-0 flex-1 bg-[#fff8e8] overflow-y-auto overflow-x-hidden flex flex-col">
         {/* <NotificationStatusIndicator /> */}
         <Navbar />
         {children}

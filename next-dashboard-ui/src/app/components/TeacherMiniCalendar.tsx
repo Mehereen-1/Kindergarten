@@ -24,10 +24,11 @@ const TeacherMiniCalendar = () => {
 
   const daysInMonth = getDaysInMonth(currentDate);
   const firstDay = getFirstDayOfMonth(currentDate);
-  const days = [];
+  const days: Array<number | null> = [];
 
-  // Add empty cells for days before month starts
-  for (let i = 0; i < firstDay; i++) {
+  // Add empty cells for days before month starts (adjust for Monday start)
+  const adjustedFirstDay = firstDay === 0 ? 6 : firstDay - 1;
+  for (let i = 0; i < adjustedFirstDay; i++) {
     days.push(null);
   }
 
@@ -40,7 +41,8 @@ const TeacherMiniCalendar = () => {
     "July", "August", "September", "October", "November", "December"
   ];
 
-  const isToday = (day: number) => {
+  const isToday = (day: number | null) => {
+    if (day === null) return false;
     const today = new Date();
     return day === today.getDate() &&
       currentDate.getMonth() === today.getMonth() &&
@@ -52,104 +54,126 @@ const TeacherMiniCalendar = () => {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 animate-in fade-in slide-in-from-right-5 duration-700">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 px-4 py-5 relative overflow-hidden">
-        {/* Decorative circles */}
-        <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -mr-10 -mt-10"></div>
-        <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/5 rounded-full -ml-8 -mb-8"></div>
+    <div className="bg-[#f8e999] rounded-[24px_48px_16px_40px] shadow-sm relative overflow-hidden animate-in fade-in slide-in-from-right-5 duration-700"
+      style={{
+        border: "2px solid #5a4a3a",
+        borderRadius: "24px 48px 16px 40px",
+      }}
+    >
+      {/* Decorative botanical elements */}
+      <div className="absolute -top-4 -right-4 w-24 h-24 text-[#705900] opacity-20 pointer-events-none">
+        <span className="material-symbols-outlined text-8xl">eco</span>
+      </div>
 
-        <div className="flex items-center justify-between relative z-10">
+      {/* Header */}
+      <div className="px-5 pt-5 pb-3 relative">
+        <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-base font-bold text-white drop-shadow-lg">
+            <h3 className="text-lg font-black text-[#352f00] drop-shadow-sm">
               {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
             </h3>
           </div>
-          <div className="flex gap-1">
+          <div className="flex gap-2">
             <button
               onClick={previousMonth}
-              className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-110 backdrop-blur-sm"
+              className="w-7 h-7 rounded-full bg-[#fff7d6] hover:bg-[#edde84] text-[#352f00] transition-all hover:scale-110 flex items-center justify-center shadow-sm"
+              style={{ border: "1px solid #5a4a3a/20" }}
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={nextMonth}
-              className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-110 backdrop-blur-sm"
+              className="w-7 h-7 rounded-full bg-[#fff7d6] hover:bg-[#edde84] text-[#352f00] transition-all hover:scale-110 flex items-center justify-center shadow-sm"
+              style={{ border: "1px solid #5a4a3a/20" }}
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
       </div>
 
       {/* Calendar */}
-      <div className="p-4">
-        {/* Day headers */}
-        <div className="grid grid-cols-7 gap-0.5 mb-1">
+      <div className="px-5 pb-1">
+        {/* Day headers - Monday to Sunday */}
+        <div className="grid grid-cols-7 gap-1 mb-2">
           {["M", "T", "W", "T", "F", "S", "S"].map((day, idx) => (
-            <div key={idx} className="text-center text-xs font-bold text-slate-600 py-0.5">
+            <div key={idx} className="text-center text-xs font-bold text-[#352f00]/50 py-1">
               {day}
             </div>
           ))}
         </div>
 
         {/* Days grid */}
-        <div className="grid grid-cols-7 gap-0.5 mb-4">
+        <div className="grid grid-cols-7 gap-1">
           {days.map((day, index) => (
             <button
               key={index}
               className={`
-                relative aspect-square flex items-center justify-center rounded text-xs font-semibold
-                transition-all duration-300 group overflow-hidden
+                relative aspect-square flex items-center justify-center rounded-lg text-xs font-semibold
+                transition-all duration-300 group
                 ${day === null ? "cursor-default" : "cursor-pointer"}
                 ${isToday(day)
-                  ? "bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-lg scale-105 hover:shadow-xl"
+                  ? "bg-[#705900] text-white shadow-md rotate-3 scale-105 hover:scale-110"
                   : isWeekend(index) && day
-                    ? "text-red-500 hover:bg-red-50 font-bold"
+                    ? "text-[#904800] hover:bg-[#fff7d6] font-bold"
                     : day
-                      ? "text-slate-700 hover:bg-indigo-50"
+                      ? "text-[#352f00] hover:bg-[#fff7d6]"
                       : ""
                 }
               `}
             >
-              {/* Hover background */}
-              <div className={`absolute inset-0 bg-gradient-to-br from-indigo-100 to-purple-100 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 rounded`}></div>
-
               {day && (
-                <>
-                  <span className="relative z-10 text-xs">{day}</span>
-                  {/* Glow effect for today */}
-                  {isToday(day) && (
-                    <div className="absolute inset-0 rounded border border-white/50 animate-pulse"></div>
-                  )}
-                </>
+                <span className="relative z-10 text-xs">{day}</span>
               )}
             </button>
           ))}
         </div>
       </div>
 
-        {/* Event indicators */}
-        <div className="px-4 pb-4">
-          <h4 className="text-sm font-bold text-slate-900 mb-3">Upcoming Events</h4>
-          <div className="space-y-3">
+      {/* Event indicators - Teacher's Note style */}
+      <div className="p-5 mt-1">
+        <div className="bg-[#fffcc2] p-5 rounded-lg shadow-sm relative"
+          style={{
+            border: "2px solid #5a4a3a",
+            borderRadius: "16px 32px 12px 28px",
+          }}
+        >
+          {/* Pin Decoration */}
+          <div className="absolute top-[-20px] left-1/2 -translate-x-1/2 w-8 h-8 bg-[#b02500] rounded-full shadow-md z-20 flex items-center justify-center">
+            <div className="w-1.5 h-1.5 bg-white/50 rounded-full mb-1 ml-1"></div>
+          </div>
+
+          <h4 className="font-accent text-xl text-[#352f00] mb-3 border-b border-[#352f00]/10 pb-2 text-center">
+            Upcoming Events
+          </h4>
+          <div className="space-y-2">
             {[
-              { title: "Class Meeting", time: "10:00 AM - 11:00 AM", color: "from-blue-500 to-cyan-500" },
-              { title: "Parent Conference", time: "2:00 PM - 3:00 PM", color: "from-purple-500 to-pink-500" },
-              { title: "Exam Preparation", time: "3:30 PM - 4:30 PM", color: "from-green-500 to-emerald-500" },
+              { title: "Class Meeting", time: "10:00 AM - 11:00 AM", icon: "groups" },
+              { title: "Parent Conference", time: "2:00 PM - 3:00 PM", icon: "forum" },
+              { title: "Exam Preparation", time: "3:30 PM - 4:30 PM", icon: "school" },
             ].map((event, idx) => (
               <div
                 key={idx}
-                className="p-3 rounded-lg bg-gradient-to-r from-slate-50 to-white border-l-4 border-transparent hover:border-indigo-600 hover:bg-indigo-50 transition-all group cursor-pointer animate-in fade-in slide-in-from-left-5 duration-500 shadow-sm hover:shadow-md"
+                className="flex items-start gap-3 p-2 rounded-lg hover:bg-[#fff7d6]/50 transition-all group cursor-pointer animate-in fade-in slide-in-from-left-5 duration-500"
                 style={{ animationDelay: `${idx * 100}ms` }}
               >
-                <div className={`w-2.5 h-2.5 rounded-full bg-gradient-to-r ${event.color} float-left mr-2.5 mt-0.5 group-hover:scale-150 transition-transform shadow-md`}></div>
-                <p className="text-sm font-semibold text-slate-900">{event.title}</p>
-                <p className="text-xs text-slate-500 mt-1.5">{event.time}</p>
+                <div className="w-7 h-7 bg-white blob-container flex items-center justify-center shadow-sm flex-shrink-0">
+                  <span className="material-symbols-outlined text-[#705900] text-base">{event.icon}</span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-[#352f00] group-hover:text-[#904800] transition-colors">
+                    {event.title}
+                  </p>
+                  <p className="text-xs text-[#352f00]/50 mt-0.5">{event.time}</p>
+                </div>
+                <span className="material-symbols-outlined text-[#352f00]/30 text-sm opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-1">
+                  arrow_forward
+                </span>
               </div>
             ))}
           </div>
         </div>
+      </div>
     </div>
   );
 };
