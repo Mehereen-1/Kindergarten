@@ -8,7 +8,8 @@ from document_intake_lab.schemas import ExtractedField, OcrLine
 
 PHONE_PATTERN = re.compile(r"(?:\+?88)?01[3-9]\d{8}")
 DATE_PATTERN = re.compile(
-    r"\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2})\b"
+    r"\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\b",
+    re.IGNORECASE,
 )
 LONG_NUMBER_PATTERN = re.compile(r"\b\d{10,18}\b")
 
@@ -71,6 +72,9 @@ FIELD_ALIASES: Dict[str, Dict[str, Sequence[str]]] = {
         "class_name": ("class", "class applied", "\u09b6\u09cd\u09b0\u09c7\u09a3\u09bf"),
     },
 }
+
+
+NID_NUMBER_PATTERN = re.compile(r"\b\d{10,17}\b")
 
 
 def _normalize(text: str) -> str:
@@ -213,6 +217,29 @@ def _match_labeled_pattern(
 
 def _normalize_alpha(text: str) -> str:
     return re.sub(r"[^a-z]+", "", text.lower())
+
+
+def _looks_like_header_noise(value: str) -> bool:
+    normalized = _normalize(value)
+    return any(
+        token in normalized
+        for token in (
+            "government",
+            "republic",
+            "bangladesh",
+            "national id",
+            "card",
+            "registrar",
+            "certificate",
+        )
+    )
+
+
+def _clean_nid_name(value: str) -> str:
+    cleaned = re.sub(r"\s+", " ", value).strip(" :|-")
+    cleaned = re.sub(r"^[^\w\u0980-\u09ff]+", "", cleaned)
+    cleaned = re.sub(r"[^\w\u0980-\u09ff .,'()-]+$", "", cleaned)
+    return cleaned.strip()
 
 
 def _find_following_line_value(
@@ -362,11 +389,148 @@ def _extract_birth_certificate_template_fields(raw_text: str) -> List[ExtractedF
     return fields
 
 
+def _extract_national_id_template_fields(raw_text: str) -> List[ExtractedField]:
+    text = _flatten_text(raw_text)
+    normalized = _normalize(text)
+    fields: List[ExtractedField] = []
+
+    def capture(key: str, label: str, pattern: str, confidence: float = 0.88) -> None:
+        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+        if not match:
+            match = re.search(pattern, normalized, re.IGNORECASE | re.DOTALL)
+        if match:
+            value = match.group(1).strip()
+            _upsert_field(fields, key, label, value, confidence, match.group(0))
+
+    capture("full_name", "Full Name", r"Name\s*:?\s*(.*?)\s+(?:Date\s*of\s*Birth|ID\s*N[O0]|পিতা|Father)")
+    capture("date_of_birth", "Date Of Birth", r"Date\s*of\s*Birth\s*:?\s*(" + DATE_PATTERN.pattern + r")")
+    capture("nid_number", "NID Number", r"(?:ID|1D)\s*N[O0]\s*:?\s*([0-9]{10,17})")
+    capture("father_name", "Father Name", r"(?:Father|পিতা)\s*:?\s*(.*?)\s+(?:Mother|মাতা|Date\s*of\s*Birth|ID\s*N[O0])")
+    capture("mother_name", "Mother Name", r"(?:Mother|মাতা)\s*:?\s*(.*?)\s+(?:Date\s*of\s*Birth|ID\s*N[O0]|$)")
+
+    full_name, conf, source = _find_following_block_text(
+        raw_text,
+        ["name", "নাম"],
+        ["date of birth", "id no", "1d no", "পিতা", "father", "মাতা", "mother"],
+        max_lines=2,
+    )
+    _upsert_field(fields, "full_name", "Full Name", full_name, conf, source)
+
+    father_name, conf, source = _find_following_block_text(
+        raw_text,
+        ["father", "পিতা"],
+        ["mother", "মাতা", "date of birth", "id no", "1d no"],
+        max_lines=2,
+    )
+    _upsert_field(fields, "father_name", "Father Name", father_name, conf, source)
+
+    mother_name, conf, source = _find_following_block_text(
+        raw_text,
+        ["mother", "মাতা"],
+        ["date of birth", "id no", "1d no"],
+        max_lines=2,
+    )
+    _upsert_field(fields, "mother_name", "Mother Name", mother_name, conf, source)
+
+    dob, conf, source = _find_following_line_value(
+        raw_text,
+        ["date of birth", "dateofbirth", "জন্ম তারিখ"],
+        DATE_PATTERN,
+        max_lookahead=2,
+    )
+    _upsert_field(fields, "date_of_birth", "Date Of Birth", dob, conf, source)
+
+    nid_number, conf, source = _find_following_line_value(
+        raw_text,
+        ["id no", "idno", "1d no", "national id", "জাতীয় পরিচয়পত্র"],
+        NID_NUMBER_PATTERN,
+        max_lookahead=2,
+    )
+    _upsert_field(fields, "nid_number", "NID Number", nid_number, conf, source)
+
+    return fields
+
+
+def _extract_national_id_template_fields_v2(raw_text: str) -> List[ExtractedField]:
+    text = _flatten_text(raw_text)
+    normalized = _normalize(text)
+    fields: List[ExtractedField] = []
+
+    def capture(key: str, label: str, pattern: str, confidence: float = 0.88) -> None:
+        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+        if not match:
+            match = re.search(pattern, normalized, re.IGNORECASE | re.DOTALL)
+        if match:
+            _upsert_field(fields, key, label, match.group(1).strip(), confidence, match.group(0))
+
+    capture("date_of_birth", "Date Of Birth", r"Date\s*o[fli]?\s*Birth\s*:?\s*(" + DATE_PATTERN.pattern + r")")
+    capture("nid_number", "NID Number", r"(?:ID|1D|!D)\s*N[O0]\s*:?\s*([0-9]{10,17})")
+
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+    for index, line in enumerate(lines):
+        alpha_line = _normalize_alpha(line)
+        if "name" not in line.lower() and "narne" not in alpha_line and "narrie" not in alpha_line and "narnc" not in alpha_line:
+            continue
+
+        candidate = ""
+        parts = re.split(r"[:\-]", line, maxsplit=1)
+        if len(parts) == 2 and parts[1].strip():
+            candidate = parts[1].strip()
+        elif index + 1 < len(lines):
+            candidate = lines[index + 1].strip()
+
+        candidate = _clean_nid_name(candidate)
+        if candidate and not _looks_like_header_noise(candidate):
+            _upsert_field(fields, "full_name", "Full Name", candidate, 0.88, candidate)
+            break
+
+    dob, conf, source = _find_following_line_value(
+        raw_text,
+        ["date of birth", "dateoi birth", "dateoibirth", "dateofbirth", "জন্ম তারিখ"],
+        DATE_PATTERN,
+        max_lookahead=2,
+    )
+    _upsert_field(fields, "date_of_birth", "Date Of Birth", dob, conf, source)
+
+    nid_number, conf, source = _find_following_line_value(
+        raw_text,
+        ["id no", "idno", "1d no", "!d no", "জাতীয় পরিচয়পত্র"],
+        NID_NUMBER_PATTERN,
+        max_lookahead=2,
+    )
+    _upsert_field(fields, "nid_number", "NID Number", nid_number, conf, source)
+
+    normalized_raw = _normalize(raw_text)
+    if "father" in normalized_raw or "পিতা" in raw_text:
+        father_name, conf, source = _find_following_block_text(
+            raw_text,
+            ["father", "পিতা"],
+            ["mother", "মাতা", "date of birth", "id no", "1d no", "!d no"],
+            max_lines=1,
+        )
+        father_name = _clean_nid_name(father_name)
+        if father_name and not _looks_like_header_noise(father_name):
+            _upsert_field(fields, "father_name", "Father Name", father_name, conf, source)
+
+    if "mother" in normalized_raw or "মাতা" in raw_text:
+        mother_name, conf, source = _find_following_block_text(
+            raw_text,
+            ["mother", "মাতা"],
+            ["date of birth", "id no", "1d no", "!d no"],
+            max_lines=1,
+        )
+        mother_name = _clean_nid_name(mother_name)
+        if mother_name and not _looks_like_header_noise(mother_name):
+            _upsert_field(fields, "mother_name", "Mother Name", mother_name, conf, source)
+
+    return fields
+
+
 def extract_fields(document_type: str, raw_text: str, lines: Sequence[OcrLine]) -> List[ExtractedField]:
     fields: List[ExtractedField] = []
     aliases = FIELD_ALIASES.get(document_type, {})
 
-    locked_template_fields = {
+    locked_birth_certificate_fields = {
         "date_of_birth",
         "registration_date",
         "date_of_issue",
@@ -381,16 +545,30 @@ def extract_fields(document_type: str, raw_text: str, lines: Sequence[OcrLine]) 
         "permanent_address",
         "date_of_birth_words",
     }
+    locked_national_id_fields = {
+        "full_name",
+        "date_of_birth",
+        "nid_number",
+        "father_name",
+        "mother_name",
+    }
 
     if document_type == "birth_certificate":
         for field in _extract_birth_certificate_template_fields(raw_text):
             _upsert_field(fields, field.key, field.label, field.value, field.confidence, field.source_text or "")
+    elif document_type == "national_id":
+        for field in _extract_national_id_template_fields_v2(raw_text):
+            _upsert_field(fields, field.key, field.label, field.value, field.confidence, field.source_text or "")
 
     for key, field_aliases in aliases.items():
-        if document_type == "birth_certificate" and key in locked_template_fields and any(
-            existing.key == key for existing in fields
-        ):
-            continue
+        if document_type == "birth_certificate":
+            if key in locked_birth_certificate_fields and any(existing.key == key for existing in fields):
+                continue
+        if document_type == "national_id":
+            if key in {"full_name", "father_name", "mother_name"}:
+                continue
+            if key in locked_national_id_fields and any(existing.key == key for existing in fields):
+                continue
         value, confidence, source = _find_line_value(lines, field_aliases)
         _upsert_field(fields, key, key.replace("_", " ").title(), value, confidence, source)
 
@@ -444,6 +622,36 @@ def extract_fields(document_type: str, raw_text: str, lines: Sequence[OcrLine]) 
                 value, confidence, source = _match_pattern(raw_text, DATE_PATTERN, field_key)
             _upsert_field(fields, field_key, field_label, value, confidence, source)
 
+    if document_type == "national_id":
+        for field_key, field_label, aliases_for_field in (
+            ("date_of_birth", "Date Of Birth", aliases.get("date_of_birth", ())),
+        ):
+            existing = _get_field(fields, field_key)
+            if existing is not None and _has_valid_date(existing.value):
+                continue
+            value, confidence, source = _match_labeled_pattern(
+                lines,
+                raw_text,
+                aliases_for_field,
+                DATE_PATTERN,
+                field_key,
+            )
+            if not value:
+                value, confidence, source = _match_pattern(raw_text, DATE_PATTERN, field_key)
+            _upsert_field(fields, field_key, field_label, value, confidence, source)
+
+        nid_field = _get_field(fields, "nid_number")
+        if nid_field is None or not _has_valid_long_number(nid_field.value):
+            value, confidence, source = _find_following_line_value(
+                raw_text,
+                ["id no", "idno", "1d no", "national id", "জাতীয় পরিচয়পত্র"],
+                NID_NUMBER_PATTERN,
+                max_lookahead=2,
+            )
+            if not value:
+                value, confidence, source = _match_pattern(raw_text, NID_NUMBER_PATTERN, "nid_number")
+            _upsert_field(fields, "nid_number", "NID Number", value, confidence, source)
+
     if "phone" not in existing_keys:
         value, confidence, source = _match_pattern(raw_text, PHONE_PATTERN, "phone")
         _upsert_field(fields, "phone", "Phone", value, confidence, source)
@@ -454,10 +662,13 @@ def extract_fields(document_type: str, raw_text: str, lines: Sequence[OcrLine]) 
         _upsert_field(fields, "date_of_birth", "Date Of Birth", value, confidence, source)
         existing_keys = {field.key for field in fields}
 
-    if document_type in {"birth_certificate", "national_id"}:
-        id_key = "registration_no" if document_type == "birth_certificate" else "nid_number"
-        if id_key not in existing_keys:
-            value, confidence, source = _match_pattern(raw_text, LONG_NUMBER_PATTERN, id_key)
-            _upsert_field(fields, id_key, id_key.replace("_", " ").title(), value, confidence, source)
+    if document_type == "birth_certificate":
+        if "registration_no" not in existing_keys:
+            value, confidence, source = _match_pattern(raw_text, LONG_NUMBER_PATTERN, "registration_no")
+            _upsert_field(fields, "registration_no", "Registration No", value, confidence, source)
+    elif document_type == "national_id":
+        if "nid_number" not in existing_keys:
+            value, confidence, source = _match_pattern(raw_text, NID_NUMBER_PATTERN, "nid_number")
+            _upsert_field(fields, "nid_number", "NID Number", value, confidence, source)
 
     return fields
