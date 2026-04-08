@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import Student from '@/lib/models/Student';
 import ProfileView from '@/app/components/ProfileView';
 import ParentTopBar from '@/app/components/ParentTopBar';
 import Link from 'next/link';
@@ -50,14 +49,15 @@ export default function ParentChildProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 overflow-y-auto">
+    <div className="min-h-screen bg-[#fef9e8] overflow-y-auto">
       <ParentTopBar />
       
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Page Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Child&apos;s Profile</h1>
-          <p className="text-gray-600 mt-2">View and update your child&apos;s information</p>
+          <p className="text-xs font-bold tracking-[0.14em] uppercase text-[#6d7750]">Parent Access</p>
+          <h1 className="text-3xl font-black text-[#3a3927] mt-1">Child&apos;s Profile</h1>
+          <p className="text-[#5b6146] mt-2">View each child&apos;s profile and update basic information only. Academic details are managed by school administration.</p>
         </div>
 
         {isLoading ? (
@@ -67,11 +67,11 @@ export default function ParentChildProfilePage() {
             </div>
           </div>
         ) : children.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-8 text-center">
-            <p className="text-gray-600 mb-4">No children found in the system.</p>
+          <div className="bg-[#fffdf6] rounded-2xl border border-[#d6d2b5] shadow-sm p-8 text-center">
+            <p className="text-[#5b6146] mb-4">No children found in the system.</p>
             <Link
               href="/parent/child"
-              className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-semibold"
+              className="inline-flex items-center gap-2 text-[#5f6843] hover:text-[#4f5838] font-semibold"
             >
               Manage Children
               <ChevronRight size={18} />
@@ -86,18 +86,18 @@ export default function ParentChildProfilePage() {
                   <button
                     key={child._id}
                     onClick={() => setSelectedChildId(child._id)}
-                    className={`p-4 rounded-lg border-2 text-left transition ${
+                    className={`p-4 rounded-2xl border-2 text-left transition shadow-sm ${
                       selectedChildId === child._id
-                        ? 'border-blue-600 bg-blue-50'
-                        : 'border-gray-200 bg-white hover:border-gray-300'
+                        ? 'border-[#5f6843] bg-[#edf3dd]'
+                        : 'border-[#d6d2b5] bg-[#fffdf6] hover:border-[#c6c197]'
                     }`}
                   >
-                    <p className="font-semibold text-gray-900">{child.name}</p>
+                    <p className="font-semibold text-[#3a3927]">{child.name}</p>
                     {child.grade && (
-                      <p className="text-sm text-gray-600">Grade: {child.grade}</p>
+                      <p className="text-sm text-[#5b6146]">Grade: {child.grade}</p>
                     )}
                     {child.roll && (
-                      <p className="text-sm text-gray-600">Roll: {child.roll}</p>
+                      <p className="text-sm text-[#5b6146]">Roll: {child.roll}</p>
                     )}
                   </button>
                 ))}
@@ -110,6 +110,7 @@ export default function ParentChildProfilePage() {
                 userId={userId}
                 childId={selectedChildId}
                 profileType="student"
+                theme="parent"
               />
             )}
           </>

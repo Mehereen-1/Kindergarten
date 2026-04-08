@@ -81,6 +81,9 @@ const StudentListPage = () => {
   const [saving, setSaving] = useState(false);
   const [pendingClassChanges, setPendingClassChanges] = useState<Record<string, string>>({});
   const [savingAllChanges, setSavingAllChanges] = useState(false);
+  const [selectedClassFilter, setSelectedClassFilter] = useState(classIdParam);
+  const [selectedSectionFilter, setSelectedSectionFilter] = useState('all');
+  const [loadError, setLoadError] = useState('');
 
   const yearOptions = useMemo(() => {
     const current = new Date().getFullYear();
@@ -90,6 +93,10 @@ const StudentListPage = () => {
   useEffect(() => {
     setAcademicYear(academicYearParam);
   }, [academicYearParam]);
+
+  useEffect(() => {
+    setSelectedClassFilter(classIdParam || 'all');
+  }, [classIdParam]);
 
   useEffect(() => {
     setPendingClassChanges({});
@@ -124,11 +131,15 @@ const StudentListPage = () => {
 
     const loadStudents = async () => {
       try {
+        setLoadError('');
         const response = await fetch(`/api/admin/students?academicYear=${academicYear}`, {
           signal: controller.signal,
         });
 
         if (!response.ok) {
+          const errorBody = await response.json().catch(() => ({}));
+          setLoadError(errorBody?.error || 'Failed to load students');
+          setStudents([]);
           return;
         }
 
@@ -149,13 +160,14 @@ const StudentListPage = () => {
         }));
 
         const filtered = classIdParam
-          ? mapped.filter((student) => student.classId === classIdParam)
+          ? mapped.filter((student) => student.classId === classIdParam || student.classRefId === classIdParam)
           : mapped;
 
         setStudents(filtered);
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
           console.error("Failed to load students", error);
+          setLoadError('Failed to load students');
         }
       }
     };
@@ -221,7 +233,7 @@ const StudentListPage = () => {
         }));
 
         const filtered = classIdParam
-          ? mapped.filter((student: Student) => student.classId === classIdParam)
+          ? mapped.filter((student: Student) => student.classId === classIdParam || student.classRefId === classIdParam)
           : mapped;
 
         setStudents(filtered);
@@ -318,7 +330,7 @@ const StudentListPage = () => {
           <select
             value={pendingClassChanges[item.id] ?? item.classRefId ?? ""}
             onChange={(event) => handleStageClassChange(item.id, event.target.value)}
-            className="min-w-[150px] border border-gray-300 rounded px-2 py-1 text-xs"
+            className="min-w-[150px] border border-[#c8c39d] bg-[#fefade] rounded px-2 py-1 text-xs text-[#3a3927]"
             disabled={savingAllChanges}
           >
             <option value="">Select class</option>
@@ -341,14 +353,14 @@ const StudentListPage = () => {
       <td>
         <div className="flex items-center gap-2">
           <Link href={`/list/students/${item.id}`}>
-            <button className="w-7 h-7 flex items-center justify-center rounded-full bg-lamaSky">
+            <button className="w-7 h-7 flex items-center justify-center rounded-full bg-[#e2ebcb]">
               <Image src="/view.png" alt="" width={16} height={16} />
             </button>
           </Link>
           {role === "admin" && (
             <button
               onClick={() => openEditModal(item)}
-              className="w-7 h-7 flex items-center justify-center rounded-full bg-lamaYellow"
+              className="w-7 h-7 flex items-center justify-center rounded-full bg-[#f5efd8]"
               title="Edit class assignment"
             >
               <Image src="/edit.png" alt="" width={16} height={16} />
@@ -365,19 +377,52 @@ const StudentListPage = () => {
     </tr>
   );
 
+  const sectionOptions = useMemo(() => {
+    const sections = new Set<string>();
+    students.forEach((student) => {
+      const raw = student.classId || student.className || '';
+      const match = raw.match(/([A-Z])$/);
+      if (match?.[1]) sections.add(match[1]);
+    });
+    return Array.from(sections).sort();
+  }, [students]);
+
+  const filteredStudents = useMemo(() => {
+    return students.filter((student) => {
+      if (selectedClassFilter && selectedClassFilter !== 'all' && student.classRefId !== selectedClassFilter) {
+        if (student.classId !== selectedClassFilter) {
+          return false;
+        }
+      }
+
+      if (selectedSectionFilter && selectedSectionFilter !== 'all') {
+        const raw = student.classId || student.className || '';
+        const section = raw.match(/([A-Z])$/)?.[1] || '';
+        if (section !== selectedSectionFilter) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [students, selectedClassFilter, selectedSectionFilter]);
+
   return (
-    <div className="bg-white p-4 rounded-md flex-1 m-4 mt-0">
+    <div className="bg-[#fffdf6] border border-[#d6d2b5]/70 p-4 md:p-5 rounded-2xl flex-1 m-4 mt-0 shadow-sm">
       {/* TOP */}
-      <div className="flex items-center justify-between">
-        <h1 className="hidden md:block text-lg font-semibold">All Students</h1>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.14em] font-bold text-[#6d7750]">Admin Panel</p>
+          <h1 className="hidden md:block text-2xl font-black text-[#3a3927]">All Students</h1>
+        </div>
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
           <div className="flex items-center gap-2 text-sm">
-            <label htmlFor="academicYear" className="text-gray-600">Academic Year</label>
+            <label htmlFor="academicYear" className="text-[#5a6142] font-medium">Academic Year</label>
             <select
               id="academicYear"
               value={academicYear}
               onChange={(event) => setAcademicYear(event.target.value)}
-              className="border border-gray-300 rounded px-2 py-1"
+              className="border border-[#c8c39d] bg-[#fefade] rounded px-2 py-1 text-[#3a3927]"
             >
               {yearOptions.map((year) => (
                 <option key={year} value={year}>
@@ -386,11 +431,43 @@ const StudentListPage = () => {
               ))}
             </select>
           </div>
+          <div className="flex items-center gap-2 text-sm">
+            <label htmlFor="classFilter" className="text-[#5a6142] font-medium">Class</label>
+            <select
+              id="classFilter"
+              value={selectedClassFilter || 'all'}
+              onChange={(event) => setSelectedClassFilter(event.target.value)}
+              className="border border-[#c8c39d] bg-[#fefade] rounded px-2 py-1 text-[#3a3927]"
+            >
+              <option value="all">All</option>
+              {classes.map((cls) => (
+                <option key={cls._id} value={cls._id}>
+                  {cls.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <label htmlFor="sectionFilter" className="text-[#5a6142] font-medium">Section</label>
+            <select
+              id="sectionFilter"
+              value={selectedSectionFilter}
+              onChange={(event) => setSelectedSectionFilter(event.target.value)}
+              className="border border-[#c8c39d] bg-[#fefade] rounded px-2 py-1 text-[#3a3927]"
+            >
+              <option value="all">All</option>
+              {sectionOptions.map((section) => (
+                <option key={section} value={section}>
+                  {section}
+                </option>
+              ))}
+            </select>
+          </div>
           {role === "admin" && (
             <button
               onClick={handleSaveAllClassChanges}
               disabled={savingAllChanges || Object.keys(pendingClassChanges).length === 0}
-              className="px-3 py-1.5 rounded text-sm bg-blue-600 text-white disabled:opacity-50"
+              className="px-3 py-1.5 rounded text-sm bg-[#5f6843] text-white disabled:opacity-50"
             >
               {savingAllChanges
                 ? "Saving..."
@@ -399,10 +476,10 @@ const StudentListPage = () => {
           )}
           <TableSearch />
           <div className="flex items-center gap-4 self-end">
-            <button className="w-8 h-8 flex items-center justify-center rounded-full bg-lamaYellow">
+            <button className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]">
               <Image src="/filter.png" alt="" width={14} height={14} />
             </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-full bg-lamaYellow">
+            <button className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]">
               <Image src="/sort.png" alt="" width={14} height={14} />
             </button>
             {role === "admin" && (
@@ -414,24 +491,29 @@ const StudentListPage = () => {
           </div>
         </div>
       </div>
+      {loadError && (
+        <div className="mt-4 rounded-lg border border-[#a14a2f]/30 bg-[#f5e7e2] text-[#8b3c25] text-sm px-3 py-2">
+          {loadError}
+        </div>
+      )}
       {/* LIST */}
-      <Table columns={columns} renderRow={renderRow} data={students} />
+      <Table columns={columns} renderRow={renderRow} data={filteredStudents} />
       {/* PAGINATION */}
       <Pagination />
 
       {editingStudent && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg w-[95%] max-w-md p-5">
+          <div className="bg-[#fffdf6] border border-[#d6d2b5] rounded-xl w-[95%] max-w-md p-5">
             <h2 className="text-lg font-bold mb-4">Assign Class & Academic Year</h2>
-            <p className="text-sm text-gray-600 mb-4">Student: {editingStudent.name}</p>
+            <p className="text-sm text-[#5b6146] mb-4">Student: {editingStudent.name}</p>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Academic Year</label>
+                <label className="block text-sm text-[#5b6146] mb-1">Academic Year</label>
                 <select
                   value={editAcademicYear}
                   onChange={(event) => setEditAcademicYear(event.target.value)}
-                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  className="w-full border border-[#c8c39d] bg-[#fefade] rounded px-3 py-2 text-[#3a3927]"
                 >
                   {yearOptions.map((year) => (
                     <option key={year} value={year}>
@@ -442,11 +524,11 @@ const StudentListPage = () => {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Class</label>
+                <label className="block text-sm text-[#5b6146] mb-1">Class</label>
                 <select
                   value={editClassId}
                   onChange={(event) => setEditClassId(event.target.value)}
-                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  className="w-full border border-[#c8c39d] bg-[#fefade] rounded px-3 py-2 text-[#3a3927]"
                 >
                   <option value="">Select class</option>
                   {classes.map((cls) => (
@@ -458,11 +540,11 @@ const StudentListPage = () => {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Roll No (optional)</label>
+                <label className="block text-sm text-[#5b6146] mb-1">Roll No (optional)</label>
                 <input
                   value={editRollNo}
                   onChange={(event) => setEditRollNo(event.target.value)}
-                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  className="w-full border border-[#c8c39d] bg-[#fefade] rounded px-3 py-2 text-[#3a3927]"
                   placeholder="e.g. 15"
                 />
               </div>
@@ -471,7 +553,7 @@ const StudentListPage = () => {
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={closeEditModal}
-                className="px-4 py-2 border rounded hover:bg-gray-50"
+                className="px-4 py-2 border border-[#c8c39d] rounded hover:bg-[#f8f3e1]"
                 disabled={saving}
               >
                 Cancel
@@ -479,7 +561,7 @@ const StudentListPage = () => {
               <button
                 onClick={handleSaveAssignment}
                 disabled={saving || !editClassId || !editAcademicYear}
-                className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+                className="px-4 py-2 bg-[#5f6843] text-white rounded disabled:opacity-50"
               >
                 {saving ? "Saving..." : "Save Assignment"}
               </button>

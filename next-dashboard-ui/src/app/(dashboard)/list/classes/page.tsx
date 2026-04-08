@@ -61,6 +61,7 @@ const ClassListPage = () => {
   const [selectedTeachers, setSelectedTeachers] = useState<Record<string, string>>({});
   const [isAssigning, setIsAssigning] = useState<Record<string, boolean>>({});
   const [academicYear, setAcademicYear] = useState(String(new Date().getFullYear()));
+  const [loadError, setLoadError] = useState("");
 
   const yearOptions = useMemo(() => {
     const current = new Date().getFullYear();
@@ -72,11 +73,15 @@ const ClassListPage = () => {
 
     const loadClasses = async () => {
       try {
+        setLoadError("");
         const response = await fetch(`/api/admin/classes?academicYear=${academicYear}`, {
           signal: controller.signal,
         });
 
         if (!response.ok) {
+          const errorBody = await response.json().catch(() => ({}));
+          setLoadError(errorBody?.error || "Failed to load classes");
+          setClasses([]);
           return;
         }
 
@@ -96,6 +101,7 @@ const ClassListPage = () => {
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
           console.error("Failed to load classes", error);
+          setLoadError("Failed to load classes");
         }
       }
     };
@@ -119,7 +125,8 @@ const ClassListPage = () => {
         }
 
         const data = await response.json();
-        setTeachers(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data) ? data : Array.isArray(data?.teachers) ? data.teachers : [];
+        setTeachers(list);
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
           console.error("Failed to load teachers", error);
@@ -224,18 +231,21 @@ const ClassListPage = () => {
   );
 
   return (
-    <div className="bg-white p-4 rounded-md flex-1 m-4 mt-0">
+    <div className="bg-[#fffdf6] border border-[#d6d2b5]/70 p-4 md:p-5 rounded-2xl flex-1 m-4 mt-0 shadow-sm">
       {/* TOP */}
-      <div className="flex items-center justify-between">
-        <h1 className="hidden md:block text-lg font-semibold">All Classes</h1>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.14em] font-bold text-[#6d7750]">Admin Panel</p>
+          <h1 className="hidden md:block text-2xl font-black text-[#3a3927]">All Classes</h1>
+        </div>
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
           <div className="flex items-center gap-2 text-sm">
-            <label htmlFor="academicYear" className="text-gray-600">Academic Year</label>
+            <label htmlFor="academicYear" className="text-[#5a6142] font-medium">Academic Year</label>
             <select
               id="academicYear"
               value={academicYear}
               onChange={(event) => setAcademicYear(event.target.value)}
-              className="border border-gray-300 rounded px-2 py-1"
+              className="border border-[#c8c39d] bg-[#fefade] rounded px-2 py-1 text-[#3a3927]"
             >
               {yearOptions.map((year) => (
                 <option key={year} value={year}>
@@ -246,16 +256,21 @@ const ClassListPage = () => {
           </div>
           <TableSearch />
           <div className="flex items-center gap-4 self-end">
-            <button className="w-8 h-8 flex items-center justify-center rounded-full bg-lamaYellow">
+            <button className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]">
               <Image src="/filter.png" alt="" width={14} height={14} />
             </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-full bg-lamaYellow">
+            <button className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]">
               <Image src="/sort.png" alt="" width={14} height={14} />
             </button>
             {role === "admin" && <FormModal table="class" type="create" />}
           </div>
         </div>
       </div>
+      {loadError && (
+        <div className="mt-4 rounded-lg border border-[#a14a2f]/30 bg-[#f5e7e2] text-[#8b3c25] text-sm px-3 py-2">
+          {loadError}
+        </div>
+      )}
       {/* LIST */}
       <Table columns={columns} renderRow={renderRow} data={classes} />
       {/* PAGINATION */}

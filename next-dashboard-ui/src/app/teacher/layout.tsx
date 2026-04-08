@@ -10,7 +10,7 @@ export default function TeacherLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className="teacher-theme flex h-screen bg-[#fff7d6]">
       {/* Desktop Sidebar */}
       <div className="hidden lg:block lg:w-80 shrink-0">
         <TeacherSidebar />

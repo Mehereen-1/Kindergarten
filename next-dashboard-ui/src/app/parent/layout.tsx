@@ -9,7 +9,7 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-peach-50">
+    <div className="parent-theme flex h-screen bg-[#fff7d6]">
       {/* Desktop Sidebar */}
       <ParentSidebar />
 

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import User from '@/lib/models/User';
 import Student from '@/lib/models/Student';
-import mongoose from 'mongoose';
 
 /**
  * PUT /api/profile/update
@@ -14,7 +13,8 @@ export async function PUT(request: NextRequest) {
 
     const userCookie = request.cookies.get('user')?.value;
     const body = await request.json();
-    const { targetId, childId, updates, profileType } = body;
+    const { targetId, childId, updates: rawUpdates, profileType } = body;
+    const updates = rawUpdates && typeof rawUpdates === 'object' ? { ...rawUpdates } : {};
 
     // Get current user
     let currentUserId: string;
@@ -31,26 +31,44 @@ export async function PUT(request: NextRequest) {
     let profileId = targetId || currentUserId;
     let isOwnProfile = profileId === currentUserId;
 
+    // Child profile updates must target the child document, never the parent user document.
+    if (profileType === 'student' && childId) {
+      profileId = childId;
+      isOwnProfile = false;
+    }
+
     // Check permissions
     if (!isOwnProfile) {
       if (currentUserRole === 'admin') {
         // Admin can edit anyone
       } else if (currentUserRole === 'parent' && childId && profileType === 'student') {
         // Parent can edit their child's student profile with restrictions
+        const ownedChild = await Student.findOne({ _id: childId, parentId: currentUserId }).select('_id').lean();
+        if (!ownedChild) {
+          return NextResponse.json(
+            { error: 'Permission denied' },
+            { status: 403 }
+          );
+        }
+
         profileId = childId;
 
-        // Restrict what parents can edit
-        const restrictedFields = [
-          'roll',
-          'grade',
-          'classId',
-          'createdAt',
-          'updatedAt',
-          '_id'
+        // Parents can edit only basic child information.
+        const allowedParentFields = [
+          'name',
+          'email',
+          'phone',
+          'address',
+          'bloodGroup',
+          'birthday',
+          'sex',
+          'profilePic',
         ];
 
-        restrictedFields.forEach(field => {
-          delete updates[field];
+        Object.keys(updates).forEach((field) => {
+          if (!allowedParentFields.includes(field)) {
+            delete updates[field];
+          }
         });
       } else {
         return NextResponse.json(
