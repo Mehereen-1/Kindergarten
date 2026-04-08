@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+numpy
+opencv-python-headless==4.10.0.84
+pymongo
+python-dotenv
+python-multipart
+onnxruntime
+insightface==0.7.3
+albumentations==1.3.1
+prettytable==3.16.0
+pillow
+pandas
+openpyxl

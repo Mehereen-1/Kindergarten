@@ -8,9 +8,15 @@ const menuItems = [
     items: [
       {
         icon: "/home.png",
+        label: "Dashboard",
+        href: "/dashboard/admin",
+        visible: ["admin"],
+      },
+      {
+        icon: "/home.png",
         label: "Home",
         href: "/",
-        visible: ["admin", "teacher", "student", "parent"],
+        visible: ["teacher", "student", "parent"],
       },
       {
         icon: "/teacher.png",
@@ -155,10 +161,10 @@ const menuItems = [
 
 const Menu = () => {
   return (
-    <div className="mt-4 text-sm">
+    <div className="mt-2 text-sm min-w-0">
       {menuItems.map((i) => (
-        <div className="flex flex-col gap-2" key={i.title}>
-          <span className="hidden lg:block text-gray-400 font-light my-4">
+        <div className="flex flex-col gap-2 min-w-0" key={i.title}>
+          <span className="hidden lg:block text-[#7d8460] text-[11px] font-bold tracking-[0.14em] my-4 uppercase">
             {i.title}
           </span>
           {i.items.map((item) => {
@@ -167,10 +173,12 @@ const Menu = () => {
                 <Link
                   href={item.href}
                   key={`${item.label}-${item.href}`}
-                  className="flex items-center justify-center lg:justify-start gap-4 text-gray-500 py-2 md:px-2 rounded-md hover:bg-lamaSkyLight"
+                  className="w-full min-w-0 flex items-center justify-center lg:justify-start gap-3 text-[#525b3e] py-2.5 px-3 rounded-xl hover:bg-[#e8efd4] hover:text-[#3a3927] transition-colors"
                 >
-                  <Image src={item.icon} alt="" width={20} height={20} />
-                  <span className="hidden lg:block">{item.label}</span>
+                  <span className="hidden lg:inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#f2eedc] border border-[#d8d3b3]">
+                    <Image src={item.icon} alt="" width={16} height={16} />
+                  </span>
+                  <span className="hidden lg:block font-semibold truncate">{item.label}</span>
                 </Link>
               );
             }

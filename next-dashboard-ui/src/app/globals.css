@@ -16,6 +16,57 @@
   }
 }
 
+  @layer components {
+    .teacher-theme main,
+    .parent-theme main {
+      background: #fff7d6;
+    }
+
+    .teacher-theme .bg-white,
+    .parent-theme .bg-white {
+      background-color: #fefade !important;
+    }
+
+    .teacher-theme .bg-gray-50,
+    .teacher-theme .bg-slate-50,
+    .parent-theme .bg-gray-50,
+    .parent-theme .bg-slate-50 {
+      background-color: #f8f1c7 !important;
+    }
+
+    .teacher-theme .border-slate-200,
+    .teacher-theme .border-gray-200,
+    .parent-theme .border-slate-200,
+    .parent-theme .border-gray-200 {
+      border-color: #d6d2b5 !important;
+    }
+
+    .teacher-theme input,
+    .teacher-theme select,
+    .teacher-theme textarea,
+    .parent-theme input,
+    .parent-theme select,
+    .parent-theme textarea {
+      background-color: #fefcf5;
+      border-color: #d6d2b5;
+      color: #3a3927;
+    }
+
+    .teacher-theme button,
+    .parent-theme button {
+      transition: all 180ms ease;
+    }
+
+    .teacher-theme h1,
+    .teacher-theme h2,
+    .teacher-theme h3,
+    .parent-theme h1,
+    .parent-theme h2,
+    .parent-theme h3 {
+      color: #352f00;
+    }
+  }
+
 /* Smooth scrollbar for sidebar */
 ::-webkit-scrollbar {
   width: 8px;

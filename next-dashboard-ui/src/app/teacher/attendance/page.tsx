@@ -4,9 +4,39 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import TeacherTopBar from "@/app/components/TeacherTopBar";
 import { Upload, Camera, Database, Send } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useSearchParams } from "next/navigation";
 type AttendanceStatus = "present" | "absent" | "late";
 
+interface ClassStudent {
+  id: string;
+  name: string;
+  rollNo?: string;
+}
+
+interface TeacherClass {
+  _id: string;
+  classId?: string;
+  name: string;
+  grade?: string;
+  academicYear: string;
+  studentCount: number;
+  subjects?: string[];
+  students: ClassStudent[];
+}
+
 export default function AttendancePage() {
+  const { user, loading: authLoading } = useAuth();
+  const searchParams = useSearchParams();
+  const currentYear = String(new Date().getFullYear());
+  const preselectedClassId = searchParams.get("classId") || "";
+  const preselectedAcademicYear = searchParams.get("academicYear") || "";
+
+  const [academicYear, setAcademicYear] = useState(currentYear);
+  const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
+  const [classesLoading, setClassesLoading] = useState(true);
+  const [classesError, setClassesError] = useState("");
+  const [selectedClassId, setSelectedClassId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"manual" | "cctv" | "upload">("manual");
   const [students, setStudents] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
@@ -31,15 +61,96 @@ export default function AttendancePage() {
   const [detections, setDetections] = useState<any[]>([]);
   const [isVideoProcessing, setIsVideoProcessing] = useState(false);
   const [processedVideoUrl, setProcessedVideoUrl] = useState<string>("");
+  const [extractedFaces, setExtractedFaces] = useState<ExtractedFace[]>([]);
+  const [detectedNamesById, setDetectedNamesById] = useState<Record<string, string>>({});
   const [bulkImportMode, setBulkImportMode] = useState(false);
   const [bulkImportProgress, setBulkImportProgress] = useState<{ current: number; total: number } | null>(null);
+  const [exportDate, setExportDate] = useState(new Date().toISOString().split("T")[0]);
+  const [exportMonth, setExportMonth] = useState(String(new Date().getMonth() + 1).padStart(2, "0"));
+  const [exportYear, setExportYear] = useState(String(new Date().getFullYear()));
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
   const seenAttendanceIds = useRef<Set<string>>(new Set());
 
-  // Load students on mount
   useEffect(() => {
-    loadStudents();
-  }, []);
+    if (!preselectedAcademicYear) return;
+    setAcademicYear(preselectedAcademicYear);
+  }, [preselectedAcademicYear]);
+
+  // Load classes assigned to current teacher
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (!user?.id) {
+      setClassesLoading(false);
+      setClassesError("Could not identify teacher account");
+      return;
+    }
+
+    const loadClasses = async () => {
+      try {
+        setClassesLoading(true);
+        setClassesError("");
+
+        const response = await fetch(
+          `/api/teacher/classes?teacherId=${encodeURIComponent(user.id)}&academicYear=${encodeURIComponent(academicYear)}`,
+          { cache: "no-store" }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.error || "Failed to load classes");
+        }
+
+        const classList = Array.isArray(data) ? data : [];
+        setTeacherClasses(classList);
+
+        if (preselectedClassId && classList.some((cls: TeacherClass) => cls._id === preselectedClassId)) {
+          setSelectedClassId(preselectedClassId);
+        } else if (classList.length === 1) {
+          setSelectedClassId(classList[0]._id);
+        } else if (!classList.some((cls: TeacherClass) => cls._id === selectedClassId)) {
+          setSelectedClassId("");
+        }
+      } catch (err: any) {
+        setTeacherClasses([]);
+        setClassesError(err?.message || "Failed to load classes");
+      } finally {
+        setClassesLoading(false);
+      }
+    };
+
+    loadClasses();
+  }, [user?.id, authLoading, academicYear, preselectedClassId]);
+
+  // Load selected class students into attendance workspace
+  useEffect(() => {
+    const selectedClass = teacherClasses.find((classDoc) => classDoc._id === selectedClassId);
+
+    if (!selectedClass) {
+      setStudents([]);
+      setAttendance({});
+      return;
+    }
+
+    const classStudents = (selectedClass.students || []).map((student) => ({
+      _id: student.id,
+      name: student.name,
+      roll: student.rollNo || "-",
+      grade: selectedClass.grade || "-",
+      classId: selectedClass._id,
+      className: selectedClass.name,
+    }));
+
+    setStudentLoadError("");
+    setStudents(classStudents);
+
+    const initialAttendance: Record<string, AttendanceStatus> = {};
+    classStudents.forEach((student) => {
+      initialAttendance[student._id] = "present";
+    });
+    setAttendance(initialAttendance);
+  }, [selectedClassId, teacherClasses]);
 
   // Handle camera active state - fetch live detection data from Python backend
   useEffect(() => {
@@ -53,6 +164,14 @@ export default function AttendancePage() {
           
           if (Array.isArray(data)) {
             setAtd(data);
+
+            const liveNames: Record<string, string> = {};
+            data.forEach((record: AttendanceRecord) => {
+              if (record.student_id && record.name && record.name !== "Unknown" && record.name !== "Spoof") {
+                liveNames[record.student_id] = record.name;
+              }
+            });
+            setDetectedNamesById((prev) => ({ ...prev, ...liveNames }));
 
             // Recompute from current backend detections so UI always matches backend truth.
             const counts: Record<string, number> = {};
@@ -155,66 +274,6 @@ export default function AttendancePage() {
       }
     };
   }, [isVideoProcessing]);
-
-  const loadStudents = async () => {
-    try {
-      setStudentLoadError("");
-      console.log("🔄 Fetching students from /api/attendance/students...");
-      
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-      const response = await fetch("/api/attendance/students", {
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeout);
-
-      if (!response.ok) {
-        console.error("❌ API returned status:", response.status);
-        setStudentLoadError(`API Error: ${response.status} ${response.statusText}`);
-        return;
-      }
-      
-      const payload = await response.json();
-      console.log("✅ API Response:", payload);
-      
-      // Handle both array and object responses
-      let studentsData: any[] = [];
-      
-      if (Array.isArray(payload)) {
-        studentsData = payload;
-      } else if (payload.students && Array.isArray(payload.students)) {
-        studentsData = payload.students;
-      } else if (payload.data && Array.isArray(payload.data)) {
-        studentsData = payload.data;
-      } else {
-        console.warn("⚠️ Unexpected response format:", payload);
-        setStudentLoadError("Unexpected API response format");
-        return;
-      }
-
-      console.log(`✅ Loaded ${studentsData.length} students:`, studentsData);
-      setStudents(studentsData);
-
-      // Initialize attendance state
-      const initialAttendance: Record<string, AttendanceStatus> = {};
-      studentsData.forEach((student: any) => {
-        initialAttendance[student._id] = "present";
-      });
-      setAttendance(initialAttendance);
-    } catch (error: any) {
-      console.error("❌ Error loading students:", error);
-      
-      if (error.name === "AbortError") {
-        setStudentLoadError("API request timed out (>10s). Check server.");
-        setMessage("⏱️ Connection timeout - is the server running?");
-      } else {
-        setStudentLoadError(error.message || "Network error");
-        setMessage(`❌ Failed to load students: ${error.message}`);
-      }
-    }
-  };
 
   const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
     setAttendance((prev) => ({
@@ -460,6 +519,8 @@ export default function AttendancePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date: selectedDate,
+          classId: selectedClassId || undefined,
+          teacherId: user?.id || undefined,
           attendance: attendanceArray,
         }),
       });
@@ -496,8 +557,6 @@ export default function AttendancePage() {
         setMessage(
           `✅ Synced ${result.count} CCTV attendance records for ${selectedDate}`
         );
-        // Reload students to reflect CCTV updates
-        loadStudents();
       } else {
         setMessage(`❌ Error: ${result.error}`);
       }
@@ -516,6 +575,16 @@ interface AttendanceRecord {
   student_id: string;
   timestamp: string;
   frame_num?: number;
+}
+
+interface ExtractedFace {
+  id: string;
+  image_b64: string;
+  name: string;
+  student_id?: string | null;
+  is_match?: boolean;
+  confirmed?: boolean;
+  timestamp?: string;
 }
 
 interface CCTVTabProps {
@@ -590,6 +659,7 @@ interface CCTVTabProps {
     setVideoUrl("");
     setVideoFile(null);
     setDetections([]);
+    setExtractedFaces([]);
     setStudentRecognitionCount({});
     setPresentStudents(new Set());
     seenAttendanceIds.current.clear();
@@ -616,9 +686,14 @@ interface CCTVTabProps {
       const result = await response.json();
 
       if (response.ok) {
+        await fetch("http://localhost:8000/clear-extracted-faces", {
+          method: "POST",
+        }).catch(() => undefined);
+
         // Reset recognition tracking for new video
         setStudentRecognitionCount({});
         setPresentStudents(new Set());
+        setExtractedFaces([]);
         
         setMessage(`✅ Video processing started. Displaying detections in real-time...`);
         
@@ -632,10 +707,15 @@ interface CCTVTabProps {
         
         const pollInterval = setInterval(async () => {
           try {
-            const detRes = await fetch("http://localhost:8000/video-detections", {
-              method: "GET",
-            });
+            const [detRes, facesRes] = await Promise.all([
+              fetch("http://localhost:8000/video-detections", { method: "GET" }),
+              fetch("http://localhost:8000/extracted-faces", { method: "GET" }),
+            ]);
             const detData = await detRes.json();
+            const facesData = await facesRes.json();
+            if (Array.isArray(facesData?.faces)) {
+              setExtractedFaces(facesData.faces);
+            }
             
             // Extract detections array
             const detectionsArray = Array.isArray(detData) ? detData : (detData.detections || []);
@@ -708,10 +788,7 @@ interface CCTVTabProps {
         return;
       }
 
-      const classId =
-        students.find((s) => presentStudents.has(String(s._id)))?.classId ||
-        students[0]?.classId ||
-        undefined;
+      const classId = selectedClassId || undefined;
 
       const records = presentIds.map((studentId) => ({
         studentId,
@@ -762,6 +839,62 @@ interface CCTVTabProps {
     }
   };
 
+  const saveVideoAttendanceToDatabase = async () => {
+    if (!students.length) {
+      setMessage("❌ No students available for this class.");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const attendanceArray = students.map((student) => ({
+        studentId: student._id,
+        status: presentStudents.has(student._id) ? "Present" : "Absent",
+      }));
+
+      const response = await fetch("/api/teacher/attendance/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: selectedDate,
+          classId: selectedClassId || undefined,
+          teacherId: user?.id || undefined,
+          attendance: attendanceArray,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        setMessage(`❌ Error: ${result.error || "Failed to save video attendance"}`);
+        return;
+      }
+
+      const presentCount = attendanceArray.filter((row) => row.status === "Present").length;
+
+      const verifyRes = await fetch(
+        `/api/teacher/attendance/bulk?classId=${encodeURIComponent(selectedClassId)}&date=${encodeURIComponent(selectedDate)}`,
+        { method: "GET", cache: "no-store" }
+      );
+
+      const verifyData = await verifyRes.json();
+      if (verifyRes.ok) {
+        setMessage(
+          `✅ Attendance saved and verified for ${selectedDate}. Present: ${presentCount}/${attendanceArray.length}. Database marked: ${verifyData.markedCount}/${verifyData.totalStudents}`
+        );
+      } else {
+        setMessage(
+          `✅ Attendance save completed for ${selectedDate} (${presentCount}/${attendanceArray.length} present), but verification failed: ${verifyData?.error || "Unknown error"}`
+        );
+      }
+    } catch (error) {
+      setMessage(`❌ Error: ${String(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   //temp shesh
 
   const tabButtonClass = (tab: string) =>
@@ -771,20 +904,181 @@ interface CCTVTabProps {
         : "text-slate-700 hover:bg-slate-100 border border-slate-200"
     }`;
 
+  const downloadDailyReport = () => {
+    const selectedClass = teacherClasses.find((c) => c._id === selectedClassId);
+    const className = selectedClass?.name || selectedClass?.classId;
+    if (!className) {
+      setMessage("❌ Please select a class before exporting reports.");
+      return;
+    }
+    const url = `http://localhost:8000/export/daily?class=${encodeURIComponent(className)}&date=${encodeURIComponent(exportDate)}`;
+    window.open(url, "_blank");
+    setMessage(`✅ Daily report requested for ${className} on ${exportDate}`);
+  };
+
+  const downloadMonthlyReport = () => {
+    const selectedClass = teacherClasses.find((c) => c._id === selectedClassId);
+    const className = selectedClass?.name || selectedClass?.classId;
+    if (!className) {
+      setMessage("❌ Please select a class before exporting reports.");
+      return;
+    }
+    const url = `http://localhost:8000/export/monthly?class=${encodeURIComponent(className)}&month=${encodeURIComponent(exportMonth)}&year=${encodeURIComponent(exportYear)}`;
+    window.open(url, "_blank");
+    setMessage(`✅ Monthly report requested for ${className} (${exportYear}-${exportMonth})`);
+  };
+
   return (
     <>
       <TeacherTopBar />
 
       <main className="flex-1 overflow-y-auto bg-gray-50">
         <div className="p-6 lg:p-10">
+          {!selectedClassId ? (
+            <div className="space-y-6">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-5xl font-black text-slate-900 mb-2">📋 Attendance Management</h1>
+                  <p className="text-slate-600 text-lg">Select a class to start attendance.</p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label htmlFor="attendance-year" className="text-sm font-semibold text-slate-600">
+                    Academic Year
+                  </label>
+                  <select
+                    id="attendance-year"
+                    value={academicYear}
+                    onChange={(event) => setAcademicYear(event.target.value)}
+                    className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
+                  >
+                    {[String(Number(currentYear) - 2), String(Number(currentYear) - 1), currentYear, String(Number(currentYear) + 1)].map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {classesError && (
+                <div className="p-4 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm">{classesError}</div>
+              )}
+
+              {classesLoading ? (
+                <div className="text-center py-12 text-slate-500">Loading your assigned classes...</div>
+              ) : teacherClasses.length === 0 ? (
+                <div className="text-center py-16 border border-dashed border-slate-300 rounded-xl text-slate-500">
+                  <div className="text-4xl mb-2">📚</div>
+                  <p className="font-semibold">No classes assigned</p>
+                  <p className="text-sm mt-1">No active class assignment found for {academicYear}.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  {teacherClasses.map((classDoc) => (
+                    <button
+                      key={classDoc._id}
+                      onClick={() => setSelectedClassId(classDoc._id)}
+                      className="text-left border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all bg-white"
+                    >
+                      <div className="bg-indigo-600 px-5 py-4 text-white">
+                        <div className="flex items-center justify-between">
+                          <h2 className="text-2xl font-bold">{classDoc.name}</h2>
+                          <span className="text-xs bg-white/20 px-2 py-1 rounded">{classDoc.classId || "Class"}</span>
+                        </div>
+                        <p className="text-indigo-100 text-sm mt-1">
+                          Grade: {classDoc.grade || "-"} • Students: {classDoc.studentCount}
+                        </p>
+                        <p className="text-indigo-100 text-sm mt-1">
+                          Subjects: {classDoc.subjects?.length ? classDoc.subjects.join(", ") : "No subject assigned"}
+                        </p>
+                      </div>
+                      <div className="px-5 py-4 text-indigo-700 font-semibold">Open attendance for this class →</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
           {/* Header */}
           <div className="mb-8">
+            <button
+              onClick={() => setSelectedClassId("")}
+              className="mb-4 px-4 py-2 rounded-lg text-sm font-semibold border border-slate-300 text-slate-700 hover:bg-slate-100 transition"
+            >
+              ← Back to My Classes
+            </button>
             <h1 className="text-5xl font-black text-slate-900 mb-2">
               📋 Attendance Management
             </h1>
             <p className="text-slate-600 text-lg">
-              Manage attendance with manual entry, CCTV feed, and facial recognition
+              {teacherClasses.find((classDoc) => classDoc._id === selectedClassId)?.name || "Selected Class"} • Manage attendance with manual entry, CCTV feed, and facial recognition
             </p>
+          </div>
+
+          <div className="mb-6 bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+            <h3 className="text-lg font-bold text-slate-900 mb-3">📄 Attendance Excel Reports</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Class</label>
+                <select
+                  value={selectedClassId}
+                  onChange={(e) => setSelectedClassId(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white"
+                >
+                  {teacherClasses.map((cls) => (
+                    <option key={cls._id} value={cls._id}>{cls.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={exportDate}
+                  onChange={(e) => setExportDate(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Month</label>
+                  <select
+                    value={exportMonth}
+                    onChange={(e) => setExportMonth(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0")).map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Year</label>
+                  <input
+                    type="number"
+                    value={exportYear}
+                    onChange={(e) => setExportYear(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={downloadDailyReport}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition"
+              >
+                Download Daily Report
+              </button>
+              <button
+                onClick={downloadMonthlyReport}
+                className="px-4 py-2 rounded-lg bg-slate-700 text-white font-semibold hover:bg-slate-800 transition"
+              >
+                Download Monthly Report
+              </button>
+            </div>
           </div>
 
           {/* Tabs */}
@@ -1068,12 +1362,13 @@ interface CCTVTabProps {
                             <div className="flex flex-wrap gap-2">
                               {Array.from(presentStudents).map((studentId) => {
                                 const student = students.find((s) => s._id === studentId);
+                                const displayName = student?.name || detectedNamesById[studentId] || studentId;
                                 return (
                                   <span
                                     key={studentId}
                                     className="text-xs bg-green-200 text-green-800 px-2 py-1 rounded-full font-semibold"
                                   >
-                                    {student?.name || studentId}
+                                    {displayName}
                                   </span>
                                 );
                               })}
@@ -1091,6 +1386,7 @@ interface CCTVTabProps {
                                 .map(([studentId, count]) => {
                                   const student = students.find((s) => s._id === studentId);
                                   const isPresent = presentStudents.has(studentId);
+                                  const displayName = student?.name || detectedNamesById[studentId] || studentId;
                                   return (
                                     <div
                                       key={studentId}
@@ -1101,7 +1397,7 @@ interface CCTVTabProps {
                                       }`}
                                     >
                                       <span className="font-semibold text-slate-800">
-                                        {student?.name || studentId}
+                                        {displayName}
                                       </span>
                                       <div className="flex items-center gap-2">
                                         <span className="bg-white px-2 py-1 rounded font-bold text-indigo-600">
@@ -1245,6 +1541,8 @@ interface CCTVTabProps {
                               setVideoUrl("");
                               setVideoFile(null);
                               setDetections([]);
+                              setExtractedFaces([]);
+                              setDetectedNamesById({});
                               setStudentRecognitionCount({});
                               setPresentStudents(new Set());
                               setProcessedVideoUrl("");
@@ -1256,77 +1554,161 @@ interface CCTVTabProps {
                         )}
                       </div>
 
-                      {/* Detection Details */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Detected Faces */}
-                        <div className="bg-blue-50 border border-blue-300 rounded-lg p-4">
-                          <h5 className="font-bold text-slate-900 mb-3">🎯 All Detections ({detections.length})</h5>
-                          <div className="max-h-48 overflow-y-auto space-y-2">
-                            {detections.slice(-20).map((det, idx) => {
-                              const student = students.find(s => s._id === det.student_id);
-                              const timeStr = det.timestamp ? new Date(det.timestamp).toLocaleTimeString() : "";
-                              return (
-                                <div
-                                  key={`${det.student_id}-${idx}`}
-                                  className="p-2 bg-white rounded border border-blue-200 text-sm"
-                                >
-                                  <p className="font-semibold text-slate-900">{student?.name || det.name || "Unknown"}</p>
-                                  <p className="text-xs text-slate-600">
-                                    {det.frame_number ? `Frame: ${det.frame_number}` : timeStr}
-                                  </p>
-                                </div>
-                              );
-                            })}
-                            {detections.length === 0 && (
-                              <p className="text-xs text-slate-500 text-center py-4">Waiting for detections...</p>
+                      {/* Analysis Summary Layout */}
+                      <div className="space-y-4">
+                        <div className="bg-slate-50 border border-slate-300 rounded-lg p-4">
+                          <h5 className="font-bold text-slate-900 mb-3">🧩 Extracted Faces ({extractedFaces.length})</h5>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 max-h-64 overflow-y-auto">
+                            {extractedFaces.slice().reverse().map((face) => (
+                              <div
+                                key={face.id}
+                                className={`rounded-lg border p-2 bg-white ${face.is_match ? "border-green-300" : "border-red-300"}`}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={`data:image/jpeg;base64,${face.image_b64}`}
+                                  alt={face.name || "Face"}
+                                  className="w-full h-20 object-cover rounded"
+                                />
+                                <p className="text-xs font-semibold text-slate-900 mt-2 truncate">{face.name || "Unknown"}</p>
+                                <p className="text-[11px] text-slate-600 truncate">{face.student_id || "No ID"}</p>
+                              </div>
+                            ))}
+                            {extractedFaces.length === 0 && (
+                              <p className="text-xs text-slate-500 col-span-full text-center py-6">No extracted faces yet.</p>
                             )}
                           </div>
                         </div>
 
-                        {/* Recognition Count Summary */}
-                        <div className="bg-purple-50 border border-purple-300 rounded-lg p-4">
-                          <h5 className="font-bold text-slate-900 mb-3">📊 Recognition Count</h5>
-                          <div className="space-y-2">
-                            {Object.keys(studentRecognitionCount).length > 0 ? (
-                              <div className="max-h-48 overflow-y-auto space-y-2">
-                                {Object.entries(studentRecognitionCount)
-                                  .sort((a, b) => b[1] - a[1])
-                                  .map(([studentId, count]) => {
-                                    const student = students.find(s => s._id === studentId);
-                                    const isPresent = presentStudents.has(studentId);
-                                    return (
-                                      <div
-                                        key={studentId}
-                                        className={`p-2 rounded border text-sm ${
-                                          isPresent
-                                            ? 'bg-green-100 border-green-400'
-                                            : 'bg-white border-purple-200'
-                                        }`}
-                                      >
-                                        <div className="flex justify-between items-center">
-                                          <p className={`font-semibold ${isPresent ? 'text-green-900' : 'text-slate-900'}`}>
-                                            {student?.name || studentId}
-                                          </p>
-                                          <span className={`text-xs font-bold px-2 py-1 rounded ${
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="bg-blue-50 border border-blue-300 rounded-lg p-4">
+                            <h5 className="font-bold text-slate-900 mb-3">🎯 All Detections ({detections.length})</h5>
+                            <div className="max-h-56 overflow-y-auto space-y-2">
+                              {detections.slice(-30).map((det, idx) => {
+                                const student = students.find(s => s._id === det.student_id);
+                                const timeStr = det.timestamp ? new Date(det.timestamp).toLocaleTimeString() : "";
+                                const displayName = det.student_name || student?.name || det.name || "Unknown";
+                                return (
+                                  <div
+                                    key={`${det.student_id}-${idx}`}
+                                    className="p-2 bg-white rounded border border-blue-200 text-sm"
+                                  >
+                                    <p className="font-semibold text-slate-900">
+                                      {displayName}{det.student_id ? ` (${det.student_id})` : ""}
+                                    </p>
+                                    <p className="text-xs text-slate-600">
+                                      {det.frame_num ? `Frame: ${det.frame_num}` : timeStr}
+                                    </p>
+                                  </div>
+                                );
+                              })}
+                              {detections.length === 0 && (
+                                <p className="text-xs text-slate-500 text-center py-4">Waiting for detections...</p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="bg-purple-50 border border-purple-300 rounded-lg p-4">
+                            <h5 className="font-bold text-slate-900 mb-3">📊 Recognition Status</h5>
+                            <div className="space-y-2">
+                              {Object.keys(studentRecognitionCount).length > 0 ? (
+                                <div className="max-h-56 overflow-y-auto space-y-2">
+                                  {Object.entries(studentRecognitionCount)
+                                    .sort((a, b) => b[1] - a[1])
+                                    .map(([studentId, count]) => {
+                                      const student = students.find(s => s._id === studentId);
+                                      const isPresent = presentStudents.has(studentId);
+                                      const displayName = student?.name || detectedNamesById[studentId] || studentId;
+                                      return (
+                                        <div
+                                          key={studentId}
+                                          className={`p-2 rounded border text-sm ${
                                             isPresent
-                                              ? 'bg-green-500 text-white'
-                                              : count >= 2
-                                              ? 'bg-yellow-400 text-black'
-                                              : 'bg-gray-300 text-black'
-                                          }`}>
-                                            {count}/3
-                                          </span>
+                                              ? 'bg-green-100 border-green-400'
+                                              : 'bg-white border-purple-200'
+                                          }`}
+                                        >
+                                          <div className="flex justify-between items-center">
+                                            <p className={`font-semibold ${isPresent ? 'text-green-900' : 'text-slate-900'}`}>
+                                              {displayName}
+                                            </p>
+                                            <span className={`text-xs font-bold px-2 py-1 rounded ${
+                                              isPresent
+                                                ? 'bg-green-500 text-white'
+                                                : count >= 2
+                                                ? 'bg-yellow-400 text-black'
+                                                : 'bg-gray-300 text-black'
+                                            }`}>
+                                              {count}/3
+                                            </span>
+                                          </div>
+                                          {isPresent && <p className="text-xs text-green-700 mt-1">✅ PRESENT</p>}
                                         </div>
-                                        {isPresent && <p className="text-xs text-green-700 mt-1">✅ PRESENT</p>}
-                                      </div>
-                                    );
-                                  })}
-                              </div>
-                            ) : (
-                              <p className="text-sm text-slate-600 text-center py-8">
-                                Waiting for detections...
-                              </p>
-                            )}
+                                      );
+                                    })}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-slate-600 text-center py-8">
+                                  Waiting for detections...
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-white border border-slate-300 rounded-lg p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                            <h5 className="font-bold text-slate-900">📅 Class Attendance for {selectedDate}</h5>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="date"
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
+                              />
+                              <button
+                                onClick={saveVideoAttendanceToDatabase}
+                                disabled={loading || students.length === 0}
+                                className="px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                              >
+                                {loading ? "Saving..." : "Save To Database"}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-lg">
+                            <table className="w-full text-sm">
+                              <thead className="bg-slate-50 sticky top-0">
+                                <tr>
+                                  <th className="text-left px-3 py-2 font-semibold text-slate-600">Student</th>
+                                  <th className="text-left px-3 py-2 font-semibold text-slate-600">Recognition Count</th>
+                                  <th className="text-left px-3 py-2 font-semibold text-slate-600">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {students.map((student) => {
+                                  const sid = student._id;
+                                  const count = studentRecognitionCount[sid] || 0;
+                                  const isPresent = presentStudents.has(sid);
+                                  return (
+                                    <tr key={sid} className="border-t border-slate-100">
+                                      <td className="px-3 py-2 font-medium text-slate-800">{student.name}</td>
+                                      <td className="px-3 py-2 text-slate-600">{count}</td>
+                                      <td className="px-3 py-2">
+                                        <span className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${isPresent ? "bg-green-100 text-green-800" : "bg-red-100 text-red-700"}`}>
+                                          {isPresent ? "Present" : "Absent"}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                                {students.length === 0 && (
+                                  <tr>
+                                    <td colSpan={3} className="px-3 py-6 text-center text-slate-500">No students available for this class.</td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
                       </div>
@@ -1372,9 +1754,10 @@ interface CCTVTabProps {
                     <div className="flex flex-wrap gap-2">
                       {Array.from(presentStudents).map((studentId) => {
                         const student = students.find(s => s._id === studentId);
+                        const displayName = student?.name || detectedNamesById[studentId] || studentId;
                         return (
                           <span key={studentId} className="px-3 py-1 bg-green-200 text-green-800 rounded-full text-xs font-semibold">
-                            {student?.name || studentId}
+                            {displayName}
                           </span>
                         );
                       })}
@@ -1387,6 +1770,11 @@ interface CCTVTabProps {
                   {atd.map((record, idx) => {
                     const recognitionCount = studentRecognitionCount[record.student_id] || 0;
                     const isPresent = presentStudents.has(record.student_id);
+                    const resolvedName =
+                      record.name ||
+                      students.find((s) => s._id === record.student_id)?.name ||
+                      detectedNamesById[record.student_id] ||
+                      record.student_id;
                     return (
                       <li
                         key={`${record._id}-${idx}`}
@@ -1395,7 +1783,7 @@ interface CCTVTabProps {
                         }`}
                       >
                         <div>
-                          <span className="font-medium text-slate-900">{record.name}</span>
+                          <span className="font-medium text-slate-900">{resolvedName}</span>
                           <span className="text-gray-500 text-xs ml-2">
                             ({recognitionCount}/3 recognitions)
                           </span>
@@ -1477,13 +1865,9 @@ interface CCTVTabProps {
                             <li>Are there students in the database?</li>
                             <li>Check browser console (F12) for errors</li>
                           </ul>
-                          <button
-                            onClick={() => loadStudents()}
-                            disabled={loading}
-                            className="px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-semibold hover:bg-red-700 disabled:opacity-50 transition"
-                          >
-                            🔄 Retry Loading Students
-                          </button>
+                          <p className="text-xs text-slate-700 mt-2">
+                            Go back and select another class if this looks incorrect.
+                          </p>
                         </div>
                       ) : (
                         <select
@@ -1687,6 +2071,8 @@ interface CCTVTabProps {
                 )}
               </div>
             </div>
+          )}
+            </>
           )}
         </div>
       </main>
