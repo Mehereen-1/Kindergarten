@@ -1,0 +1,16 @@
+{
+  "threshold": 0.4,
+  "sr": 16000,
+  "label_map": {
+    "normal": 0,
+    "emergency": 1
+  },
+  "realtime_rules": {
+    "instant_threshold": 0.6,
+    "sustain_threshold": 0.4,
+    "window_size": 5,
+    "min_count_in_window": 3,
+    "consecutive_needed": 2,
+    "frame_time_sec": 0.48
+  }
+}
