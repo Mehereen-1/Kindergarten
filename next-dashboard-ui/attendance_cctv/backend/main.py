@@ -28,6 +28,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import List, Optional
 from collections import deque
+import re
 
 # Third-party
 import cv2
@@ -1509,7 +1510,7 @@ def get_known_faces():
             student_id = record.get("student_id")
             embeddings = record.get("embeddings", [])
             num_samples = len(embeddings) or record.get("number_of_samples", 0)
-            image_url = next(
+            image_url = record.get("preview_image_url") or next(
                 (item.get("image_url") for item in embeddings if item.get("image_url")),
                 None,
             )
@@ -1709,11 +1710,13 @@ def list_export_files(kind: str = "all"):
             return {"files": []}
 
         files = []
+        monthly_pattern = re.compile(r"^attendance_.+_\d{4}_\d{2}\.xlsx$")
+        daily_pattern = re.compile(r"^attendance_.+_\d{4}-\d{2}-\d{2}\.xlsx$")
         for p in sorted(EXPORT_DIR.glob("attendance_*.xlsx"), reverse=True):
             name = p.name
-            if kind == "daily" and len(name.split("_")) != 2:
+            if kind == "daily" and not daily_pattern.match(name):
                 continue
-            if kind == "monthly" and len(name.split("_")) != 3:
+            if kind == "monthly" and not monthly_pattern.match(name):
                 continue
             stat = p.stat()
             files.append({

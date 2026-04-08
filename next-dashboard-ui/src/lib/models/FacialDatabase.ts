@@ -13,6 +13,7 @@ export interface IFacialDatabase extends Document {
   classId: mongoose.Types.ObjectId;
   numberOfSamples: number;
   embeddings: IFacialEmbedding[];
+  previewImageUrl?: string;
   lastUpdated: Date;
   isProcessed: boolean;
   confidence: number; // Average confidence for this student
@@ -34,6 +35,7 @@ const FacialDatabaseSchema: Schema = new Schema(
     class_id: { type: Schema.Types.ObjectId, ref: 'Class', alias: 'classId' },
     number_of_samples: { type: Number, default: 0, alias: 'numberOfSamples' },
     embeddings: [FacialEmbeddingSchema],
+    preview_image_url: { type: String, alias: 'previewImageUrl' },
     last_updated: { type: Date, default: Date.now, alias: 'lastUpdated' },
     is_processed: { type: Boolean, default: false, alias: 'isProcessed' },
     confidence: { type: Number, default: 0 }, // 0-1 confidence score

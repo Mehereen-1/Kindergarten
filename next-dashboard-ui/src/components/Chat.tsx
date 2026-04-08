@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { Send, User, UserPlus, Search, Paperclip, X } from 'lucide-react';
-import TeacherDirectory from '@/app/components/TeacherDirectory';
+import { useEffect, useRef, useState } from 'react';
+import { Paperclip, Search, Send, User, UserPlus, X } from 'lucide-react';
+
 import ParentDirectory from '@/app/components/ParentDirectory';
-import { getClientSocketUrl } from '@/lib/clientConfig';
+import TeacherDirectory from '@/app/components/TeacherDirectory';
 
 interface Attachment {
   name: string;
@@ -46,8 +45,10 @@ interface ChatProps {
   };
 }
 
+const CONTACTS_POLL_INTERVAL_MS = 10000;
+const MESSAGES_POLL_INTERVAL_MS = 4000;
+
 export default function Chat({ currentUser }: ChatProps) {
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -55,141 +56,107 @@ export default function Chat({ currentUser }: ChatProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
-  const [isContactTyping, setIsContactTyping] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showTeacherDirectory, setShowTeacherDirectory] = useState(false);
   const [showParentDirectory, setShowParentDirectory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Initialize socket connection
-  useEffect(() => {
-    const socketUrl = getClientSocketUrl();
-    const socketConnection = socketUrl ? io(socketUrl) : io();
-    setSocket(socketConnection);
-
-    socketConnection.on('connect', () => {
-      console.log('Connected to server');
-      socketConnection.emit('join', {
-        userId: currentUser.id,
-        role: currentUser.role
-      });
-    });
-
-    socketConnection.on('private-message', (data) => {
-      if (selectedContact && data.senderId === selectedContact.id) {
-        setMessages(prev => [...prev, {
-          _id: data.messageId,
-          senderId: data.senderId,
-          message: data.message,
-          attachments: data.attachments || [],
-          timestamp: data.timestamp,
-          read: false,
-          deliveryStatus: 'delivered',
-        }]);
-
-        socketConnection.emit('messages-read', {
-          readerId: currentUser.id,
-          readerRole: currentUser.role,
-          otherUserId: selectedContact.id,
-          otherUserRole: selectedContact.role,
-        });
-      }
-      // Update contacts list
-      fetchContacts();
-    });
-
-    socketConnection.on('message-sent', (data) => {
-      console.log('Message sent confirmation:', data);
-      setMessages(prev => [...prev, {
-        _id: data.messageId,
-        senderId: currentUser.id,
-        message: data.message,
-        attachments: data.attachments || [],
-        timestamp: data.timestamp,
-        read: false,
-        deliveryStatus: (data.deliveryStatus || 'sent') as DeliveryStatus,
-      }]);
-      // Refresh contacts list so sender sees their own message in last message preview
-      fetchContacts();
-    });
-
-    socketConnection.on('messages-seen', (data) => {
-      if (!selectedContact || data.readerId !== selectedContact.id) {
-        return;
-      }
-
-      setMessages(prev => prev.map((message) => {
-        if (message.senderId !== currentUser.id) {
-          return message;
-        }
-
-        if (Array.isArray(data.messageIds) && data.messageIds.length > 0) {
-          const isSeen = data.messageIds.includes(message._id);
-          return isSeen ? { ...message, read: true, deliveryStatus: 'seen' } : message;
-        }
-
-        return { ...message, read: true, deliveryStatus: 'seen' };
-      }));
-    });
-
-    socketConnection.on('typing-start', (data) => {
-      if (selectedContact && data.senderId === selectedContact.id) {
-        setIsContactTyping(true);
-      }
-    });
-
-    socketConnection.on('typing-stop', (data) => {
-      if (selectedContact && data.senderId === selectedContact.id) {
-        setIsContactTyping(false);
-      }
-    });
-
-    socketConnection.on('message-error', (data) => {
-      console.error('Message error:', data);
-      alert('Failed to send message: ' + data.error);
-    });
-
-    return () => {
-      socketConnection.disconnect();
-    };
-  }, [currentUser, selectedContact]);
-
-  // Fetch contacts
   const fetchContacts = async () => {
     try {
-      const response = await fetch('/api/chat/contacts');
+      const response = await fetch('/api/chat/contacts', { cache: 'no-store' });
       const data = await response.json();
-      setContacts(data.contacts);
+      setContacts(data.contacts || []);
     } catch (error) {
       console.error('Error fetching contacts:', error);
     }
   };
 
-  // Fetch messages for selected contact
-  const fetchMessages = async (contactId: string) => {
+  const markMessagesRead = async (contact: Contact) => {
     try {
-      const response = await fetch(`/api/chat/history?senderId=${currentUser.id}&receiverId=${contactId}`);
+      await fetch('/api/chat/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          senderId: contact.id,
+          receiverId: currentUser.id,
+        }),
+      });
+    } catch (error) {
+      console.error('Error marking messages as read:', error);
+    }
+  };
+
+  const fetchMessages = async (contact: Contact, shouldMarkRead = false) => {
+    try {
+      const response = await fetch(
+        `/api/chat/history?senderId=${currentUser.id}&receiverId=${contact.id}`,
+        { cache: 'no-store' }
+      );
+
       if (!response.ok) {
         console.error('Failed to fetch messages:', response.status);
         return;
       }
+
       const data = await response.json();
-      console.log('Loaded messages:', data.messages.length);
-      setMessages(data.messages || []);
+      const loadedMessages = data.messages || [];
+      setMessages(loadedMessages);
+
+      const hasUnreadIncoming = loadedMessages.some(
+        (message: Message) => message.senderId === contact.id && !message.read
+      );
+
+      if (shouldMarkRead && hasUnreadIncoming) {
+        await markMessagesRead(contact);
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.senderId === contact.id
+              ? { ...message, read: true, deliveryStatus: 'seen' }
+              : message
+          )
+        );
+      }
     } catch (error) {
       console.error('Error fetching messages:', error);
     }
   };
 
-  // Load initial data
   useEffect(() => {
-    fetchContacts();
-    setLoading(false);
+    let mounted = true;
+
+    const loadInitialState = async () => {
+      await fetchContacts();
+      if (mounted) {
+        setLoading(false);
+      }
+    };
+
+    loadInitialState();
+    const contactsInterval = window.setInterval(fetchContacts, CONTACTS_POLL_INTERVAL_MS);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(contactsInterval);
+    };
   }, []);
 
-  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (!selectedContact) {
+      return undefined;
+    }
+
+    fetchMessages(selectedContact, true);
+
+    const messagesInterval = window.setInterval(() => {
+      fetchMessages(selectedContact, true);
+    }, MESSAGES_POLL_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(messagesInterval);
+    };
+  }, [selectedContact?.id]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -198,78 +165,59 @@ export default function Chat({ currentUser }: ChatProps) {
     setSelectedContact(contact);
     setSearchQuery('');
     setAttachedFiles([]);
-    setIsContactTyping(false);
     setShowTeacherDirectory(false);
     setShowParentDirectory(false);
-    await fetchMessages(contact.id);
+    await fetchMessages(contact, true);
 
-    // Mark messages as read
-    await fetch('/api/chat/read', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        senderId: contact.id,
-        receiverId: currentUser.id
-      })
-    });
-
-    socket?.emit('messages-read', {
-      readerId: currentUser.id,
-      readerRole: currentUser.role,
-      otherUserId: contact.id,
-      otherUserRole: contact.role,
-    });
-
-    // Update unread count
-    setContacts(prev => prev.map(c =>
-      c.id === contact.id ? { ...c, unreadCount: 0 } : c
-    ));
+    setContacts((prev) =>
+      prev.map((currentContact) =>
+        currentContact.id === contact.id ? { ...currentContact, unreadCount: 0 } : currentContact
+      )
+    );
   };
 
   const handleNewChat = (teacherId: string, teacherName: string) => {
-    // Check if contact already exists
-    const existingContact = contacts.find(c => c.id === teacherId);
-    
+    const existingContact = contacts.find((contact) => contact.id === teacherId);
+
     if (existingContact) {
       handleContactSelect(existingContact);
-    } else {
-      // Create a new contact object for the teacher
-      const newContact: Contact = {
-        id: teacherId,
-        name: teacherName,
-        email: '',
-        role: 'teacher',
-        unreadCount: 0
-      };
-      
-      setContacts(prev => [newContact, ...prev]);
-      setSelectedContact(newContact);
-      setMessages([]);
-      setShowTeacherDirectory(false);
+      return;
     }
+
+    const newContact: Contact = {
+      id: teacherId,
+      name: teacherName,
+      email: '',
+      role: 'teacher',
+      unreadCount: 0,
+    };
+
+    setContacts((prev) => [newContact, ...prev]);
+    setSelectedContact(newContact);
+    setMessages([]);
+    setShowTeacherDirectory(false);
   };
 
   const handleNewParentChat = (parentId: string, parentName: string) => {
-    // Check if contact already exists
-    const existingContact = contacts.find(c => c.id === parentId);
-    
+    const existingContact = contacts.find((contact) => contact.id === parentId);
+
     if (existingContact) {
       handleContactSelect(existingContact);
-    } else {
-      // Create a new contact object for the parent
-      const newContact: Contact = {
-        id: parentId,
-        name: parentName,
-        email: '',
-        role: 'parent',
-        unreadCount: 0
-      };
-      
-      setContacts(prev => [newContact, ...prev]);
-      setSelectedContact(newContact);
-      setMessages([]);
-      setShowParentDirectory(false);
+      return;
     }
+
+    const newContact: Contact = {
+      id: parentId,
+      name: parentName,
+      email: '',
+      role: 'parent',
+      unreadCount: 0,
+    };
+
+    setContacts((prev) => [newContact, ...prev]);
+    setSelectedContact(newContact);
+    setMessages([]);
+    setShowParentDirectory(false);
   };
 
   const formatFileSize = (size: number) => {
@@ -278,17 +226,18 @@ export default function Chat({ currentUser }: ChatProps) {
     return `${(size / (1024 * 1024)).toFixed(1)}MB`;
   };
 
-  const handleAttachFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+  const handleAttachFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
     if (!files.length) {
       return;
     }
-    setAttachedFiles(prev => [...prev, ...files]);
-    e.target.value = '';
+
+    setAttachedFiles((prev) => [...prev, ...files]);
+    event.target.value = '';
   };
 
   const removeAttachment = (indexToRemove: number) => {
-    setAttachedFiles(prev => prev.filter((_, index) => index !== indexToRemove));
+    setAttachedFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
   };
 
   const getMessageStatusLabel = (message: Message) => {
@@ -296,49 +245,6 @@ export default function Chat({ currentUser }: ChatProps) {
     if (status === 'seen') return 'Seen';
     if (status === 'delivered') return 'Delivered';
     return 'Sent';
-  };
-
-  const emitTypingStart = () => {
-    if (!socket || !selectedContact) return;
-
-    socket.emit('typing-start', {
-      senderId: currentUser.id,
-      receiverId: selectedContact.id,
-      receiverRole: selectedContact.role,
-    });
-  };
-
-  const emitTypingStop = () => {
-    if (!socket || !selectedContact) return;
-
-    socket.emit('typing-stop', {
-      senderId: currentUser.id,
-      receiverId: selectedContact.id,
-      receiverRole: selectedContact.role,
-    });
-  };
-
-  const handleMessageInputChange = (value: string) => {
-    setNewMessage(value);
-
-    if (!selectedContact || !socket) {
-      return;
-    }
-
-    if (value.trim()) {
-      emitTypingStart();
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-      typingTimeoutRef.current = setTimeout(() => {
-        emitTypingStop();
-      }, 1200);
-    } else {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-      emitTypingStop();
-    }
   };
 
   const uploadAttachments = async () => {
@@ -386,43 +292,40 @@ export default function Chat({ currentUser }: ChatProps) {
   const handleSendMessage = async () => {
     const outgoingMessage = newMessage.trim();
 
-    if ((!outgoingMessage && !attachedFiles.length) || !selectedContact || !socket || isSending) {
-      console.log('Cannot send message:', { 
-        hasMessage: !!outgoingMessage || attachedFiles.length > 0,
-        hasContact: !!selectedContact, 
-        hasSocket: !!socket,
-        isSending,
-      });
+    if ((!outgoingMessage && !attachedFiles.length) || !selectedContact || isSending) {
       return;
     }
 
     setIsSending(true);
+
     try {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-      emitTypingStop();
-
       const uploadedAttachments = await uploadAttachments();
-
-      console.log('Sending message:', {
-        senderId: currentUser.id,
-        receiverId: selectedContact.id,
-        message: outgoingMessage,
-        attachmentCount: uploadedAttachments.length,
+      const response = await fetch('/api/chat/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          senderId: currentUser.id,
+          receiverId: selectedContact.id,
+          message: outgoingMessage,
+          attachments: uploadedAttachments,
+          senderRole: currentUser.role,
+          receiverRole: selectedContact.role,
+        }),
       });
 
-      socket.emit('private-message', {
-        senderId: currentUser.id,
-        receiverId: selectedContact.id,
-        message: outgoingMessage,
-        attachments: uploadedAttachments,
-        senderRole: currentUser.role,
-        receiverRole: selectedContact.role
-      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to send message' }));
+        throw new Error(errorData.error || 'Failed to send message');
+      }
+
+      const data = await response.json();
+      if (data.message) {
+        setMessages((prev) => [...prev, data.message]);
+      }
 
       setNewMessage('');
       setAttachedFiles([]);
+      await fetchContacts();
     } catch (error: any) {
       console.error('Send message failed:', error);
       alert(error.message || 'Failed to send message');
@@ -431,9 +334,9 @@ export default function Chat({ currentUser }: ChatProps) {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
+  const handleKeyPress = (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
       handleSendMessage();
     }
   };
@@ -446,17 +349,18 @@ export default function Chat({ currentUser }: ChatProps) {
     if (!searchQuery.trim()) {
       return true;
     }
+
     const query = searchQuery.toLowerCase();
     const messageMatch = (message.message || '').toLowerCase().includes(query);
     const attachmentMatch = (message.attachments || []).some((file) =>
       file.name.toLowerCase().includes(query)
     );
+
     return messageMatch || attachmentMatch;
   });
 
   return (
     <div className="flex h-full bg-gray-50">
-      {/* Contacts Sidebar */}
       <div className="w-1/3 bg-white border-r border-gray-200 flex flex-col">
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
@@ -523,7 +427,8 @@ export default function Chat({ currentUser }: ChatProps) {
               </div>
               {contact.lastMessage && (
                 <p className="text-sm text-gray-600 mt-1 truncate">
-                  {contact.lastMessage.isFromMe ? 'You: ' : ''}{contact.lastMessage.message}
+                  {contact.lastMessage.isFromMe ? 'You: ' : ''}
+                  {contact.lastMessage.message}
                 </p>
               )}
             </div>
@@ -531,7 +436,6 @@ export default function Chat({ currentUser }: ChatProps) {
         </div>
       </div>
 
-      {/* Chat Area or Directory */}
       <div className="flex-1 flex flex-col">
         {showTeacherDirectory ? (
           <div className="p-6 overflow-y-auto">
@@ -543,7 +447,6 @@ export default function Chat({ currentUser }: ChatProps) {
           </div>
         ) : selectedContact ? (
           <>
-            {/* Chat Header */}
             <div className="p-4 bg-white border-b border-gray-200">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center">
@@ -552,9 +455,7 @@ export default function Chat({ currentUser }: ChatProps) {
                   </div>
                   <div>
                     <p className="font-medium">{selectedContact.name}</p>
-                    <p className="text-sm text-gray-500 capitalize">
-                      {isContactTyping ? 'Typing...' : selectedContact.role}
-                    </p>
+                    <p className="text-sm text-gray-500 capitalize">{selectedContact.role}</p>
                   </div>
                 </div>
 
@@ -564,7 +465,7 @@ export default function Chat({ currentUser }: ChatProps) {
                     <input
                       type="text"
                       value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onChange={(event) => setSearchQuery(event.target.value)}
                       placeholder="Search messages..."
                       className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
@@ -583,7 +484,6 @@ export default function Chat({ currentUser }: ChatProps) {
               </div>
             </div>
 
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {searchQuery && (
                 <p className="text-xs text-gray-500">
@@ -608,7 +508,10 @@ export default function Chat({ currentUser }: ChatProps) {
                         {message.attachments.map((file, index) => {
                           const isImage = file.mimeType?.startsWith('image/');
                           return (
-                            <div key={`${file.url}-${index}`} className="rounded-md border border-black/10 bg-white/70 p-2">
+                            <div
+                              key={`${file.url}-${index}`}
+                              className="rounded-md border border-black/10 bg-white/70 p-2"
+                            >
                               {isImage && (
                                 <img
                                   src={file.url}
@@ -630,11 +533,13 @@ export default function Chat({ currentUser }: ChatProps) {
                         })}
                       </div>
                     )}
-                    <p className={`text-xs mt-1 ${
-                      message.senderId === currentUser.id ? 'text-blue-100' : 'text-gray-500'
-                    }`}>
+                    <p
+                      className={`text-xs mt-1 ${
+                        message.senderId === currentUser.id ? 'text-blue-100' : 'text-gray-500'
+                      }`}
+                    >
                       {new Date(message.timestamp).toLocaleTimeString()}
-                      {message.senderId === currentUser.id && ` • ${getMessageStatusLabel(message)}`}
+                      {message.senderId === currentUser.id && ` | ${getMessageStatusLabel(message)}`}
                     </p>
                   </div>
                 </div>
@@ -642,7 +547,6 @@ export default function Chat({ currentUser }: ChatProps) {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Message Input */}
             <div className="p-4 bg-white border-t border-gray-200">
               <input
                 ref={fileInputRef}
@@ -688,7 +592,7 @@ export default function Chat({ currentUser }: ChatProps) {
                 <input
                   type="text"
                   value={newMessage}
-                  onChange={(e) => handleMessageInputChange(e.target.value)}
+                  onChange={(event) => setNewMessage(event.target.value)}
                   onKeyDown={handleKeyPress}
                   placeholder="Type a message..."
                   disabled={isSending}

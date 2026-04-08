@@ -18,8 +18,10 @@ py -3.10 -m venv .venv
 python -m pip install --upgrade pip setuptools wheel
 pip install -r backend\requirements.txt
 cd backend
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+..\.venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
+
+Use the virtualenv Python explicitly on Windows. This avoids accidentally launching the global `uvicorn` from Python 3.14, which can cause reload/spawn errors.
 
 If PowerShell blocks activation:
 

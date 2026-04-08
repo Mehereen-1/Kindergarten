@@ -1,11 +1,13 @@
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, unlink, writeFile } from "fs/promises";
+import os from "os";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { speechToText } from "@/lib/calling/stt";
 
-const TMP_DIR = path.join(process.cwd(), "tmp");
+const TMP_DIR = path.join(os.tmpdir(), "kindergarten-calling");
 
 export async function POST(req: NextRequest) {
+  let inputPath: string | null = null;
   try {
     await mkdir(TMP_DIR, { recursive: true });
 
@@ -18,7 +20,7 @@ export async function POST(req: NextRequest) {
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    const inputPath = path.join(TMP_DIR, `stt-test-${Date.now()}.wav`);
+    inputPath = path.join(TMP_DIR, `stt-test-${Date.now()}.wav`);
     await writeFile(inputPath, new Uint8Array(buffer));
 
     const text = await speechToText(inputPath);
@@ -26,5 +28,9 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("[test-stt] error:", error);
     return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
+  } finally {
+    if (inputPath) {
+      await unlink(inputPath).catch(() => undefined);
+    }
   }
 }
