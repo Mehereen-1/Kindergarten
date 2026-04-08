@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { 
   BookOpen, TrendingUp, TrendingDown, AlertTriangle, 
@@ -12,7 +12,7 @@ import {
   PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
 
-export default function ParentChildLearningDashboard() {
+function ParentChildLearningDashboardContent() {
   const searchParams = useSearchParams();
   const [childId, setChildId] = useState('');
   const [classId, setClassId] = useState('');
@@ -671,5 +671,22 @@ export default function ParentChildLearningDashboard() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ParentChildLearningDashboard() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading child learning dashboard...</p>
+          </div>
+        </div>
+      }
+    >
+      <ParentChildLearningDashboardContent />
+    </Suspense>
   );
 }

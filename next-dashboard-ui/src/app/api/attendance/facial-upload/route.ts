@@ -6,9 +6,10 @@ import Attendance from '@/lib/models/Attendance';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs/promises';
 import path from 'path';
+import { getServerCctvBackendUrl } from '@/lib/serverConfig';
 
 const FACIAL_IMAGES_DIR = path.join(process.cwd(), 'public', 'facial-data');
-const PYTHON_BACKEND = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000';
+const PYTHON_BACKEND = getServerCctvBackendUrl();
 
 export async function POST(req: NextRequest) {
   try {

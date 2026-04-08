@@ -37,7 +37,11 @@ export async function POST(request: NextRequest) {
     // Validate headers
     const requiredHeaders = ['Student Name', 'Class ID', 'Roll Number', 'Academic Year', 'Parent Name', 'Parent Phone'];
     
-    const results = {
+    const results: {
+      success: Array<Record<string, unknown>>;
+      failed: Array<Record<string, unknown>>;
+      total: number;
+    } = {
       success: [],
       failed: [],
       total: lines.length - 1

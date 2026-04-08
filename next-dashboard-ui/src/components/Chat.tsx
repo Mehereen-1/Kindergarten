@@ -5,6 +5,7 @@ import { io, Socket } from 'socket.io-client';
 import { Send, User, UserPlus } from 'lucide-react';
 import TeacherDirectory from '@/app/components/TeacherDirectory';
 import ParentDirectory from '@/app/components/ParentDirectory';
+import { getClientSocketUrl } from '@/lib/clientConfig';
 
 interface Message {
   _id: string;
@@ -47,7 +48,8 @@ export default function Chat({ currentUser }: ChatProps) {
 
   // Initialize socket connection
   useEffect(() => {
-    const socketConnection = io('http://localhost:3000');
+    const socketUrl = getClientSocketUrl();
+    const socketConnection = socketUrl ? io(socketUrl) : io();
     setSocket(socketConnection);
 
     socketConnection.on('connect', () => {

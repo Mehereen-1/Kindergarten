@@ -85,6 +85,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { batchId: string } }
 ) {
+  let action = '';
   try {
     await connectDB();
 
@@ -97,7 +98,8 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { action, notes } = body; // action: 'approve', 'reject', 'publish', 'lock'
+    action = body.action || '';
+    const { notes } = body; // action: 'approve', 'reject', 'publish', 'lock'
 
     if (!action) {
       return NextResponse.json(
@@ -259,7 +261,7 @@ export async function PATCH(
       data: batch,
     });
   } catch (error: any) {
-    console.error(`Batch ${body?.action} error:`, error);
+    console.error(`Batch ${action} error:`, error);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }

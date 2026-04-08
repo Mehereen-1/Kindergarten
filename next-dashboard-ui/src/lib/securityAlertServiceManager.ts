@@ -1,6 +1,11 @@
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import path from 'path';
 
+import {
+  getSecurityAlertServiceUrl,
+  shouldAutoStartSecurityAlertService,
+} from '@/lib/serverConfig';
+
 type ServiceState = {
   child: ChildProcessWithoutNullStreams | null;
   logs: string[];
@@ -46,7 +51,11 @@ function appendLog(line: string) {
 }
 
 export function getServiceUrl() {
-  return (process.env.ANOMALY_SERVICE_URL || 'http://127.0.0.1:8010').replace(/\/+$/, '');
+  return getSecurityAlertServiceUrl();
+}
+
+export function canAutoStartSecurityAlertService() {
+  return shouldAutoStartSecurityAlertService();
 }
 
 async function fetchHealth() {
@@ -112,6 +121,12 @@ export async function ensureSecurityAlertServiceReady(timeoutMs = 60000): Promis
     return status;
   }
 
+  if (!shouldAutoStartSecurityAlertService()) {
+    throw new Error(
+      `Security alert service is not available at ${getServiceUrl()}. Set ANOMALY_SERVICE_URL to the deployed Python service, or enable ANOMALY_SERVICE_AUTO_START for local development.`
+    );
+  }
+
   const startResult = await startSecurityAlertService();
   status = startResult.status;
   if (hasHealthyResponse(status)) {
@@ -142,119 +157,127 @@ export async function startSecurityAlertService() {
   }
 
   const startupTask = (async () => {
-  const health = await fetchHealth();
-  if (health) {
-    return {
-      started: false,
-      reason: 'Service already responding',
-      status: await getSecurityAlertServiceStatus(),
-    };
-  }
-
-  if (isChildAlive(state.child)) {
-    return {
-      started: false,
-      reason: 'Service process already running',
-      status: await getSecurityAlertServiceStatus(),
-    };
-  }
-
-  const host = process.env.ANOMALY_SERVICE_HOST || '127.0.0.1';
-  const port = process.env.ANOMALY_SERVICE_PORT || '8010';
-  const serviceDir = path.join(process.cwd(), 'secuirty-alerts');
-  const mainPath = path.join(serviceDir, 'main.py');
-  const candidates: Array<{ command: string; prefixArgs: string[] }> = [];
-  if (process.env.ANOMALY_SERVICE_PYTHON) {
-    candidates.push({ command: process.env.ANOMALY_SERVICE_PYTHON, prefixArgs: [] });
-  }
-  candidates.push(
-    { command: 'python', prefixArgs: [] },
-    { command: 'py', prefixArgs: ['-3'] },
-    { command: 'py', prefixArgs: [] }
-  );
-
-  let lastFailure = 'Unable to start anomaly service';
-
-  for (const candidate of candidates) {
-    let startupError = '';
-    let sawPortInUse = false;
-    const args = [...candidate.prefixArgs, mainPath, '--serve', '--host', host, '--port', port];
-    appendLog(`[manager] starting service with ${candidate.command} ${args.join(' ')}`);
-
-    const child = spawn(candidate.command, args, {
-      cwd: serviceDir,
-      windowsHide: true,
-      env: {
-        ...process.env,
-        PYTHONUNBUFFERED: '1',
-      },
-      stdio: 'pipe',
-    });
-
-    state.child = child;
-    state.startedAt = Date.now();
-
-    child.stdout.on('data', (chunk: Buffer | string) => {
-      appendLog(`[stdout] ${String(chunk)}`);
-    });
-
-    child.stderr.on('data', (chunk: Buffer | string) => {
-      const text = String(chunk);
-      if (text.includes('WinError 10048') || text.includes('[Errno 10048]') || text.includes('address already in use')) {
-        sawPortInUse = true;
-      }
-      appendLog(`[stderr] ${text}`);
-    });
-
-    child.on('error', (error) => {
-      startupError = error.message;
-      appendLog(`[manager] process error: ${error.message}`);
-    });
-
-    child.on('exit', (code, signal) => {
-      appendLog(`[manager] service exited code=${String(code)} signal=${String(signal)}`);
-      const current = getState();
-      if (current.child?.pid === child.pid) {
-        current.child = null;
-      }
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    const status = await getSecurityAlertServiceStatus();
-    if (status.running) {
+    if (!shouldAutoStartSecurityAlertService()) {
       return {
-        started: true,
-        reason: status.health ? 'Service is running' : 'Service process started and is warming up',
-        status,
+        started: false,
+        reason: 'Local auto-start is disabled for the anomaly service',
+        status: await getSecurityAlertServiceStatus(),
       };
     }
 
-    if (sawPortInUse) {
-      const reusedStatus = await waitForHealthyService(10000);
-      if (reusedStatus) {
-        appendLog('[manager] existing anomaly service detected on configured port; reusing it');
+    const health = await fetchHealth();
+    if (health) {
+      return {
+        started: false,
+        reason: 'Service already responding',
+        status: await getSecurityAlertServiceStatus(),
+      };
+    }
+
+    if (isChildAlive(state.child)) {
+      return {
+        started: false,
+        reason: 'Service process already running',
+        status: await getSecurityAlertServiceStatus(),
+      };
+    }
+
+    const host = process.env.ANOMALY_SERVICE_HOST || '127.0.0.1';
+    const port = process.env.ANOMALY_SERVICE_PORT || '8010';
+    const serviceDir = path.join(process.cwd(), 'secuirty-alerts');
+    const mainPath = path.join(serviceDir, 'main.py');
+    const candidates: Array<{ command: string; prefixArgs: string[] }> = [];
+    if (process.env.ANOMALY_SERVICE_PYTHON) {
+      candidates.push({ command: process.env.ANOMALY_SERVICE_PYTHON, prefixArgs: [] });
+    }
+    candidates.push(
+      { command: 'python', prefixArgs: [] },
+      { command: 'py', prefixArgs: ['-3'] },
+      { command: 'py', prefixArgs: [] }
+    );
+
+    let lastFailure = 'Unable to start anomaly service';
+
+    for (const candidate of candidates) {
+      let startupError = '';
+      let sawPortInUse = false;
+      const args = [...candidate.prefixArgs, mainPath, '--serve', '--host', host, '--port', port];
+      appendLog(`[manager] starting service with ${candidate.command} ${args.join(' ')}`);
+
+      const child = spawn(candidate.command, args, {
+        cwd: serviceDir,
+        windowsHide: true,
+        env: {
+          ...process.env,
+          PYTHONUNBUFFERED: '1',
+        },
+        stdio: 'pipe',
+      });
+
+      state.child = child;
+      state.startedAt = Date.now();
+
+      child.stdout.on('data', (chunk: Buffer | string) => {
+        appendLog(`[stdout] ${String(chunk)}`);
+      });
+
+      child.stderr.on('data', (chunk: Buffer | string) => {
+        const text = String(chunk);
+        if (text.includes('WinError 10048') || text.includes('[Errno 10048]') || text.includes('address already in use')) {
+          sawPortInUse = true;
+        }
+        appendLog(`[stderr] ${text}`);
+      });
+
+      child.on('error', (error) => {
+        startupError = error.message;
+        appendLog(`[manager] process error: ${error.message}`);
+      });
+
+      child.on('exit', (code, signal) => {
+        appendLog(`[manager] service exited code=${String(code)} signal=${String(signal)}`);
+        const current = getState();
+        if (current.child?.pid === child.pid) {
+          current.child = null;
+        }
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const status = await getSecurityAlertServiceStatus();
+      if (status.running) {
         return {
-          started: false,
-          reason: 'Existing anomaly service is already running on the configured port',
-          status: reusedStatus,
+          started: true,
+          reason: status.health ? 'Service is running' : 'Service process started and is warming up',
+          status,
         };
+      }
+
+      if (sawPortInUse) {
+        const reusedStatus = await waitForHealthyService(10000);
+        if (reusedStatus) {
+          appendLog('[manager] existing anomaly service detected on configured port; reusing it');
+          return {
+            started: false,
+            reason: 'Existing anomaly service is already running on the configured port',
+            status: reusedStatus,
+          };
+        }
+      }
+
+      if (startupError) {
+        lastFailure = startupError;
+      } else if (sawPortInUse) {
+        lastFailure = `Port ${port} is already in use, but no healthy anomaly service responded`;
+      } else if (!isChildAlive(child)) {
+        lastFailure = 'Python process exited before the anomaly service became available';
       }
     }
 
-    if (startupError) {
-      lastFailure = startupError;
-    } else if (sawPortInUse) {
-      lastFailure = `Port ${port} is already in use, but no healthy anomaly service responded`;
-    } else if (!isChildAlive(child)) {
-      lastFailure = 'Python process exited before the anomaly service became available';
-    }
-  }
-
-  return {
-    started: false,
-    reason: lastFailure,
-    status: await getSecurityAlertServiceStatus(),
-  };
+    return {
+      started: false,
+      reason: lastFailure,
+      status: await getSecurityAlertServiceStatus(),
+    };
   })();
 
   state.startupPromise = startupTask;

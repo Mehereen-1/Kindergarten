@@ -19,7 +19,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const results = {
+    const results: {
+      success: Array<Record<string, unknown>>;
+      failed: Array<Record<string, unknown>>;
+      total: number;
+    } = {
       success: [],
       failed: [],
       total: records.length,

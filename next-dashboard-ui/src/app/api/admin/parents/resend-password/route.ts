@@ -3,7 +3,7 @@ import { connectDB } from '@/lib/mongodb';
 import User from '@/lib/models/User';
 import { generatePassword } from '@/lib/utils/generators';
 import { sendPasswordEmail } from '@/lib/utils/email';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 /**
  * Resend password to imported parent

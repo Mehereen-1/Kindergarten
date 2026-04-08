@@ -4,7 +4,10 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import TeacherTopBar from "@/app/components/TeacherTopBar";
 import { Upload, Camera, Database, Send } from "lucide-react";
+import { getClientCctvBackendUrl } from "@/lib/clientConfig";
 type AttendanceStatus = "present" | "absent" | "late";
+
+const CCTV_BACKEND_URL = getClientCctvBackendUrl();
 
 export default function AttendancePage() {
   const [activeTab, setActiveTab] = useState<"manual" | "cctv" | "upload">("manual");
@@ -14,7 +17,7 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [studentLoadError, setStudentLoadError] = useState<string>("");
-  const [cctvFeedUrl] = useState("http://localhost:8000/video");
+  const [cctvFeedUrl] = useState(`${CCTV_BACKEND_URL}/video`);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedStudent, setSelectedStudent] = useState<string>("");
   const [studentImageCounts, setStudentImageCounts] = useState<Record<string, number>>({});
@@ -47,7 +50,7 @@ export default function AttendancePage() {
     if (cameraActive && cctvMode === "live") {
       interval = setInterval(async () => {
         try {
-          const res = await fetch("http://localhost:8000/video-detections");
+          const res = await fetch(`${CCTV_BACKEND_URL}/video-detections`);
           const detData = await res.json();
           const data = Array.isArray(detData) ? detData : (detData.detections || []);
           
@@ -149,7 +152,7 @@ export default function AttendancePage() {
       
       // Stop processing if still active
       if (isVideoProcessing) {
-        fetch("http://localhost:8000/stop-processing", { method: "POST" }).catch(err => 
+        fetch(`${CCTV_BACKEND_URL}/stop-processing`, { method: "POST" }).catch(err => 
           console.error("Error stopping processing on unmount:", err)
         );
       }
@@ -364,7 +367,7 @@ export default function AttendancePage() {
 
       // Reload embeddings
       try {
-        const reloadRes = await fetch('http://localhost:8000/reload-embeddings', {
+        const reloadRes = await fetch(`${CCTV_BACKEND_URL}/reload-embeddings`, {
           method: 'POST',
         });
         const reloadData = await reloadRes.json();
@@ -427,7 +430,7 @@ export default function AttendancePage() {
         // Reload embeddings from backend
         console.log("🔄 Reloading facial embeddings from backend...");
         try {
-          const reloadRes = await fetch("http://localhost:8000/reload-embeddings", {
+          const reloadRes = await fetch(`${CCTV_BACKEND_URL}/reload-embeddings`, {
             method: "POST",
           });
           const reloadData = await reloadRes.json();
@@ -528,7 +531,7 @@ interface CCTVTabProps {
     setLoading(true);
     setMessage("");
     try {
-      const res = await fetch("http://localhost:8000/start-camera", {
+      const res = await fetch(`${CCTV_BACKEND_URL}/start-camera`, {
         method: "POST",
       });
       const data = await res.json();
@@ -551,7 +554,7 @@ interface CCTVTabProps {
   const stopCamera = async () => {
     setLoading(true);
     try {
-      await fetch("http://localhost:8000/stop-camera", {
+      await fetch(`${CCTV_BACKEND_URL}/stop-camera`, {
         method: "POST",
       });
       setMessage("✅ Camera stopped");
@@ -577,7 +580,7 @@ interface CCTVTabProps {
     }
     
     try {
-      await fetch("http://localhost:8000/stop-processing", {
+      await fetch(`${CCTV_BACKEND_URL}/stop-processing`, {
         method: "POST",
       });
       console.log("Processing stopped");
@@ -608,7 +611,7 @@ interface CCTVTabProps {
       const formData = new FormData();
       formData.append("video", file);
 
-      const response = await fetch("http://localhost:8000/process-video", {
+      const response = await fetch(`${CCTV_BACKEND_URL}/process-video`, {
         method: "POST",
         body: formData,
       });
@@ -623,7 +626,7 @@ interface CCTVTabProps {
         setMessage(`✅ Video processing started. Displaying detections in real-time...`);
         
         // Point to the processed video stream from backend
-        setProcessedVideoUrl("http://localhost:8000/video-stream-processed");
+        setProcessedVideoUrl(`${CCTV_BACKEND_URL}/video-stream-processed`);
         
         // Poll for detection results
         let lastDetectionCount = 0;
@@ -632,7 +635,7 @@ interface CCTVTabProps {
         
         const pollInterval = setInterval(async () => {
           try {
-            const detRes = await fetch("http://localhost:8000/video-detections", {
+            const detRes = await fetch(`${CCTV_BACKEND_URL}/video-detections`, {
               method: "GET",
             });
             const detData = await detRes.json();
@@ -991,7 +994,7 @@ interface CCTVTabProps {
                     {cameraActive ? (
                       <iframe
                         key={`stream-${cameraActive}`}
-                        src="http://localhost:8000/video"
+                        src={`${CCTV_BACKEND_URL}/video`}
                         title="CCTV Feed"
                         className="w-full h-full border-0"
                         onError={(e) => {

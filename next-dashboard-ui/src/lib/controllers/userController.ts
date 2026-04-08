@@ -1,7 +1,7 @@
 import { connectDB } from '../mongodb';
 import { IUser as User } from '../models/User';
 import UserModel from '../models/User';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 interface CreateUserInput {
   name: string;

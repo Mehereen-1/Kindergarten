@@ -32,11 +32,13 @@ from collections import deque
 import cv2
 import numpy as np
 from fastapi import FastAPI, File, UploadFile, Form
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
 from dotenv import load_dotenv
 from bson import ObjectId
+
+load_dotenv()
 
 # Local module
 from face_engine import FaceEngine
@@ -70,14 +72,73 @@ MIN_CONFIRMATIONS    = 5
 ATTENDANCE_COOLDOWN  = 60
 
 
+def parse_bool(value: Optional[str], default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def parse_int(value: Optional[str], default: int = 0) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def parse_float(value: Optional[str], default: float = 0.0) -> float:
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def parse_csv(value: Optional[str]) -> List[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+IS_AZURE = any(os.getenv(key) for key in ("WEBSITE_INSTANCE_ID", "WEBSITE_SITE_NAME"))
+HOST = os.getenv("HOST", "0.0.0.0")
+PORT = int(os.getenv("PORT") or os.getenv("WEBSITES_PORT") or "8000")
+TMP_UPLOAD_DIR = os.getenv("ATTENDANCE_TMP_DIR") or None
+FACE_MODEL_NAME = os.getenv("FACE_MODEL_NAME", "buffalo_l")
+CAMERA_ENABLED = parse_bool(os.getenv("ENABLE_CAMERA"), default=not IS_AZURE)
+DEFAULT_CAMERA_SOURCE = (os.getenv("CAMERA_SOURCE") or "").strip()
+DEFAULT_CAMERA_INDEX = parse_int(os.getenv("CAMERA_INDEX"), default=0)
+CAMERA_BACKEND = (os.getenv("CAMERA_BACKEND") or "auto").strip().lower()
+CAMERA_OPEN_TIMEOUT_SECONDS = max(
+    1.0, parse_float(os.getenv("CAMERA_OPEN_TIMEOUT_SECONDS"), default=8.0)
+)
+CAMERA_WARMUP_FRAMES = max(
+    0, parse_int(os.getenv("CAMERA_WARMUP_FRAMES"), default=10)
+)
+CAMERA_FRAME_WIDTH = max(
+    0, parse_int(os.getenv("CAMERA_FRAME_WIDTH"), default=0)
+)
+CAMERA_FRAME_HEIGHT = max(
+    0, parse_int(os.getenv("CAMERA_FRAME_HEIGHT"), default=0)
+)
+CAMERA_FPS = max(0.0, parse_float(os.getenv("CAMERA_FPS"), default=0.0))
+DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+ALLOWED_ORIGINS = parse_csv(os.getenv("ALLOWED_ORIGINS")) or DEFAULT_ALLOWED_ORIGINS
+ALLOW_ANY_ORIGIN = "*" in ALLOWED_ORIGINS
+ALLOW_CREDENTIALS = parse_bool(os.getenv("ALLOW_CREDENTIALS"), default=not ALLOW_ANY_ORIGIN)
+if ALLOW_ANY_ORIGIN and ALLOW_CREDENTIALS:
+    print("⚠️ Disabling CORS credentials because ALLOWED_ORIGINS contains '*'.")
+    ALLOW_CREDENTIALS = False
+
+
 # ═══════════════════════════════════════════════════════
 # DATABASE CONNECTION
 # ═══════════════════════════════════════════════════════
 
-load_dotenv()
-
 db = None
 client = None
+mongo_error = None
 
 try:
     client = MongoClient(os.getenv("MONGODB_URI"), serverSelectionTimeoutMS=5000)
@@ -86,6 +147,7 @@ try:
     print("✅ MongoDB connected")
 except Exception as e:
     db = None
+    mongo_error = str(e)
     print(f"⚠️ MongoDB not connected: {e}")
 
 
@@ -114,6 +176,10 @@ video_state = {
     "current_frame_num": 0,
     "detections":        deque(maxlen=1000),
     "video_path":        None,
+    "temp_video_path":   None,
+    "camera_source":     None,
+    "camera_backend":    None,
+    "last_error":        None,
 }
 
 
@@ -492,26 +558,43 @@ def playback_thread(video_path: str, draw_boxes_func):
 
     cap.release()
     video_state["is_running"] = False
+    if video_state.get("temp_video_path") == video_path:
+        _cleanup_temp_video(video_path)
+        video_state["temp_video_path"] = None
+    if video_state.get("video_path") == video_path:
+        video_state["video_path"] = None
     print(f"🎬 Playback done: {frame_number} frames")
 
 
-def camera_playback_thread(camera_index: int, draw_boxes_func):
+def camera_playback_thread(camera_source, draw_boxes_func, preferred_backend: Optional[str] = None):
     """
     Reads frames from a live camera, draws latest boxes, and pushes encoded JPEGs.
     """
-    cap = cv2.VideoCapture(camera_index)
-    if not cap.isOpened():
-        print(f"❌ Failed to open camera index {camera_index}")
+    cap, backend_name, open_error = _open_camera_capture(
+        camera_source,
+        forced_backend=preferred_backend,
+    )
+    camera_label = _camera_source_label(camera_source)
+    video_state["camera_source"] = camera_label
+    video_state["camera_backend"] = backend_name
+
+    if cap is None:
+        video_state["last_error"] = open_error
+        print(f"❌ Failed to open camera source {camera_label}: {open_error}")
         video_state["is_running"] = False
         video_state["stop_event"].set()
         return
 
+    video_state["last_error"] = None
     fps_raw = cap.get(cv2.CAP_PROP_FPS)
     fps = min(fps_raw if fps_raw and fps_raw > 0 else 30, 30)
     frame_delay = 1.0 / fps
     orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or RECOG_WIDTH
     orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or RECOG_HEIGHT
-    print(f"📷 Camera {camera_index} opened at {orig_w}x{orig_h} @ {fps:.1f} FPS")
+    print(
+        f"📷 Camera {camera_label} opened via {backend_name or 'any'} "
+        f"at {orig_w}x{orig_h} @ {fps:.1f} FPS"
+    )
 
     with analytics_lock:
         video_analytics.update({
@@ -564,6 +647,9 @@ def camera_playback_thread(camera_index: int, draw_boxes_func):
 
     cap.release()
     video_state["is_running"] = False
+    video_state["video_path"] = None
+    video_state["camera_source"] = None
+    video_state["camera_backend"] = None
     print(f"📷 Camera stopped after {frame_number} frames")
 
 
@@ -803,7 +889,9 @@ async def lifespan(app: FastAPI):
     print("🚀 Starting...")
     yield
     print("🛑 Shutting down...")
-    video_state["stop_event"].set()
+    _stop_and_clear()
+    if client is not None:
+        client.close()
 
 
 # ═══════════════════════════════════════════════════════
@@ -814,8 +902,8 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=ALLOW_CREDENTIALS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -825,7 +913,15 @@ app.add_middleware(
 # GLOBAL INSTANCES
 # ═══════════════════════════════════════════════════════
 
-engine = FaceEngine(db=db, model_name="buffalo_l")
+engine = None
+engine_error = None
+
+try:
+    engine = FaceEngine(db=db, model_name=FACE_MODEL_NAME)
+except Exception as e:
+    engine_error = str(e)
+    print(f"⚠️ Face engine not ready: {e}")
+
 attendance_tracker = SlidingWindowTracker()
 bbox_smoother = BoundingBoxSmoother()
 
@@ -835,7 +931,169 @@ bbox_smoother = BoundingBoxSmoother()
 # ═══════════════════════════════════════════════════════
 
 def _embedding_count():
-    return 0 if engine.known_embeddings is None else len(engine.known_embeddings)
+    if engine is None or engine.known_embeddings is None:
+        return 0
+    return len(engine.known_embeddings)
+
+
+def _student_count():
+    if engine is None:
+        return 0
+    return engine.student_count
+
+
+def _student_names():
+    if engine is None:
+        return []
+    return list(set(engine.known_names))
+
+
+def _service_ready():
+    return db is not None and engine is not None and engine_error is None
+
+
+def _processing_not_ready_response():
+    issues = []
+    if db is None:
+        issues.append("MongoDB is not connected")
+    if engine is None:
+        issues.append("Face engine is not ready")
+
+    message = ". ".join(issues) if issues else "Attendance backend is not ready"
+    if engine_error:
+        message = f"{message}. Engine error: {engine_error}"
+
+    return JSONResponse(
+        {
+            "success": False,
+            "error": message,
+        },
+        status_code=503,
+    )
+
+
+def _cleanup_temp_video(path_to_remove: Optional[str]):
+    if not path_to_remove:
+        return
+    try:
+        if os.path.exists(path_to_remove):
+            os.remove(path_to_remove)
+            print(f"🧹 Removed temp video: {path_to_remove}")
+    except OSError as exc:
+        print(f"⚠️ Failed to remove temp video {path_to_remove}: {exc}")
+
+
+def _normalize_camera_source(camera_index: Optional[int] = None,
+                             camera_source: Optional[str] = None):
+    raw_source = camera_source
+    if raw_source is None or not str(raw_source).strip():
+        raw_source = DEFAULT_CAMERA_SOURCE
+
+    if raw_source and str(raw_source).strip():
+        raw_source = str(raw_source).strip()
+        if raw_source.lstrip("-").isdigit():
+            return int(raw_source)
+        return raw_source
+
+    if camera_index is not None:
+        return camera_index
+
+    return DEFAULT_CAMERA_INDEX
+
+
+def _camera_source_label(camera_source) -> str:
+    return str(camera_source)
+
+
+def _camera_backend_candidates(camera_source, forced_backend: Optional[str] = None):
+    backend_map = {
+        "any": getattr(cv2, "CAP_ANY", None),
+        "dshow": getattr(cv2, "CAP_DSHOW", None),
+        "msmf": getattr(cv2, "CAP_MSMF", None),
+        "v4l2": getattr(cv2, "CAP_V4L2", None),
+        "ffmpeg": getattr(cv2, "CAP_FFMPEG", None),
+        "gstreamer": getattr(cv2, "CAP_GSTREAMER", None),
+    }
+
+    preferred = (forced_backend or CAMERA_BACKEND or "auto").lower()
+    if preferred != "auto":
+        names = [preferred, "any"]
+    elif isinstance(camera_source, str) and "://" in camera_source:
+        names = ["ffmpeg", "gstreamer", "any"]
+    elif os.name == "nt":
+        names = ["dshow", "msmf", "any"]
+    else:
+        names = ["v4l2", "any"]
+
+    candidates = []
+    seen = set()
+    for name in names:
+        backend_id = backend_map.get(name)
+        if backend_id is None or name in seen:
+            continue
+        seen.add(name)
+        candidates.append((name, backend_id))
+
+    if not candidates:
+        candidates.append(("any", cv2.CAP_ANY))
+
+    return candidates
+
+
+def _apply_camera_preferences(cap):
+    if CAMERA_FRAME_WIDTH > 0:
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_FRAME_WIDTH)
+    if CAMERA_FRAME_HEIGHT > 0:
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_FRAME_HEIGHT)
+    if CAMERA_FPS > 0:
+        cap.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
+
+
+def _open_camera_capture(camera_source, forced_backend: Optional[str] = None):
+    errors = []
+
+    for backend_name, backend_id in _camera_backend_candidates(camera_source, forced_backend):
+        cap = None
+        try:
+            cap = cv2.VideoCapture(camera_source, backend_id)
+        except Exception as exc:
+            errors.append(f"{backend_name}: {exc}")
+            continue
+
+        if not cap or not cap.isOpened():
+            if cap is not None:
+                cap.release()
+            errors.append(f"{backend_name}: open failed")
+            continue
+
+        _apply_camera_preferences(cap)
+
+        deadline = time.time() + CAMERA_OPEN_TIMEOUT_SECONDS
+        received_frame = False
+        while time.time() < deadline:
+            ok, frame = cap.read()
+            if ok and frame is not None and frame.size > 0:
+                received_frame = True
+                break
+            time.sleep(0.1)
+
+        if not received_frame:
+            cap.release()
+            errors.append(
+                f"{backend_name}: no frames received within {CAMERA_OPEN_TIMEOUT_SECONDS:.1f}s"
+            )
+            continue
+
+        for _ in range(CAMERA_WARMUP_FRAMES):
+            ok, frame = cap.read()
+            if not ok or frame is None or frame.size == 0:
+                break
+
+        return cap, backend_name, None
+
+    if not errors:
+        errors.append("camera open failed")
+    return None, None, "; ".join(errors)
 
 
 def _save_attendance_wrapper(name: str, student_id):
@@ -860,6 +1118,9 @@ def _start_processing_threads(playback_target, playback_args):
 
 
 def _stop_and_clear():
+    temp_video_path = video_state.get("temp_video_path")
+    was_running = video_state["is_running"]
+
     video_state["stop_event"].set()
     video_state["is_running"] = False
     video_state["frame_queue"].clear()
@@ -871,7 +1132,37 @@ def _stop_and_clear():
         extracted_faces["faces"] = []
     attendance_tracker.reset()
     bbox_smoother.reset()
+    if temp_video_path and not was_running:
+        _cleanup_temp_video(temp_video_path)
+        video_state["temp_video_path"] = None
+    if not was_running:
+        video_state["video_path"] = None
+        video_state["camera_source"] = None
+        video_state["camera_backend"] = None
+    video_state["last_error"] = None
     time.sleep(0.3)
+
+
+@app.get("/health")
+def health_check():
+    payload = {
+        "status": "ok" if _service_ready() else "degraded",
+        "ready": _service_ready(),
+        "mongodb_connected": db is not None,
+        "mongo_error": mongo_error,
+        "face_engine_ready": engine is not None and engine_error is None,
+        "face_engine_error": engine_error,
+        "camera_enabled": CAMERA_ENABLED,
+        "camera_default_source": _camera_source_label(_normalize_camera_source()),
+        "camera_backend_setting": CAMERA_BACKEND,
+        "camera_source_active": video_state["camera_source"],
+        "camera_backend_active": video_state["camera_backend"],
+        "camera_last_error": video_state["last_error"],
+        "azure_detected": IS_AZURE,
+        "embeddings_loaded": _embedding_count(),
+        "is_processing": video_state["is_running"],
+    }
+    return JSONResponse(payload, status_code=200 if payload["ready"] else 503)
 
 
 # ═══════════════════════════════════════════════════════
@@ -901,13 +1192,25 @@ def video_stream_live_alias():
 
 @app.post("/process-video")
 async def process_video(video: UploadFile = File(...)):
+    if not _service_ready():
+        return _processing_not_ready_response()
+
     _stop_and_clear()
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+    temp_file_kwargs = {
+        "delete": False,
+        "suffix": ".mp4",
+        "prefix": "attendance-upload-",
+    }
+    if TMP_UPLOAD_DIR:
+        temp_file_kwargs["dir"] = TMP_UPLOAD_DIR
+
+    with tempfile.NamedTemporaryFile(**temp_file_kwargs) as tmp:
         tmp.write(await video.read())
         tmp_path = tmp.name
 
     video_state["video_path"] = tmp_path
+    video_state["temp_video_path"] = tmp_path
     video_state["stop_event"].clear()
     video_state["is_running"] = True
 
@@ -924,19 +1227,46 @@ async def process_video(video: UploadFile = File(...)):
 
 
 @app.post("/start-camera")
-def start_camera(camera_index: int = 0):
+def start_camera(camera_index: Optional[int] = None, camera_source: Optional[str] = None):
+    if not CAMERA_ENABLED:
+        return JSONResponse(
+            {
+                "success": False,
+                "error": "Live camera mode is disabled for this deployment. Set ENABLE_CAMERA=true on the machine that should open the camera.",
+            },
+            status_code=400,
+        )
+
+    if not _service_ready():
+        return _processing_not_ready_response()
+
     _stop_and_clear()
 
-    test_cap = cv2.VideoCapture(camera_index)
-    opened = test_cap.isOpened()
-    if opened:
-        test_cap.release()
-    else:
-        return {"success": False, "error": f"Camera index {camera_index} not accessible"}
+    resolved_camera_source = _normalize_camera_source(
+        camera_index=camera_index,
+        camera_source=camera_source,
+    )
+    source_label = _camera_source_label(resolved_camera_source)
 
-    video_state["video_path"] = f"camera:{camera_index}"
+    test_cap, backend_name, open_error = _open_camera_capture(resolved_camera_source)
+    if test_cap is None:
+        video_state["camera_source"] = source_label
+        video_state["camera_backend"] = backend_name
+        video_state["last_error"] = open_error
+        return {
+            "success": False,
+            "error": f"Camera source {source_label} not accessible. {open_error}",
+        }
+
+    test_cap.release()
+
+    video_state["video_path"] = f"camera:{source_label}"
+    video_state["temp_video_path"] = None
     video_state["stop_event"].clear()
     video_state["is_running"] = True
+    video_state["camera_source"] = source_label
+    video_state["camera_backend"] = backend_name
+    video_state["last_error"] = None
 
     with analytics_lock:
         video_analytics.update({
@@ -946,8 +1276,15 @@ def start_camera(camera_index: int = 0):
             "start_time": None, "processing_time": 0,
         })
 
-    _start_processing_threads(camera_playback_thread, (camera_index, _draw_boxes_wrapper))
-    return {"success": True, "camera_index": camera_index}
+    _start_processing_threads(
+        camera_playback_thread,
+        (resolved_camera_source, _draw_boxes_wrapper, backend_name),
+    )
+    return {
+        "success": True,
+        "camera_source": source_label,
+        "camera_backend": backend_name,
+    }
 
 
 @app.post("/stop-camera")
@@ -992,8 +1329,8 @@ async def upload_student_images(
     student_id: str = Form(...),
     files: List[UploadFile] = File(...),
 ):
-    if db is None:
-        return {"error": "MongoDB not connected", "success": False}
+    if db is None or engine is None:
+        return _processing_not_ready_response()
 
     embeddings_created = 0
     files_processed = 0
@@ -1058,7 +1395,10 @@ def get_known_faces():
             student_id = record.get("student_id")
             embeddings = record.get("embeddings", [])
             num_samples = len(embeddings) or record.get("number_of_samples", 0)
-            image_url = None
+            image_url = next(
+                (item.get("image_url") for item in embeddings if item.get("image_url")),
+                None,
+            )
             if os.path.exists(FACIAL_DATA_DIR):
                 matches = glob.glob(os.path.join(FACIAL_DATA_DIR, f"{student_id}_*.jpg"))
                 if matches:
@@ -1081,6 +1421,9 @@ def get_known_faces():
 
 @app.post("/test-recognition")
 async def test_recognition(file: UploadFile = File(...)):
+    if engine is None:
+        return _processing_not_ready_response()
+
     try:
         img = decode_image(await file.read())
         if img is None:
@@ -1146,17 +1489,35 @@ def clear_extracted_faces_ep():
 
 @app.get("/debug")
 def debug_status():
+    multiframe_config = {"window": SLIDING_WINDOW_SIZE, "min": MIN_CONFIRMATIONS}
     return {
+        "ready": _service_ready(),
         "mongodb_connected": db is not None,
+        "mongo_error": mongo_error,
+        "face_engine_ready": engine is not None and engine_error is None,
+        "face_engine_error": engine_error,
         "embeddings_loaded": _embedding_count(),
-        "unique_students": engine.student_count,
-        "student_names": list(set(engine.known_names)),
+        "unique_students": _student_count(),
+        "student_names": _student_names(),
         "is_processing": video_state["is_running"],
         "frame_queue_size": len(video_state["frame_queue"]),
         "recognition_queue_size": len(video_state["recognition_queue"]),
-        "model": "buffalo_l",
+        "model": FACE_MODEL_NAME,
         "threshold": RECOG_THRESHOLD,
-        "multiframe": {"window": SLIDING_WINDOW_SIZE, "min": MIN_CONFIRMATIONS},
+        "camera_enabled": CAMERA_ENABLED,
+        "camera_default_source": _camera_source_label(_normalize_camera_source()),
+        "camera_backend_setting": CAMERA_BACKEND,
+        "camera_backend_active": video_state["camera_backend"],
+        "camera_source_active": video_state["camera_source"],
+        "camera_last_error": video_state["last_error"],
+        "camera_open_timeout_seconds": CAMERA_OPEN_TIMEOUT_SECONDS,
+        "camera_warmup_frames": CAMERA_WARMUP_FRAMES,
+        "azure_detected": IS_AZURE,
+        "multiframe": multiframe_config,
+        "multiframe_config": {
+            "window_size": SLIDING_WINDOW_SIZE,
+            "min_confirmations": MIN_CONFIRMATIONS,
+        },
     }
 
 
@@ -1175,11 +1536,11 @@ def tracker_status():
 
 @app.post("/reload-embeddings")
 def reload_embeddings():
-    if db is None:
-        return {"success": False, "error": "MongoDB not connected"}
+    if db is None or engine is None:
+        return _processing_not_ready_response()
     engine.load_embeddings_from_db(db)
     return {"success": True, "embeddings_loaded": _embedding_count(),
-            "unique_students": engine.student_count}
+            "unique_students": _student_count()}
 
 
 # ═══════════════════════════════════════════════════════
@@ -1188,4 +1549,4 @@ def reload_embeddings():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=HOST, port=PORT)

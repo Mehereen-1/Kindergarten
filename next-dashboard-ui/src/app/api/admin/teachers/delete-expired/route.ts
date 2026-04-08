@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       importedAt: { $exists: true }
     });
 
-    const deletedIds = [];
+    const deletedIds: string[] = [];
 
     for (const teacher of expiredTeachers) {
       // Delete teacher profile
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       // Delete user
       await User.findByIdAndDelete(teacher._id);
 
-      deletedIds.push(teacher._id);
+      deletedIds.push(teacher._id.toString());
     }
 
     return NextResponse.json({

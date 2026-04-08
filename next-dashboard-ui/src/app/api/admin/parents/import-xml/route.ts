@@ -20,7 +20,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const results = {
+    const results: {
+      success: Array<Record<string, unknown>>;
+      failed: Array<Record<string, unknown>>;
+      total: number;
+    } = {
       success: [],
       failed: [],
       total: records.length,
@@ -52,7 +56,7 @@ export async function POST(request: NextRequest) {
           importedAt: new Date(),
         });
 
-        if (!userRes.success) {
+        if (!userRes.success || !userRes.data) {
           throw new Error(userRes.message);
         }
 

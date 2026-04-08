@@ -16,9 +16,19 @@
 # IMPORTS
 # ═══════════════════════════════════════════════════════
 
+import os
+
 import cv2
 import numpy as np
 from insightface.app import FaceAnalysis
+
+
+DEFAULT_INSIGHTFACE_HOME = os.getenv(
+    "INSIGHTFACE_HOME",
+    os.path.join(os.path.dirname(__file__), ".insightface"),
+)
+os.makedirs(DEFAULT_INSIGHTFACE_HOME, exist_ok=True)
+os.environ.setdefault("INSIGHTFACE_HOME", DEFAULT_INSIGHTFACE_HOME)
 
 
 # ═══════════════════════════════════════════════════════

@@ -3,7 +3,7 @@ import { connectDB } from '@/lib/mongodb';
 import User from '@/lib/models/User';
 import TeacherProfile from '@/lib/models/TeacherProfile';
 import { generateEmail, generatePassword, parseCSVLine, isValidEmail, isValidPhone } from '@/lib/utils/generators';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 /**
  * Bulk Import Teachers from CSV
@@ -44,7 +44,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const results = {
+    const results: {
+      success: Array<Record<string, unknown>>;
+      failed: Array<Record<string, unknown>>;
+      total: number;
+    } = {
       success: [],
       failed: [],
       total: lines.length - 1

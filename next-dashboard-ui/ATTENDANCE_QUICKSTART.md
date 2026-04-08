@@ -1,215 +1,144 @@
-# 🚀 ATTENDANCE SYSTEM - QUICK START
+# Attendance Backend Quick Start
 
-## Step-by-Step Setup
+This backend has three practical deployment modes:
 
-### 1. Python Backend
-```bash
-cd attendance_cctv
-venv310\Scripts\activate
+- Local machine: upload-video mode and live camera mode
+- Azure App Service: upload-video mode only
+- Windows VM: upload-video mode and live camera mode
+
+The active FastAPI app is [main.py](C:/system%20project/Kindergarten/next-dashboard-ui/attendance_cctv/backend/main.py), not `main_v2.py`.
+
+## Local Or Windows VM Setup
+
+From `next-dashboard-ui/attendance_cctv` in PowerShell:
+
+```powershell
+py -3.10 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip setuptools wheel
+pip install -r backend\requirements.txt
 cd backend
-uvicorn main_v2:app --reload
-
-# Verify dependencies installed
-
-python -c "import fastapi, cv2, insightface; print('✅ All dependencies ready')"
-
-# Start the server
-python main_v2.py
-
-# Expected output:
-# INFO:     Uvicorn running on http://0.0.0.0:8000
-# ✅ MongoDB connected successfully
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 2. Test Backend
-Open in browser or use curl:
-```bash
-http://localhost:8000/debug
+If PowerShell blocks activation:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
 ```
 
-Expected response:
-```json
-{
-  "webcam_available": true,
-  "opencv_version": "4.x.x",
-  "mongodb_connected": true,
-  "message": "System ready!"
-}
+## Local Env Vars
+
+Set these before starting the backend:
+
+```powershell
+$env:MONGODB_URI="your-mongodb-connection-string"
+$env:DB_NAME="kindergarten"
+$env:ALLOWED_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
+$env:ENABLE_CAMERA="true"
 ```
 
-### 3. Access Frontend
+Optional:
+
+```powershell
+$env:FACE_MODEL_NAME="buffalo_l"
+$env:INSIGHTFACE_HOME="$PWD\.insightface"
+$env:CAMERA_INDEX="0"
+$env:CAMERA_BACKEND="dshow"
+$env:CAMERA_WARMUP_FRAMES="10"
 ```
+
+If your camera is exposed to the app as a URL instead of a numeric webcam index:
+
+```powershell
+$env:CAMERA_SOURCE="rtsp://user:password@camera-host/stream"
+$env:CAMERA_BACKEND="ffmpeg"
+```
+
+## Local Checks
+
+After startup:
+
+```powershell
+Invoke-RestMethod http://localhost:8000/health
+Invoke-RestMethod http://localhost:8000/debug
+```
+
+Healthy upload-video mode should show:
+
+- `mongodb_connected: true`
+- `face_engine_ready: true`
+- `ready: true` on `/health`
+
+Then open:
+
+```text
+http://localhost:3000/teacher/video-attendance
 http://localhost:3000/teacher/attendance
 ```
 
-## Integration Points
+## Azure App Service Deployment
 
-### React Component ↔ Backend API Mapping
+Deploy the folder `attendance_cctv/backend` as a Python App Service.
 
-| Frontend Tab | API Endpoint | Python Backend |
-|---|---|---|
-| Manual Entry | `/api/teacher/attendance/bulk` | ❌ (Next.js handles) |
-| CCTV Feed | Display: `http://localhost:8000/video` | ✅ `GET /video` |
-| CCTV Sync | `/api/attendance/cctv-sync` | ✅ `GET /attendance` |
-| Upload Images | `/api/attendance/facial-upload` | ✅ `POST /upload-student-images` |
-
-## File Structure
-
-```
-next-kindergarten/next-dashboard-ui/
-├── attendance_cctv/
-│   ├── backend/
-│   │   ├── main.py (original - local JSON storage)
-│   │   ├── main_v2.py (new - MongoDB + CCTV feed)
-│   │   ├── face_engine.py (enhanced with student_id tracking)
-│   │   ├── dataset/ (training images)
-│   │   └── attendance.json (local fallback)
-│   ├── frontend/ (HTML5 streaming client)
-│   └── venv310/ (Python virtual environment)
-│
-├── src/
-│   ├── app/
-│   │   ├── api/
-│   │   │   └── attendance/
-│   │   │       ├── facial-upload/route.ts (NEW)
-│   │   │       └── cctv-sync/route.ts (NEW)
-│   │   └── teacher/
-│   │       └── attendance/
-│   │           └── page.tsx (ENHANCED)
-│   └── lib/
-│       ├── models/
-│       │   └── FacialDatabase.ts (NEW)
-│       └── controllers/
-│           └── attendanceController.ts
-│
-└── public/
-    └── facial-data/ (uploaded images stored here)
-```
-
-## Key Changes Made
-
-### 1. MongoDB Models
-- **FacialDatabase.ts**: Store facial embeddings and training images
-- Enhanced **Attendance.ts**: Now tracks source (CCTV/manual)
-
-### 2. Python Backend
-- **main_v2.py**: MongoDB integration + image upload API
-- **face_engine.py**: Enhanced with student_id tracking + DB loading
-
-### 3. Frontend
-- **Teacher Attendance Page**: Three tabs (Manual/CCTV/Upload)
-- **Facial Upload Component**: Drag-drop multi-image upload
-- **CCTV Viewer**: Live feed with sync button
-
-### 4. APIs
-- `POST /api/attendance/facial-upload`: Bulk image upload
-- `GET /api/attendance/cctv-sync`: Sync CCTV attendance to DB
-- `POST /api/teacher/attendance/bulk`: Manual attendance save
-
-## Testing Workflow
-
-### Test 1: System Check
-```bash
-curl http://localhost:8000/debug
-
-# Should return: webcam_available=true, mongodb_connected=true
-```
-
-### Test 2: Facial Database
-```bash
-# Check if student has facial samples
-curl http://localhost:8000/student-facial-samples/STUDENT_ID
-```
-
-### Test 3: Manual Upload
-```bash
-# Via UI: Go to "📸 Facial Data" tab → Select student → Upload 5-10 photos
-```
-
-### Test 4: CCTV Sync
-```bash
-# Via UI: Go to "🎥 CCTV Feed" tab → Click "🔄 Sync CCTV Attendance"
-```
-
-## Troubleshooting
-
-### ❌ "Cannot connect to feed"
-```bash
-# Check Python backend
-curl http://localhost:8000/video
-
-# If fails:
-# 1. Python backend not running
-# 2. Webcam not accessible
-# 3. CORS not enabled
-```
-
-### ❌ Faces not recognized
-```bash
-# Check uploaded samples
-curl http://localhost:8000/student-facial-samples/STUDENT_ID
-
-# Solution: Upload more training images (need 5+)
-# Try different angles and lighting
-```
-
-### ❌ MongoDB connection error
-```bash
-# Verify MongoDB running
-# Ensure MONGODB_URI environment variable is set:
-echo $MONGODB_URI
-
-# Should output: mongodb://localhost:27017 (or your connection string)
-```
-
-## Performance Monitoring
-
-### Check Backend Logs
-```bash
-# Watch Python server logs for errors
-# Look for lines like:
-# ✅ Loaded 45 embeddings from database
-# Error processing image: ...
-```
-
-### Database Size
-```bash
-# Review MongoDB collections
-# attendance: ~100-200 bytes per record
-# facial_database: ~1KB per student (with embeddings)
-# facial_embedding: ~2KB per image
-```
-
-## Next Steps
-
-1. ✅ Install Python dependencies (in progress)
-2. ✅ Start Python backend: `python main_v2.py`
-3. ✅ Access UI: `http://localhost:3000/teacher/attendance`
-4. ✅ Upload student photos via "📸 Facial Data" tab
-5. ✅ Test CCTV stream: Click "🎥 CCTV Feed" tab
-6. ✅ Sync attendance: Click "🔄 Sync" button
-7. ✅ View database: Check MongoDB for records
-
-## Important Notes
-
-- **First time setup**: Upload at least 5 photos per student for accuracy
-- **Lighting matters**: Good lighting = better recognition
-- **Consistency**: Keep photos recent (within semester)
-- **Threshold tuning**: Adjust `0.4` value in face_engine.py if needed
-- **Local development**: CORS is wide open, restrict in production
-
-## Additional Commands
+Startup command:
 
 ```bash
-# Test individual endpoints
-python -c "from main_v2 import engine; print(engine.known_embeddings)"
-
-# Clear attendance
-curl -X POST http://localhost:8000/clear-attendance
-
-# Get all attendance
-curl http://localhost:8000/attendance
-
-# Retrain model
-curl -X POST http://localhost:8000/retrain-facial-model
+python -m uvicorn main:app --host 0.0.0.0 --port $PORT
 ```
+
+App settings:
+
+- `MONGODB_URI`
+- `DB_NAME`
+- `ALLOWED_ORIGINS=https://your-next-app.azurewebsites.net`
+- `ENABLE_CAMERA=false`
+- `INSIGHTFACE_HOME=/home/site/insightface`
+
+Notes:
+
+- Azure upload-video mode works.
+- Azure live camera mode does not work, because App Service has no local webcam device.
+- The backend now exposes `/health` for readiness checks.
+
+## Windows VM Deployment
+
+Use this mode when you need `POST /start-camera` to open the camera on the machine running the backend.
+
+Recommended environment variables on the VM:
+
+- `MONGODB_URI`
+- `DB_NAME`
+- `ALLOWED_ORIGINS=https://your-next-app-domain`
+- `ENABLE_CAMERA=true`
+- `CAMERA_INDEX=0`
+- `CAMERA_BACKEND=dshow`
+- `CAMERA_WARMUP_FRAMES=10`
+
+Start the backend on the VM:
+
+```powershell
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+Important notes for VM camera mode:
+
+- The camera must be visible to the Windows session running the backend.
+- If you use webcam redirection over Remote Desktop, run the backend in the logged-in user session, not as a headless background service.
+- Check `http://localhost:8000/health` and `http://localhost:8000/debug` on the VM before connecting the Next.js frontend.
+
+## What Works Where
+
+- `POST /process-video`: local and Azure
+- `GET /video`, `GET /video-stream-processed`: local and Azure while a video is being processed
+- `POST /upload-student-images`: local and Azure
+- `POST /reload-embeddings`: local and Azure
+- `POST /start-camera`: local and Windows VM
+
+## Common Issues
+
+- `Face engine not ready`: dependencies are missing, or InsightFace model download/cache is broken
+- `MongoDB not connected`: `MONGODB_URI` is missing or inaccessible
+- `Activate.ps1 cannot be loaded`: run the execution-policy command above for the current shell
+- `Backend not running on port 8000`: check that you started `uvicorn main:app` from `attendance_cctv/backend`

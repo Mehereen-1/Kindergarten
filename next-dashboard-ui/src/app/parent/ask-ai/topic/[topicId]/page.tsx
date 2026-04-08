@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Brain, FileText, Loader2, Send, Sparkles, Wand2 } from 'lucide-react';
 
@@ -17,7 +17,7 @@ type TopicDetail = {
   quiz?: { quizId: string; totalQuestions: number } | null;
 };
 
-export default function ParentTopicWorkspacePage() {
+function ParentTopicWorkspacePageContent() {
   const params = useParams<{ topicId: string }>();
   const searchParams = useSearchParams();
 
@@ -322,5 +322,22 @@ export default function ParentTopicWorkspacePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ParentTopicWorkspacePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-50 p-6 flex items-center justify-center">
+          <div className="flex items-center gap-2 text-gray-600">
+            <Loader2 className="animate-spin" size={20} />
+            Loading topic workspace...
+          </div>
+        </div>
+      }
+    >
+      <ParentTopicWorkspacePageContent />
+    </Suspense>
   );
 }
