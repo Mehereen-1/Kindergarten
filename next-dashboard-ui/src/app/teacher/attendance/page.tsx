@@ -1528,7 +1528,7 @@ interface CCTVTabProps {
           <div className="space-y-6">
             <div className="bg-white rounded-xl shadow-sm p-6">
               <h3 className="text-lg font-bold text-slate-900 mb-4">
-                🎥 Live CCTV Feed with Face Recognition!
+                🎥 Live CCTV Feed with Face Recognition!!
               </h3>
 
               {/* CCTV Mode Selector */}
