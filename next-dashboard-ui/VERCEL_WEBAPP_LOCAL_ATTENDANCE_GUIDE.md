@@ -161,6 +161,7 @@ At minimum, set these in Vercel Project Settings:
 APP_URL=https://your-project.vercel.app
 NEXT_PUBLIC_APP_URL=https://your-project.vercel.app
 MONGODB_URI=YOUR_MONGODB_URI
+DB_NAME=test
 
 PYTHON_BACKEND_URL=https://attendance.yourdomain.com
 NEXT_PUBLIC_PYTHON_BACKEND_URL=https://attendance.yourdomain.com
@@ -187,6 +188,49 @@ On the school PC:
 4. Verify `https://attendance.yourdomain.com/health`
 
 Do not deploy the attendance backend to Vercel.
+
+## 9.1 Fast Testing With Quick Tunnel
+
+If you need the fastest possible test path before setting up a named tunnel:
+
+1. Start the backend:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\system project\Kindergarten\next-dashboard-ui\attendance_cctv\start-attendance-backend.ps1"
+```
+
+2. Start the quick tunnel:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\system project\Kindergarten\next-dashboard-ui\attendance_cctv\start-attendance-quick-tunnel.ps1"
+```
+
+3. Read and verify the current quick tunnel URL:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\system project\Kindergarten\next-dashboard-ui\attendance_cctv\check-attendance-quick-tunnel.ps1"
+```
+
+The quick tunnel URL is also saved to:
+
+```text
+C:\system project\Kindergarten\next-dashboard-ui\attendance_cctv\quick-tunnel-url.txt
+```
+
+Then put that exact `https://...trycloudflare.com` URL into these Vercel environment variables:
+
+```env
+PYTHON_BACKEND_URL=https://your-current.trycloudflare.com
+NEXT_PUBLIC_PYTHON_BACKEND_URL=https://your-current.trycloudflare.com
+NEXT_PUBLIC_CCTV_BACKEND_URL=https://your-current.trycloudflare.com
+DB_NAME=test
+```
+
+Important:
+
+- Quick Tunnel is for testing, not stable production
+- if the URL changes, update those three Vercel vars and redeploy
+- keep the backend and tunnel windows open while testing
 
 ## 10. Vercel Deploy Steps
 

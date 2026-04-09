@@ -27,6 +27,15 @@ interface TeacherClass {
   students: ClassStudent[];
 }
 
+interface BrowserFrameDetection {
+  bbox: [number, number, number, number];
+  name: string;
+  student_name?: string;
+  student_id?: string | null;
+  score?: number;
+  confirmed?: boolean;
+}
+
 const CCTV_BACKEND_URL = getClientCctvBackendUrl();
 
 function AttendancePageContent() {
@@ -48,7 +57,6 @@ function AttendancePageContent() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [studentLoadError, setStudentLoadError] = useState<string>("");
-  const [cctvFeedUrl] = useState(`${CCTV_BACKEND_URL}/video`);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedStudent, setSelectedStudent] = useState<string>("");
   const [studentImageCounts, setStudentImageCounts] = useState<Record<string, number>>({});
@@ -61,12 +69,20 @@ function AttendancePageContent() {
   const videoInputRef = useRef<HTMLInputElement>(null);
   const videoElementRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const liveVideoRef = useRef<HTMLVideoElement>(null);
+  const liveCanvasRef = useRef<HTMLCanvasElement>(null);
+  const captureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const browserStreamRef = useRef<MediaStream | null>(null);
+  const browserCaptureIntervalRef = useRef<number | null>(null);
+  const browserCaptureInFlightRef = useRef(false);
   const [videoUrl, setVideoUrl] = useState<string>("");
   const [detections, setDetections] = useState<any[]>([]);
   const [isVideoProcessing, setIsVideoProcessing] = useState(false);
   const [processedVideoUrl, setProcessedVideoUrl] = useState<string>("");
   const [extractedFaces, setExtractedFaces] = useState<ExtractedFace[]>([]);
   const [detectedNamesById, setDetectedNamesById] = useState<Record<string, string>>({});
+  const [liveOverlayDetections, setLiveOverlayDetections] = useState<BrowserFrameDetection[]>([]);
+  const [liveFrameSize, setLiveFrameSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [bulkImportMode, setBulkImportMode] = useState(false);
   const [bulkImportProgress, setBulkImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [exportDate, setExportDate] = useState(new Date().toISOString().split("T")[0]);
@@ -205,6 +221,28 @@ function AttendancePageContent() {
     };
   }, [cameraActive, cctvMode]);
 
+  useEffect(() => {
+    if (activeTab !== "cctv" && cameraActive) {
+      void stopBrowserCamera();
+    }
+  }, [activeTab, cameraActive]);
+
+  useEffect(() => {
+    if (!cameraActive || cctvMode !== "live") return;
+
+    const video = liveVideoRef.current;
+    const stream = browserStreamRef.current;
+    if (!video || !stream) return;
+
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+    }
+
+    void video.play().catch((error) => {
+      console.error("Error starting browser video preview:", error);
+    });
+  }, [cameraActive, cctvMode]);
+
   // Handle video playback and detection overlay
   useEffect(() => {
     if (!videoElementRef.current || !canvasRef.current) return;
@@ -257,11 +295,173 @@ function AttendancePageContent() {
     return () => video.removeEventListener("play", updateCanvas);
   }, [detections]);
 
+  useEffect(() => {
+    if (!cameraActive || cctvMode !== "live") {
+      const canvas = liveCanvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (canvas && ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+      return;
+    }
+
+    let animationFrameId = 0;
+
+    const drawOverlay = () => {
+      const video = liveVideoRef.current;
+      const canvas = liveCanvasRef.current;
+      const ctx = canvas?.getContext("2d");
+
+      if (video && canvas && ctx) {
+        const rect = video.getBoundingClientRect();
+        const width = Math.max(1, Math.round(rect.width));
+        const height = Math.max(1, Math.round(rect.height));
+
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const sourceWidth = liveFrameSize.width || video.videoWidth || 1;
+        const sourceHeight = liveFrameSize.height || video.videoHeight || 1;
+        const scaleX = canvas.width / sourceWidth;
+        const scaleY = canvas.height / sourceHeight;
+
+        liveOverlayDetections.forEach((detection) => {
+          const [x1, y1, x2, y2] = detection.bbox;
+          const drawX = x1 * scaleX;
+          const drawY = y1 * scaleY;
+          const drawWidth = (x2 - x1) * scaleX;
+          const drawHeight = (y2 - y1) * scaleY;
+          const label = detection.student_name || detection.name || "Unknown";
+          const color = detection.name === "Spoof" ? "#ef4444" : detection.student_id ? "#16a34a" : "#f59e0b";
+
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = color;
+          ctx.strokeRect(drawX, drawY, drawWidth, drawHeight);
+
+          ctx.font = "bold 16px Arial";
+          const textMetrics = ctx.measureText(label);
+          const textWidth = textMetrics.width + 14;
+          const textHeight = 24;
+          const textY = Math.max(0, drawY - textHeight - 4);
+
+          ctx.fillStyle = "rgba(15, 23, 42, 0.82)";
+          ctx.fillRect(drawX, textY, textWidth, textHeight);
+          ctx.fillStyle = color;
+          ctx.fillText(label, drawX + 7, textY + 17);
+        });
+      }
+
+      animationFrameId = window.requestAnimationFrame(drawOverlay);
+    };
+
+    drawOverlay();
+
+    return () => {
+      if (animationFrameId) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [cameraActive, cctvMode, liveOverlayDetections, liveFrameSize]);
+
   // const [studentLoadError, setStudentLoadError] = useState<string>("");
+
+  const stopBrowserCaptureLoop = () => {
+    if (browserCaptureIntervalRef.current !== null) {
+      window.clearInterval(browserCaptureIntervalRef.current);
+      browserCaptureIntervalRef.current = null;
+    }
+    browserCaptureInFlightRef.current = false;
+  };
+
+  const stopBrowserPreviewStream = () => {
+    const stream = browserStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      browserStreamRef.current = null;
+    }
+
+    if (liveVideoRef.current) {
+      liveVideoRef.current.pause();
+      liveVideoRef.current.srcObject = null;
+    }
+  };
+
+  const captureBrowserFrame = async () => {
+    if (!browserStreamRef.current || browserCaptureInFlightRef.current) return;
+
+    const video = liveVideoRef.current;
+    if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+      return;
+    }
+
+    browserCaptureInFlightRef.current = true;
+
+    try {
+      const captureCanvas = captureCanvasRef.current ?? document.createElement("canvas");
+      captureCanvasRef.current = captureCanvas;
+
+      const maxWidth = 960;
+      let targetWidth = video.videoWidth;
+      let targetHeight = video.videoHeight;
+
+      if (targetWidth > maxWidth) {
+        const ratio = maxWidth / targetWidth;
+        targetWidth = maxWidth;
+        targetHeight = Math.round(targetHeight * ratio);
+      }
+
+      captureCanvas.width = targetWidth;
+      captureCanvas.height = targetHeight;
+
+      const ctx = captureCanvas.getContext("2d");
+      if (!ctx) {
+        throw new Error("Could not create a capture canvas.");
+      }
+
+      ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+
+      const blob = await new Promise<Blob | null>((resolve) => {
+        captureCanvas.toBlob(resolve, "image/jpeg", 0.82);
+      });
+
+      if (!blob) {
+        throw new Error("Could not capture a browser camera frame.");
+      }
+
+      const formData = new FormData();
+      formData.append("file", blob, "browser-frame.jpg");
+
+      const response = await fetch(`${CCTV_BACKEND_URL}/process-browser-frame`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Failed to process browser camera frame.");
+      }
+
+      setLiveOverlayDetections(Array.isArray(result.detections) ? result.detections : []);
+      if (typeof result.frame_width === "number" && typeof result.frame_height === "number") {
+        setLiveFrameSize({ width: result.frame_width, height: result.frame_height });
+      }
+    } catch (error) {
+      console.error("Browser camera frame processing error:", error);
+    } finally {
+      browserCaptureInFlightRef.current = false;
+    }
+  };
 
   // Cleanup on component unmount
   useEffect(() => {
     return () => {
+      stopBrowserCaptureLoop();
+      stopBrowserPreviewStream();
+
       // Clear any lingering intervals/timeouts
       if ((window as any).processingInterval) {
         clearInterval((window as any).processingInterval);
@@ -630,6 +830,83 @@ interface CCTVTabProps {
       setMessage("✅ Camera stopped");
     } catch (error) {
       setMessage(`❌ Error: ${String(error)}`);
+    } finally {
+      setCameraActive(false);
+      seenAttendanceIds.current.clear();
+      setLoading(false);
+    }
+  };
+
+  const startBrowserCamera = async () => {
+    setLoading(true);
+    setMessage("");
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("This browser does not support camera access.");
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false,
+      });
+
+      browserStreamRef.current = stream;
+
+      if (liveVideoRef.current) {
+        liveVideoRef.current.srcObject = stream;
+        await liveVideoRef.current.play().catch(() => undefined);
+      }
+
+      const response = await fetch(`${CCTV_BACKEND_URL}/start-browser-camera`, {
+        method: "POST",
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        stopBrowserPreviewStream();
+        setCameraActive(false);
+        setMessage(`âŒ Error: ${result.error || "Failed to start browser camera"}`);
+        return;
+      }
+
+      stopBrowserCaptureLoop();
+      setLiveOverlayDetections([]);
+      setLiveFrameSize({ width: 0, height: 0 });
+      setDetections([]);
+      setAtd([]);
+      setStudentRecognitionCount({});
+      setPresentStudents(new Set());
+      seenAttendanceIds.current.clear();
+
+      setCameraActive(true);
+      browserCaptureIntervalRef.current = window.setInterval(() => {
+        void captureBrowserFrame();
+      }, 1200);
+      await captureBrowserFrame();
+      setMessage("âœ… Live camera started from this browser device");
+    } catch (error) {
+      stopBrowserCaptureLoop();
+      stopBrowserPreviewStream();
+      setCameraActive(false);
+      setMessage(`âŒ Error: ${String(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const stopBrowserCamera = async () => {
+    setLoading(true);
+    try {
+      stopBrowserCaptureLoop();
+      stopBrowserPreviewStream();
+      await fetch(`${CCTV_BACKEND_URL}/stop-camera`, {
+        method: "POST",
+      });
+      setLiveOverlayDetections([]);
+      setLiveFrameSize({ width: 0, height: 0 });
+      setMessage("âœ… Camera stopped");
+    } catch (error) {
+      setMessage(`âŒ Error: ${String(error)}`);
     } finally {
       setCameraActive(false);
       seenAttendanceIds.current.clear();
@@ -1255,12 +1532,15 @@ interface CCTVTabProps {
               </h3>
 
               {/* CCTV Mode Selector */}
-              <div className="flex gap-2 mb-6">
-                <button
-                  onClick={() => {
-                    setCctvMode("live");
-                    setCameraActive(false);
-                  }}
+                  <div className="flex gap-2 mb-6">
+                    <button
+                      onClick={async () => {
+                        if (cameraActive) {
+                          await stopBrowserCamera();
+                        }
+                        setCctvMode("live");
+                        setCameraActive(false);
+                      }}
                   className={`px-4 py-2 rounded-lg font-semibold transition ${
                     cctvMode === "live"
                       ? "bg-indigo-600 text-white"
@@ -1268,12 +1548,17 @@ interface CCTVTabProps {
                   }`}
                 >
                   📹 Live Camera
-                </button>
-                <button
-                  onClick={() => setCctvMode("upload")}
-                  className={`px-4 py-2 rounded-lg font-semibold transition ${
-                    cctvMode === "upload"
-                      ? "bg-indigo-600 text-white"
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (cameraActive) {
+                          await stopBrowserCamera();
+                        }
+                        setCctvMode("upload");
+                      }}
+                      className={`px-4 py-2 rounded-lg font-semibold transition ${
+                        cctvMode === "upload"
+                          ? "bg-indigo-600 text-white"
                       : "bg-slate-200 text-slate-700 hover:bg-slate-300"
                   }`}
                 >
@@ -1287,18 +1572,25 @@ interface CCTVTabProps {
                   {/* Live Feed - Smaller Frame */}
                   <div className="relative bg-black rounded-lg overflow-hidden border-4 border-slate-300 w-full max-w-md mx-auto" style={{ aspectRatio: '4/3' }}>
                     {cameraActive ? (
-                      <iframe
-                        key={`stream-${cameraActive}`}
-                        src={`${CCTV_BACKEND_URL}/video`}
-                        title="CCTV Feed"
-                        className="w-full h-full border-0"
-                        onError={(e) => {
-                          console.log("Stream error");
-                        }}
-                      />
+                      <>
+                        <video
+                          ref={liveVideoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          className="w-full h-full object-cover"
+                        />
+                        <canvas
+                          ref={liveCanvasRef}
+                          className="absolute inset-0 w-full h-full pointer-events-none"
+                        />
+                        <div className="absolute top-2 right-2 bg-black/70 text-white px-3 py-1 rounded-lg text-xs font-semibold">
+                          {liveOverlayDetections.length} live detections
+                        </div>
+                      </>
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm font-medium">
-                        Camera is off
+                        Camera is off. Start to use this device&apos;s browser camera.
                       </div>
                     )}
                   </div>
@@ -1306,7 +1598,7 @@ interface CCTVTabProps {
                   {/* Camera Controls */}
                   <div className="flex gap-2 flex-wrap justify-center">
                     <button
-                      onClick={startCamera}
+                      onClick={startBrowserCamera}
                       disabled={cameraActive}
                       className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition"
                     >
@@ -1314,7 +1606,7 @@ interface CCTVTabProps {
                     </button>
 
                     <button
-                      onClick={stopCamera}
+                      onClick={stopBrowserCamera}
                       disabled={!cameraActive}
                       className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 disabled:opacity-50 transition"
                     >

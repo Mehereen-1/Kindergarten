@@ -3,6 +3,7 @@ import dns from 'dns';
 import './models/User';
 
 const MONGODB_URI = process.env.MONGODB_URI as string;
+const DB_NAME = process.env.DB_NAME;
 
 if (!MONGODB_URI) {
   throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
@@ -45,6 +46,7 @@ export async function connectDB(): Promise<typeof mongoose> {
     const opts = {
       bufferCommands: false,
       serverSelectionTimeoutMS: 10000,
+      dbName: DB_NAME || undefined,
     };
 
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
