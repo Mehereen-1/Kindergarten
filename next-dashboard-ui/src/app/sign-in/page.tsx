@@ -120,6 +120,15 @@ export default function SignInPage() {
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
+            <div className="mt-2 text-right">
+              <button
+                type="button"
+                onClick={() => router.push('/forgot-password')}
+                className="text-sm text-blue-600 hover:text-blue-700"
+              >
+                Forgot teacher password?
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -140,6 +149,9 @@ export default function SignInPage() {
         <div className="mt-6 text-center">
           <p className="text-gray-600 text-sm">
             New teachers: Use the auto-generated password from your welcome email
+          </p>
+          <p className="text-gray-500 text-xs mt-2">
+            Already assigned as a teacher and forgot your password? Use the reset option above.
           </p>
         </div>
       </div>

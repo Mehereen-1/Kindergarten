@@ -9,9 +9,28 @@ export interface IAuditLog extends Document {
   changedBy: mongoose.Types.ObjectId; // User ID who made the change
   changedByRole: string; // Role of the user (admin, teacher, etc.)
   reason?: string; // Why was this changed?
+  changedFields?: string[];
+  context?: {
+    batchId?: mongoose.Types.ObjectId;
+    studentId?: mongoose.Types.ObjectId;
+    examCycleId?: mongoose.Types.ObjectId;
+    subjectId?: mongoose.Types.ObjectId;
+    classId?: mongoose.Types.ObjectId;
+  };
   ipAddress?: string;
   createdAt: Date;
 }
+
+const AuditContextSchema = new Schema(
+  {
+    batchId: { type: Schema.Types.ObjectId, ref: 'MarksheetBatch' },
+    studentId: { type: Schema.Types.ObjectId, ref: 'Student' },
+    examCycleId: { type: Schema.Types.ObjectId, ref: 'ExamCycle' },
+    subjectId: { type: Schema.Types.ObjectId, ref: 'Subject' },
+    classId: { type: Schema.Types.ObjectId, ref: 'Class' },
+  },
+  { _id: false }
+);
 
 const AuditLogSchema: Schema = new Schema(
   {
@@ -31,6 +50,8 @@ const AuditLogSchema: Schema = new Schema(
     changedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     changedByRole: { type: String },
     reason: { type: String },
+    changedFields: [{ type: String }],
+    context: { type: AuditContextSchema },
     ipAddress: { type: String },
   },
   {
@@ -41,6 +62,7 @@ const AuditLogSchema: Schema = new Schema(
 // Index for quick audit trail lookup
 AuditLogSchema.index({ entityType: 1, entityId: 1 });
 AuditLogSchema.index({ changedBy: 1, createdAt: -1 });
+AuditLogSchema.index({ 'context.batchId': 1, createdAt: -1 });
 AuditLogSchema.index({ createdAt: -1 }); // For admin audit dashboard
 
 export default mongoose.models.AuditLog || mongoose.model<IAuditLog>('AuditLog', AuditLogSchema);

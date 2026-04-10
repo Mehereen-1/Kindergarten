@@ -20,7 +20,7 @@ interface AssignedSetup {
 // ---- Keep old types below for the published-results modal ----
 interface Batch {
   _id: string;
-  examCycleId: { examName: string; academicYear: string; termName: string; examType: string };
+  examCycleId: { _id: string; examName: string; academicYear: string; termName: string; examType: string };
   classId: { name: string };
   subjectId: { name: string };
   status: string;
@@ -31,7 +31,7 @@ interface Batch {
 
 interface MarkEntry {
   _id: string;
-  studentId: { name: string; rollNumber: string };
+  studentId: { _id: string; name: string; rollNumber: string };
   totalMarks: number;
   fullMarks: number;
   percentage: number;
@@ -124,6 +124,18 @@ export default function TeacherResultsPage() {
     } finally {
       setDetailLoading(false);
     }
+  };
+
+  const openReportCard = (studentId: string) => {
+    if (!selectedBatch?.batch?.examCycleId?._id) return;
+
+    const query = new URLSearchParams({
+      studentId,
+      examCycleId: selectedBatch.batch.examCycleId._id,
+      batchId: selectedBatch.batch._id,
+    });
+
+    window.open(`/teacher/results/report-card?${query.toString()}`, '_blank', 'noopener,noreferrer');
   };
 
   const filtered = filterStatus === 'all'
@@ -350,19 +362,20 @@ export default function TeacherResultsPage() {
                 {/* Student Results Table */}
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-gray-50 text-gray-600 text-left">
-                        <th className="px-3 py-2 font-medium">Roll No.</th>
-                        <th className="px-3 py-2 font-medium">Student</th>
+                     <thead>
+                       <tr className="bg-gray-50 text-gray-600 text-left">
+                         <th className="px-3 py-2 font-medium">Roll No.</th>
+                         <th className="px-3 py-2 font-medium">Student</th>
                         <th className="px-3 py-2 font-medium text-center">Theory</th>
                         <th className="px-3 py-2 font-medium text-center">MCQ</th>
                         <th className="px-3 py-2 font-medium text-center">Practical</th>
                         <th className="px-3 py-2 font-medium text-center">Total</th>
-                        <th className="px-3 py-2 font-medium text-center">%</th>
-                        <th className="px-3 py-2 font-medium text-center">Grade</th>
-                        <th className="px-3 py-2 font-medium text-center">Status</th>
-                      </tr>
-                    </thead>
+                         <th className="px-3 py-2 font-medium text-center">%</th>
+                         <th className="px-3 py-2 font-medium text-center">Grade</th>
+                         <th className="px-3 py-2 font-medium text-center">Status</th>
+                         <th className="px-3 py-2 font-medium text-center">Report Card</th>
+                       </tr>
+                     </thead>
                     <tbody>
                       {selectedBatch.entries.map((entry, i) => (
                         <tr key={entry._id || i} className="border-t hover:bg-gray-50">
@@ -388,17 +401,26 @@ export default function TeacherResultsPage() {
                               </span>
                             ) : '-'}
                           </td>
-                          <td className="px-3 py-2 text-center">
-                            {entry.isAbsent ? (
-                              <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">Absent</span>
+                           <td className="px-3 py-2 text-center">
+                             {entry.isAbsent ? (
+                               <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">Absent</span>
                             ) : entry.percentage >= 40 ? (
                               <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Pass</span>
                             ) : (
-                              <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">Fail</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                               <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">Fail</span>
+                             )}
+                           </td>
+                           <td className="px-3 py-2 text-center">
+                             <button
+                               type="button"
+                               onClick={() => openReportCard(entry.studentId?._id)}
+                               className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white transition hover:bg-slate-700"
+                             >
+                               Open
+                             </button>
+                           </td>
+                         </tr>
+                       ))}
                     </tbody>
                   </table>
 
