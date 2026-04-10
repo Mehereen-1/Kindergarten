@@ -7,19 +7,26 @@ import '@/lib/models/Student';
 import '@/lib/models/ExamCycle';
 import '@/lib/models/Class';
 import '@/lib/models/Subject';
+import AuditLog from '@/lib/models/AuditLog';
 import mongoose from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCandidateAcademicYears, resolveTeacherIdForSetup } from '@/lib/subjectAssignment';
+import { extractSessionUser } from '@/lib/auth';
+import {
+  buildMarkEntrySnapshot,
+  createResultAuditLog,
+  diffMarkEntrySnapshots,
+} from '@/lib/result-audit';
+import { getMarksEntryWindowState } from '@/lib/examCycleWindow';
 
-function extractUserIdFromCookie(cookieValue: string | undefined): string | null {
-  if (!cookieValue) return null;
-  try {
-    const parsed = JSON.parse(decodeURIComponent(cookieValue));
-    return parsed.id || null;
-  } catch {
-    return cookieValue || null;
-  }
-}
+const COMPONENT_FIELD_MAP = [
+  { field: 'theoryMarks', configKey: 'theory' },
+  { field: 'mcqMarks', configKey: 'mcq' },
+  { field: 'practicalMarks', configKey: 'practical' },
+  { field: 'vivaMarks', configKey: 'viva' },
+  { field: 'classTestMarks', configKey: 'classTest' },
+  { field: 'attendanceMarks', configKey: 'attendance' },
+] as const;
 
 function computeGrade(pct: number, passMarks: number, fullMarks: number): string {
   const passPct = (passMarks / fullMarks) * 100;
@@ -42,6 +49,40 @@ function computeRemark(pct: number, passPct: number): string {
   return 'Needs Improvement';
 }
 
+async function fetchBatchAuditLogs(batchId: string | mongoose.Types.ObjectId) {
+  const logs = await AuditLog.find({ 'context.batchId': new mongoose.Types.ObjectId(String(batchId)) })
+    .populate('changedBy', 'name role')
+    .populate('context.studentId', 'name rollNumber')
+    .sort({ createdAt: -1 })
+    .limit(60)
+    .lean();
+
+  return logs.map((log: any) => ({
+    _id: String(log._id),
+    entityType: log.entityType,
+    action: log.action,
+    reason: log.reason || '',
+    changedFields: Array.isArray(log.changedFields) ? log.changedFields : [],
+    oldValue: log.oldValue || null,
+    newValue: log.newValue || null,
+    createdAt: log.createdAt,
+    changedBy: log.changedBy
+      ? {
+          _id: String(log.changedBy._id || log.changedBy),
+          name: log.changedBy.name || 'Unknown user',
+          role: log.changedBy.role || log.changedByRole || '',
+        }
+      : null,
+    student: log.context?.studentId
+      ? {
+          _id: String(log.context.studentId._id || log.context.studentId),
+          name: log.context.studentId.name || 'Unknown student',
+          rollNumber: log.context.studentId.rollNumber || '',
+        }
+      : null,
+  }));
+}
+
 // GET /api/teacher/marks-entry/[setupId]
 // Returns setup details + students + existing mark entries for this setup
 export async function GET(
@@ -51,13 +92,13 @@ export async function GET(
   try {
     await connectDB();
 
-    const teacherId = extractUserIdFromCookie(request.cookies.get('user')?.value);
+    const teacherId = extractSessionUser(request.cookies.get('user')?.value)?.id;
     if (!teacherId) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
     const setup = await ExamSubjectSetup.findById(params.setupId)
-      .populate('examCycleId', 'examName academicYear termName examType status')
+      .populate('examCycleId', 'examName academicYear termName examType status marksEntryStartDate marksEntryEndDate')
       .populate('classId', 'name grade')
       .populate('subjectId', 'name')
       .lean();
@@ -163,6 +204,8 @@ export async function GET(
       };
     });
 
+    const entryWindowState = getMarksEntryWindowState(setup.examCycleId as any);
+
     return NextResponse.json({
       success: true,
       data: {
@@ -170,7 +213,10 @@ export async function GET(
         resolvedAcademicYear: resolvedYear,
         batchId: batch._id.toString(),
         batchStatus: batch.status,
+        entryWindowOpen: entryWindowState.isOpen,
+        entryWindowMessage: entryWindowState.message,
         rows,
+        auditLogs: await fetchBatchAuditLogs(batch._id),
       },
     });
   } catch (error: any) {
@@ -187,13 +233,13 @@ export async function POST(
   try {
     await connectDB();
 
-    const teacherId = extractUserIdFromCookie(request.cookies.get('user')?.value);
+    const teacherId = extractSessionUser(request.cookies.get('user')?.value)?.id;
     if (!teacherId) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
     const setup = await ExamSubjectSetup.findById(params.setupId)
-      .populate('examCycleId', 'examName academicYear')
+      .populate('examCycleId', 'examName academicYear status marksEntryStartDate marksEntryEndDate')
       .lean();
 
     if (!setup) {
@@ -224,6 +270,7 @@ export async function POST(
         classTestMarks?: number | null;
         attendanceMarks?: number | null;
         teacherRemark?: string;
+        editReason?: string;
       }>;
     };
 
@@ -236,38 +283,193 @@ export async function POST(
     const passPct = (passMarks / fullMarks) * 100;
     const examCycleId = (setup.examCycleId as any)._id || setup.examCycleId;
     const subjectId = setup.subjectId;
+    const setupExamCycle = setup.examCycleId as any;
+
+    const batch = await MarksheetBatch.findOne({
+      _id: batchId,
+      examCycleId,
+      classId: setup.classId,
+      subjectId,
+      teacherId,
+    }).lean();
+
+    if (!batch) {
+      return NextResponse.json({ success: false, error: 'Batch not found for this setup' }, { status: 404 });
+    }
+
+    if (!['draft', 'reopened'].includes(batch.status)) {
+      return NextResponse.json(
+        { success: false, error: `Cannot edit batch in ${batch.status} status` },
+        { status: 400 }
+      );
+    }
+
+    const entryWindowState = getMarksEntryWindowState(setupExamCycle);
+    if (!entryWindowState.isOpen) {
+      return NextResponse.json(
+        { success: false, error: entryWindowState.message || 'Marks entry window is closed' },
+        { status: 400 }
+      );
+    }
+
+    const activeComponents = COMPONENT_FIELD_MAP.filter(
+      ({ configKey }) => Number((setup.components as any)?.[configKey] || 0) > 0
+    );
+    const batchObjectId = new mongoose.Types.ObjectId(batchId);
+    const existingEntries = await MarkEntry.find({ batchId: batchObjectId }).lean();
+    const existingEntryByStudentId = new Map(
+      existingEntries.map((existingEntry: any) => [String(existingEntry.studentId), existingEntry])
+    );
+
+    const isEntryComplete = (entry: any) => {
+      if (entry.isAbsent) return true;
+      return activeComponents.every(({ field }) => entry[field] !== undefined && entry[field] !== null);
+    };
 
     let savedCount = 0;
+    let removedCount = 0;
     for (const entry of entries) {
-      const componentSum = [
-        entry.theoryMarks,
-        entry.mcqMarks,
-        entry.practicalMarks,
-        entry.vivaMarks,
-        entry.classTestMarks,
-        entry.attendanceMarks,
-      ]
-        .filter((v): v is number => typeof v === 'number' && !isNaN(v))
-        .reduce((a, b) => a + b, 0);
+      const editReason = typeof entry.editReason === 'string' ? entry.editReason.trim() : '';
+      const existingEntry = existingEntryByStudentId.get(String(entry.studentId));
+      const normalizedComponentValues: Record<string, number | null> = {};
+
+      for (const { field, configKey } of COMPONENT_FIELD_MAP) {
+        const rawValue = (entry as any)[field];
+        const normalizedValue =
+          rawValue === '' || rawValue === undefined || rawValue === null || Number.isNaN(Number(rawValue))
+            ? null
+            : Number(rawValue);
+
+        if (normalizedValue !== null) {
+          if (normalizedValue < 0) {
+            return NextResponse.json(
+              { success: false, error: `${field} cannot be negative for student ${entry.studentId}` },
+              { status: 400 }
+            );
+          }
+
+          const maxAllowed = Number((setup.components as any)?.[configKey] || 0);
+          if (normalizedValue > maxAllowed) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: `${field} cannot exceed ${maxAllowed} for student ${entry.studentId}`,
+              },
+              { status: 400 }
+            );
+          }
+        }
+
+        normalizedComponentValues[field] = normalizedValue;
+      }
+
+      const hasAnyMarks = activeComponents.some(
+        ({ field }) => normalizedComponentValues[field] !== null && normalizedComponentValues[field] !== undefined
+      );
+
+      if (!entry.isAbsent && !hasAnyMarks) {
+        if (existingEntry) {
+          if (!editReason) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: `Edit reason is required before clearing saved marks for student ${entry.studentId}`,
+              },
+              { status: 400 }
+            );
+          }
+
+          const previousState = buildMarkEntrySnapshot(existingEntry);
+          await MarkEntry.deleteOne({
+            batchId: batchObjectId,
+            studentId: new mongoose.Types.ObjectId(entry.studentId),
+          });
+          existingEntryByStudentId.delete(String(entry.studentId));
+          removedCount++;
+
+          await createResultAuditLog({
+            entityType: 'MarkEntry',
+            entityId: existingEntry._id,
+            action: 'delete',
+            changedBy: teacherId,
+            changedByRole: 'teacher',
+            reason: editReason,
+            changedFields: diffMarkEntrySnapshots(previousState, null),
+            oldValue: previousState,
+            context: {
+              batchId,
+              studentId: entry.studentId,
+              examCycleId,
+              subjectId,
+              classId: setup.classId as any,
+            },
+          });
+        }
+        continue;
+      }
+
+      const componentSum = Object.values(normalizedComponentValues)
+        .filter((value): value is number => typeof value === 'number' && !Number.isNaN(value))
+        .reduce((sum, value) => sum + value, 0);
 
       const totalMarks = entry.isAbsent ? 0 : componentSum;
       const percentage = entry.isAbsent ? 0 : parseFloat(((totalMarks / fullMarks) * 100).toFixed(2));
-      const grade = entry.isAbsent ? 'AB' : computeGrade(percentage, passMarks, fullMarks);
-      const academicRemark = entry.isAbsent ? 'Absent' : computeRemark(percentage, passPct);
+      const entryShape = {
+        ...normalizedComponentValues,
+        isAbsent: entry.isAbsent,
+      };
+      const complete = isEntryComplete(entryShape);
+      const grade = entry.isAbsent
+        ? 'AB'
+        : complete
+          ? computeGrade(percentage, passMarks, fullMarks)
+          : undefined;
+      const academicRemark = entry.isAbsent
+        ? 'Absent'
+        : complete
+          ? computeRemark(percentage, passPct)
+          : 'In progress';
+      const nextState = buildMarkEntrySnapshot({
+        ...normalizedComponentValues,
+        isAbsent: entry.isAbsent,
+        totalMarks,
+        fullMarks,
+        percentage,
+        grade,
+        status: entry.isAbsent ? 'absent' : 'active',
+        teacherRemark: entry.teacherRemark || '',
+        academicRemark,
+      });
+      const previousState = existingEntry ? buildMarkEntrySnapshot(existingEntry) : null;
+      const changedFields = diffMarkEntrySnapshots(previousState, nextState);
 
-      await MarkEntry.findOneAndUpdate(
-        { batchId: new mongoose.Types.ObjectId(batchId), studentId: new mongoose.Types.ObjectId(entry.studentId) },
+      if (existingEntry && changedFields.length === 0) {
+        continue;
+      }
+
+      if (existingEntry && changedFields.length > 0 && !editReason) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Edit reason is required before updating saved marks for student ${entry.studentId}`,
+          },
+          { status: 400 }
+        );
+      }
+
+      const savedEntry = await MarkEntry.findOneAndUpdate(
+        { batchId: batchObjectId, studentId: new mongoose.Types.ObjectId(entry.studentId) },
         {
           $set: {
             examCycleId,
             subjectId,
             isAbsent: entry.isAbsent,
-            theoryMarks: entry.isAbsent ? undefined : entry.theoryMarks,
-            mcqMarks: entry.isAbsent ? undefined : entry.mcqMarks,
-            practicalMarks: entry.isAbsent ? undefined : entry.practicalMarks,
-            vivaMarks: entry.isAbsent ? undefined : entry.vivaMarks,
-            classTestMarks: entry.isAbsent ? undefined : entry.classTestMarks,
-            attendanceMarks: entry.isAbsent ? undefined : entry.attendanceMarks,
+            theoryMarks: entry.isAbsent ? undefined : normalizedComponentValues.theoryMarks,
+            mcqMarks: entry.isAbsent ? undefined : normalizedComponentValues.mcqMarks,
+            practicalMarks: entry.isAbsent ? undefined : normalizedComponentValues.practicalMarks,
+            vivaMarks: entry.isAbsent ? undefined : normalizedComponentValues.vivaMarks,
+            classTestMarks: entry.isAbsent ? undefined : normalizedComponentValues.classTestMarks,
+            attendanceMarks: entry.isAbsent ? undefined : normalizedComponentValues.attendanceMarks,
             totalMarks,
             fullMarks,
             percentage,
@@ -277,19 +479,47 @@ export async function POST(
             academicRemark,
           },
         },
-        { upsert: true, new: true }
+        { upsert: true, new: true, setDefaultsOnInsert: true }
       );
+      existingEntryByStudentId.set(String(entry.studentId), savedEntry.toObject());
+
+      await createResultAuditLog({
+        entityType: 'MarkEntry',
+        entityId: savedEntry._id,
+        action: existingEntry ? 'update' : 'create',
+        changedBy: teacherId,
+        changedByRole: 'teacher',
+        reason: existingEntry ? editReason : editReason || 'Initial marks entry',
+        changedFields,
+        oldValue: previousState || undefined,
+        newValue: nextState,
+        context: {
+          batchId,
+          studentId: entry.studentId,
+          examCycleId,
+          subjectId,
+          classId: setup.classId as any,
+        },
+      });
       savedCount++;
     }
 
     // Update batch progress
-    const completedCount = await MarkEntry.countDocuments({ batchId: new mongoose.Types.ObjectId(batchId) });
+    const batchEntries = await MarkEntry.find({ batchId: batchObjectId }).lean();
+    const completedCount = batchEntries.filter((existingEntry: any) => isEntryComplete(existingEntry)).length;
     await MarksheetBatch.findByIdAndUpdate(batchId, {
       entriesCompleted: completedCount,
-      status: 'draft',
+      status: batch.status === 'reopened' ? 'reopened' : 'draft',
     });
 
-    return NextResponse.json({ success: true, saved: savedCount });
+    return NextResponse.json({
+      success: true,
+      saved: savedCount,
+      removed: removedCount,
+      entriesCompleted: completedCount,
+      batchStatus: batch.status === 'reopened' ? 'reopened' : 'draft',
+      auditLogs: await fetchBatchAuditLogs(batchId),
+    });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

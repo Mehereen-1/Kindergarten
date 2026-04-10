@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ExamCycle from '@/lib/models/ExamCycle';
 import { connectDB } from '@/lib/mongodb';
+import { normalizeExamCycleDate } from '@/lib/examCycleWindow';
 
 /**
  * GET /api/admin/exam-config/cycles/[cycleId]
@@ -64,13 +65,44 @@ export async function PATCH(
     const body = await req.json();
     const { examName, classIds, subjectIds, marksEntryStartDate, marksEntryEndDate, publishDate, status, notes } = body;
 
+    const nextStartDate = marksEntryStartDate
+      ? normalizeExamCycleDate(marksEntryStartDate, 'start')
+      : cycle.marksEntryStartDate;
+    const nextEndDate = marksEntryEndDate
+      ? normalizeExamCycleDate(marksEntryEndDate, 'end')
+      : cycle.marksEntryEndDate;
+    const nextPublishDate = publishDate
+      ? normalizeExamCycleDate(publishDate, 'end')
+      : cycle.publishDate;
+
+    if (!nextStartDate || !nextEndDate || !nextPublishDate) {
+      return NextResponse.json(
+        { success: false, error: 'Please provide valid entry and publish dates' },
+        { status: 400 }
+      );
+    }
+
+    if (nextStartDate >= nextEndDate) {
+      return NextResponse.json(
+        { success: false, error: 'Entry start date must be before end date' },
+        { status: 400 }
+      );
+    }
+
+    if (nextEndDate > nextPublishDate) {
+      return NextResponse.json(
+        { success: false, error: 'Entry end date must be before or equal to publish date' },
+        { status: 400 }
+      );
+    }
+
     // Update allowed fields
     if (examName) cycle.examName = examName;
     if (classIds) cycle.classIds = classIds;
     if (subjectIds) cycle.subjectIds = subjectIds;
-    if (marksEntryStartDate) cycle.marksEntryStartDate = new Date(marksEntryStartDate);
-    if (marksEntryEndDate) cycle.marksEntryEndDate = new Date(marksEntryEndDate);
-    if (publishDate) cycle.publishDate = new Date(publishDate);
+    cycle.marksEntryStartDate = nextStartDate;
+    cycle.marksEntryEndDate = nextEndDate;
+    cycle.publishDate = nextPublishDate;
     if (status && ['draft', 'open', 'closed'].includes(status)) cycle.status = status;
     if (notes !== undefined) cycle.notes = notes;
 

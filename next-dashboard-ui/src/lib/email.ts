@@ -114,3 +114,60 @@ export function buildReminderEmail(opts: {
 
   return { subject, text, html };
 }
+
+export function buildTeacherPasswordResetEmail(opts: {
+  teacherName: string;
+  resetUrl: string;
+  expiryMinutes?: number;
+}): EventEmailPayload {
+  const expiryMinutes = opts.expiryMinutes ?? 60;
+  const subject = 'Reset Your Kinder Vision Teacher Password';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+<body style="font-family: Arial, sans-serif; background:#f3f4f6; margin:0; padding:20px;">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.12);">
+    <div style="background:#2563eb;padding:20px 24px;">
+      <h1 style="color:#fff;margin:0;font-size:20px;">Teacher Password Reset</h1>
+    </div>
+    <div style="padding:24px;">
+      <p style="margin-top:0;color:#111;">Hello ${opts.teacherName},</p>
+      <p style="color:#4b5563;line-height:1.6;">
+        We received a request to reset the password for your Kinder Vision teacher account.
+      </p>
+      <p style="color:#4b5563;line-height:1.6;">
+        Click the button below to set a new password. This link expires in ${expiryMinutes} minutes.
+      </p>
+      <a href="${opts.resetUrl}"
+         style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold;">
+        Reset Password
+      </a>
+      <p style="color:#6b7280;font-size:13px;line-height:1.6;margin-top:20px;">
+        If the button does not work, copy and paste this link into your browser:<br />
+        <span style="word-break:break-all;">${opts.resetUrl}</span>
+      </p>
+      <p style="color:#6b7280;font-size:13px;line-height:1.6;">
+        If you did not request this, you can safely ignore this email.
+      </p>
+    </div>
+    <div style="background:#f9fafb;padding:12px 24px;font-size:12px;color:#9ca3af;">
+      Kinder Vision - Kindergarten Management System
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const text = [
+    `Hello ${opts.teacherName},`,
+    '',
+    'We received a request to reset the password for your Kinder Vision teacher account.',
+    `Open this link within ${expiryMinutes} minutes to set a new password:`,
+    opts.resetUrl,
+    '',
+    'If you did not request this, you can ignore this email.',
+  ].join('\n');
+
+  return { subject, text, html };
+}

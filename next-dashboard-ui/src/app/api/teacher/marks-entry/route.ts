@@ -5,16 +5,7 @@ import '@/lib/models/Class';
 import '@/lib/models/Subject';
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveTeacherIdForSetup } from '@/lib/subjectAssignment';
-
-function extractUserIdFromCookie(cookieValue: string | undefined): string | null {
-  if (!cookieValue) return null;
-  try {
-    const parsed = JSON.parse(decodeURIComponent(cookieValue));
-    return parsed.id || null;
-  } catch {
-    return cookieValue || null;
-  }
-}
+import { extractSessionUser } from '@/lib/auth';
 
 // GET /api/teacher/marks-entry
 // Returns ExamSubjectSetups assigned to the current teacher in open exam cycles
@@ -22,7 +13,7 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    const teacherId = extractUserIdFromCookie(request.cookies.get('user')?.value);
+    const teacherId = extractSessionUser(request.cookies.get('user')?.value)?.id;
     if (!teacherId) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
