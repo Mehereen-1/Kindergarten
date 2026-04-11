@@ -241,6 +241,25 @@ function AttendancePageContent() {
     }
   };
 
+  const parseApiResponse = async (response: Response) => {
+    const rawBody = await response.text();
+    const trimmed = rawBody.trim();
+    let data: any = {};
+
+    if (trimmed) {
+      try {
+        data = JSON.parse(trimmed);
+      } catch {
+        data = { detail: trimmed };
+      }
+    }
+
+    return {
+      data,
+      looksLikeHtml: /<!doctype|<html/i.test(trimmed),
+    };
+  };
+
   const classStudentIdSet = useMemo(() => new Set(students.map((student) => String(student._id))), [students]);
 
   const otherClassRecognized = useMemo(() => {
@@ -802,9 +821,15 @@ function AttendancePageContent() {
         body: formData,
       });
 
-      const result = await response.json();
+      const { data: result, looksLikeHtml } = await parseApiResponse(response);
       if (!response.ok || !result.success) {
-        throw new Error(result.error || "Failed to process browser camera frame.");
+        throw new Error(
+          result?.error ||
+            result?.detail ||
+            (looksLikeHtml
+              ? "Backend returned HTML instead of API JSON. Check NEXT_PUBLIC_CCTV_BACKEND_URL/PYTHON_BACKEND_URL."
+              : "Failed to process browser camera frame.")
+        );
       }
 
       setLiveOverlayDetections(Array.isArray(result.detections) ? result.detections : []);
@@ -1166,9 +1191,15 @@ interface CCTVTabProps {
       const res = await fetch(`${CCTV_BACKEND_URL}/start-camera`, {
         method: "POST",
       });
-      const data = await res.json();
+      const { data, looksLikeHtml } = await parseApiResponse(res);
       if (!res.ok || !data.success) {
-        setMessage(`❌ Error: ${data.error || "Failed to start camera"}`);
+        const detail =
+          data?.error ||
+          data?.detail ||
+          (looksLikeHtml
+            ? "Backend returned HTML instead of API JSON. Check NEXT_PUBLIC_CCTV_BACKEND_URL/PYTHON_BACKEND_URL."
+            : "Failed to start camera");
+        setMessage(`❌ Error: ${detail}`);
         setCameraActive(false);
         return;
       }
@@ -1224,12 +1255,18 @@ interface CCTVTabProps {
       const response = await fetch(`${CCTV_BACKEND_URL}/start-browser-camera`, {
         method: "POST",
       });
-      const result = await response.json();
+      const { data: result, looksLikeHtml } = await parseApiResponse(response);
 
       if (!response.ok || !result.success) {
         stopBrowserPreviewStream();
         setCameraActive(false);
-        setMessage(`âŒ Error: ${result.error || "Failed to start browser camera"}`);
+        const detail =
+          result?.error ||
+          result?.detail ||
+          (looksLikeHtml
+            ? "Backend returned HTML instead of API JSON. Check NEXT_PUBLIC_CCTV_BACKEND_URL/PYTHON_BACKEND_URL."
+            : "Failed to start browser camera");
+        setMessage(`âŒ Error: ${detail}`);
         return;
       }
 
