@@ -1330,7 +1330,15 @@ interface CCTVTabProps {
         body: formData,
       });
 
-      const result = await response.json();
+      const rawBody = await response.text();
+      let result: any = {};
+      if (rawBody) {
+        try {
+          result = JSON.parse(rawBody);
+        } catch {
+          result = { detail: rawBody };
+        }
+      }
 
       if (response.ok) {
         await fetch(`${CCTV_BACKEND_URL}/clear-extracted-faces`, {
@@ -1413,7 +1421,15 @@ interface CCTVTabProps {
         (window as any).processingInterval = pollInterval;
         (window as any).processingTimeout = timeout;
       } else {
-        setMessage(`❌ Error: ${result.error || "Video processing failed"}`);
+        const payloadTooLarge =
+          response.status === 413 || /request entity too large|payload too large/i.test(String(result?.detail || ""));
+        const errorDetail =
+          result?.error ||
+          result?.detail ||
+          (payloadTooLarge
+            ? "Uploaded video is too large for the server upload limit. Try a shorter/lower-size video."
+            : "Video processing failed");
+        setMessage(`❌ Error: ${errorDetail}`);
         setIsVideoProcessing(false);
         setVideoUrl("");
       }
