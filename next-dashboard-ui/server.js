@@ -9,14 +9,12 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 
 const dev = process.env.NODE_ENV !== 'production';
-const hostname = process.env.HOSTNAME || '0.0.0.0';
-const internalHost = process.env.INTERNAL_APP_HOST || '127.0.0.1';
-const requestedPort = Number(process.env.PORT) || 3000;
+const bindHost = process.env.HOST || '0.0.0.0';
+const internalHost = process.env.INTERNAL_HOST || '127.0.0.1';
+const platformPort = process.env.PORT || process.env.WEBSITES_PORT;
+const requestedPort = Number(platformPort) || 3000;
+const shouldProbeForAvailablePort = dev || !platformPort;
 const remindersIntervalMs = Number(process.env.EVENT_REMINDER_INTERVAL_MS || 60 * 60 * 1000);
-const socketCorsOrigins = (process.env.SOCKET_CORS_ORIGINS || process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${requestedPort}`)
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
 
 const dnsServers = (process.env.DNS_SERVERS || '8.8.8.8,1.1.1.1')
   .split(',')
@@ -93,15 +91,15 @@ mongoose.connect(MONGODB_URI).then(() => {
   console.error('MongoDB connection error:', err);
 });
 
-findAvailablePort(requestedPort).then((initialPort) => {
-  let activePort = initialPort;
+const startServer = async () => {
+  const activePort = shouldProbeForAvailablePort ? await findAvailablePort(requestedPort) : requestedPort;
 
   if (activePort !== requestedPort) {
     console.warn(`Port ${requestedPort} is in use, starting on ${activePort} instead.`);
   }
 
   // Initialize Next.js
-  const app = next({ dev, hostname, port: activePort });
+  const app = next({ dev, hostname: bindHost, port: activePort });
   const handle = app.getRequestHandler();
 
   return app.prepare().then(() => {
@@ -111,12 +109,7 @@ findAvailablePort(requestedPort).then((initialPort) => {
     });
 
     // Initialize Socket.IO
-    const io = new Server(httpServer, {
-      cors: {
-        origin: socketCorsOrigins,
-        methods: ["GET", "POST"]
-      }
-    });
+    const io = new Server(httpServer);
 
   // Socket.IO connection handling
   io.on('connection', (socket) => {
@@ -282,15 +275,16 @@ findAvailablePort(requestedPort).then((initialPort) => {
 
       httpServer.listen(portToTry, () => {
         activePort = portToTry;
-        const externalUrl = process.env.APP_URL || `http://localhost:${activePort}`;
-        console.log(`> Ready on ${externalUrl} (bound to ${hostname}:${activePort})`);
+        console.log(`> Ready on http://${bindHost}:${activePort}`);
         startEventReminderScheduler(activePort);
       });
     };
 
     listenWithFallback(activePort);
   });
-}).catch((err) => {
+};
+
+startServer().catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });

@@ -2,13 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import FacialDatabase from '@/lib/models/FacialDatabase';
 import Student from '@/lib/models/Student';
-import Attendance from '@/lib/models/Attendance';
-import { v4 as uuidv4 } from 'uuid';
-import fs from 'fs/promises';
-import path from 'path';
+import { getServerCctvBackendUrl } from '@/lib/serverConfig';
+import { storeWebFileAsset } from '@/lib/serverStorage';
 
-const FACIAL_IMAGES_DIR = path.join(process.cwd(), 'public', 'facial-data');
-const PYTHON_BACKEND = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000';
+const PYTHON_BACKEND = getServerCctvBackendUrl();
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,13 +29,6 @@ export async function POST(req: NextRequest) {
         { error: 'Student not found' },
         { status: 404 }
       );
-    }
-
-    // Ensure directory exists
-    try {
-      await fs.mkdir(FACIAL_IMAGES_DIR, { recursive: true });
-    } catch (err) {
-      console.error('Error creating directory:', err);
     }
 
     let uploadedCount = 0;
@@ -90,37 +80,48 @@ export async function POST(req: NextRequest) {
       console.log('Continuing with local file saving...');
     }
 
-    // Also save locally for reference
+    // Store preview images in Mongo-backed storage so Vercel does not depend on
+    // a writable application filesystem at runtime.
     for (const file of files) {
       try {
-        const bytes = await file.arrayBuffer();
-        const buffer = Buffer.from(bytes);
+        const storedAsset = await storeWebFileAsset(file, {
+          purpose: 'attendance-preview',
+          studentId,
+          classId: String(student.classId || ''),
+        });
 
-        // Generate unique filename
-        const filename = `${studentId}_${Date.now()}_${uuidv4()}.jpg`;
-        const filepath = path.join(FACIAL_IMAGES_DIR, filename);
-
-        await fs.writeFile(filepath, new Uint8Array(buffer));
-
-        const imageUrl = `/facial-data/${filename}`;
-        imageUrls.push(imageUrl);
+        imageUrls.push(storedAsset.url);
         uploadedCount++;
       } catch (err) {
         console.error('Error saving file:', err);
       }
     }
 
+    const update: Record<string, any> = {
+      $set: {
+        class_id: student.classId || undefined,
+        last_updated: new Date(),
+        is_processed: embeddingCount > 0,
+      },
+      $setOnInsert: {
+        number_of_samples: 0,
+      },
+    };
+
+    if (imageUrls.length > 0) {
+      update.$set.preview_image_url = imageUrls[0];
+    }
+
+    // When the Python backend is unavailable, keep the sample count usable in Mongo.
+    // If the backend succeeded, it already incremented the count while storing embeddings.
+    if (embeddingCount === 0 && uploadedCount > 0) {
+      update.$inc = { number_of_samples: uploadedCount };
+    }
+
     // Update or create facial database record
     const facialRecord = await FacialDatabase.findOneAndUpdate(
       { student_id: studentId },
-      {
-        $set: {
-          class_id: student.classId || undefined,
-          number_of_samples: uploadedCount,
-          last_updated: new Date(),
-          is_processed: embeddingCount > 0,
-        },
-      },
+      update,
       { upsert: true, new: true }
     );
 

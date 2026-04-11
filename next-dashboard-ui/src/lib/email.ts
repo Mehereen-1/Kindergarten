@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { getServerAppUrl } from '@/lib/serverConfig';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface EventEmailPayload {
@@ -97,7 +98,7 @@ export function buildReminderEmail(opts: {
       </p>
       ${opts.location ? `<p style="color:#555;font-size:15px;margin:0 0 12px;"><strong>📍 Location:</strong> ${opts.location}</p>` : ''}
       ${opts.description ? `<p style="color:#555;font-size:15px;margin:0 0 20px;">${opts.description}</p>` : ''}
-      <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/list/events"
+      <a href="${getServerAppUrl()}/list/events"
          style="display:inline-block;background:${headlineColor};color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-weight:bold;">
         View All Events →
       </a>

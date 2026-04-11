@@ -5,7 +5,11 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { ensureSecurityAlertServiceReady, getServiceUrl } from '@/lib/securityAlertServiceManager';
+import {
+  canAutoStartSecurityAlertService,
+  ensureSecurityAlertServiceReady,
+  getServiceUrl,
+} from '@/lib/securityAlertServiceManager';
 
 export const runtime = 'nodejs';
 
@@ -155,6 +159,10 @@ export async function POST(request: NextRequest) {
         throw new Error(upstreamJson?.detail || upstreamJson?.error || 'Anomaly service request failed');
       }
     } catch (serviceError) {
+      if (!canAutoStartSecurityAlertService()) {
+        throw serviceError;
+      }
+
       try {
         upstreamJson = await runCliFallback(tempVideoPath, cameraName, className);
         upstreamJson = {

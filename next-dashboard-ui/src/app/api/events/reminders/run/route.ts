@@ -113,44 +113,71 @@ async function processEvents(
   }
 }
 
+async function runReminderJob(request: NextRequest) {
+  await connectDB();
+
+  const asOfParam = request.nextUrl.searchParams.get('asOf');
+  const asOfDate = asOfParam ? new Date(asOfParam) : null;
+  const now = asOfDate && !Number.isNaN(asOfDate.getTime()) ? asOfDate : new Date();
+
+  const todayStart = startOfDay(now);
+  const todayEnd = endOfDay(now);
+  const tomorrowStart = startOfDay(addDays(now, 1));
+  const tomorrowEnd = endOfDay(addDays(now, 1));
+
+  const dayBeforeEvents = await Event.find({
+    startDate: { $gte: tomorrowStart, $lte: tomorrowEnd },
+    reminderDayBeforeSentAt: { $exists: false },
+  });
+
+  const dayOfEvents = await Event.find({
+    startDate: { $gte: todayStart, $lte: todayEnd },
+    reminderDayOfSentAt: { $exists: false },
+  });
+
+  const emailResults: string[] = [];
+  const pushResults = { sent: 0, failed: 0 };
+
+  await processEvents(dayBeforeEvents, 'day-before', now, emailResults, pushResults);
+  await processEvents(dayOfEvents, 'day-of', now, emailResults, pushResults);
+
+  return NextResponse.json({
+    success: true,
+    asOf: now.toISOString(),
+    remindersCreated: dayBeforeEvents.length + dayOfEvents.length,
+    dayBeforeEventsProcessed: dayBeforeEvents.length,
+    dayOfEventsProcessed: dayOfEvents.length,
+    emailsSent: emailResults,
+    pushNotifications: pushResults,
+  });
+}
+
+function hasValidCronSecret(request: NextRequest) {
+  const cronSecret = process.env.CRON_SECRET?.trim();
+
+  if (!cronSecret) {
+    return false;
+  }
+
+  const authHeader = request.headers.get('authorization') || '';
+  return authHeader === `Bearer ${cronSecret}`;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    await connectDB();
+    return await runReminderJob(request);
+  } catch (error: any) {
+    return NextResponse.json({ error: error?.message || 'Failed to process reminders' }, { status: 500 });
+  }
+}
 
-    const asOfParam = request.nextUrl.searchParams.get('asOf');
-    const asOfDate = asOfParam ? new Date(asOfParam) : null;
-    const now = asOfDate && !Number.isNaN(asOfDate.getTime()) ? asOfDate : new Date();
+export async function GET(request: NextRequest) {
+  if (!hasValidCronSecret(request)) {
+    return NextResponse.json({ error: 'Unauthorized cron request' }, { status: 401 });
+  }
 
-    const todayStart = startOfDay(now);
-    const todayEnd = endOfDay(now);
-    const tomorrowStart = startOfDay(addDays(now, 1));
-    const tomorrowEnd = endOfDay(addDays(now, 1));
-
-    const dayBeforeEvents = await Event.find({
-      startDate: { $gte: tomorrowStart, $lte: tomorrowEnd },
-      reminderDayBeforeSentAt: { $exists: false },
-    });
-
-    const dayOfEvents = await Event.find({
-      startDate: { $gte: todayStart, $lte: todayEnd },
-      reminderDayOfSentAt: { $exists: false },
-    });
-
-    const emailResults: string[] = [];
-    const pushResults = { sent: 0, failed: 0 };
-
-    await processEvents(dayBeforeEvents, 'day-before', now, emailResults, pushResults);
-    await processEvents(dayOfEvents, 'day-of', now, emailResults, pushResults);
-
-    return NextResponse.json({
-      success: true,
-      asOf: now.toISOString(),
-      remindersCreated: dayBeforeEvents.length + dayOfEvents.length,
-      dayBeforeEventsProcessed: dayBeforeEvents.length,
-      dayOfEventsProcessed: dayOfEvents.length,
-      emailsSent: emailResults,
-      pushNotifications: pushResults,
-    });
+  try {
+    return await runReminderJob(request);
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Failed to process reminders' }, { status: 500 });
   }

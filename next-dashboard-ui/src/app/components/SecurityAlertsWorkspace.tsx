@@ -190,6 +190,11 @@ function mapNoticeToAlert(notice: NoticeApiItem): AlertItem {
   };
 }
 
+function isLocalServiceUrl(serviceUrl?: string | null) {
+  if (!serviceUrl) return false;
+  return /^https?:\/\/(localhost|127\.0\.0\.1|::1)(?::\d+)?(?:\/|$)/i.test(serviceUrl);
+}
+
 export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
   const [streams, setStreams] = useState<ClassroomStream[]>(() => createInitialStreams());
   const [serverAlerts, setServerAlerts] = useState<AlertItem[]>([]);
@@ -198,6 +203,7 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
   const [serviceStatus, setServiceStatus] = useState<ServiceControlStatus | null>(null);
   const [serviceBusy, setServiceBusy] = useState(false);
   const [serviceMessage, setServiceMessage] = useState('');
+  const serviceIsLocal = serviceStatus ? isLocalServiceUrl(serviceStatus.serviceUrl) : true;
 
   const incidentModalPlayerRef = useRef<HTMLVideoElement | null>(null);
   const uploadedFilesRef = useRef<Record<string, File | null>>({});
@@ -611,15 +617,19 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
               <button
                 type="button"
                 onClick={() => void handleServiceAction('start')}
-                disabled={serviceBusy || serviceStatus?.running}
+                disabled={serviceBusy || serviceStatus?.running || !serviceIsLocal}
                 className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {serviceBusy && !serviceStatus?.running ? 'Starting...' : 'Start service'}
+                {serviceBusy && !serviceStatus?.running
+                  ? 'Starting...'
+                  : !serviceIsLocal
+                    ? 'Service hosted externally'
+                    : 'Start service'}
               </button>
               <button
                 type="button"
                 onClick={() => void handleServiceAction('stop')}
-                disabled={serviceBusy || !serviceStatus?.running}
+                disabled={serviceBusy || !serviceStatus?.running || !serviceIsLocal}
                 className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Stop service
@@ -664,6 +674,12 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
             <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">{serviceMessage}</p>
           )}
 
+          {!serviceIsLocal && (
+            <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              This deployment uses a separate Azure security-alert service, so start and stop are managed outside this dashboard.
+            </p>
+          )}
+
           {serviceStatus?.logs?.length ? (
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-950 p-4">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Recent service logs</p>
@@ -696,7 +712,7 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
               >
                 {serviceStatus?.running ? 'Service running' : 'Service stopped'}
               </span>
-              {!serviceStatus?.running && (
+              {!serviceStatus?.running && serviceIsLocal && (
                 <button
                   type="button"
                   onClick={() => void handleServiceAction('start')}

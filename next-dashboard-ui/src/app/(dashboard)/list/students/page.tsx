@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import FormModal from "@/app/components/FormModal";
 import Pagination from "@/app/components/Pagination";
 import Table from "@/app/components/Table";
@@ -67,7 +67,7 @@ const columns = [
   },
 ];
 
-const StudentListPage = () => {
+function StudentListPageContent() {
   const searchParams = useSearchParams();
   const classIdParam = searchParams.get("classId") || "";
   const academicYearParam = searchParams.get("academicYear") || String(new Date().getFullYear());
@@ -573,4 +573,16 @@ const StudentListPage = () => {
   );
 };
 
-export default StudentListPage;
+export default function StudentListPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="bg-white p-4 rounded-md flex-1 m-4 mt-0">
+          <div className="animate-pulse text-sm text-gray-500">Loading students...</div>
+        </div>
+      }
+    >
+      <StudentListPageContent />
+    </Suspense>
+  );
+}

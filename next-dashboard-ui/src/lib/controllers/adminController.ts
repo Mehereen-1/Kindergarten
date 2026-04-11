@@ -4,7 +4,7 @@ import TeacherProfile from '../models/TeacherProfile';
 import ParentProfile from '../models/ParentProfile';
 import Student from '../models/Student';
 import ClassModel from '../models/Class';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 // User CRUD
 interface CreateUserInput {

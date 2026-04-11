@@ -99,9 +99,9 @@ MONGODB_URI=mongodb://localhost:27017
 
 ### Running the Server
 ```bash
-python main_v2.py
+python main.py
 # or
-uvicorn main_v2:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### Default Endpoints
@@ -111,8 +111,8 @@ uvicorn main_v2:app --host 0.0.0.0 --port 8000 --reload
 - `POST /process-video` - Process uploaded video file
 - `GET /attendance` - Get attendance records
 - `GET /student-facial-samples/{student_id}` - Check sample count
-- `POST /retrain-facial-model` - Retrain with latest embeddings
-- `POST /cctv-sync` - Sync CCTV-detected attendance
+- `POST /reload-embeddings` - Reload embeddings from MongoDB
+- `GET /health` - Readiness check for local or Azure deployment
 
 ## Frontend API Endpoints
 
@@ -216,7 +216,7 @@ else:
 ```
 
 ### MongoDB Connection
-Edit `main_v2.py`:
+Edit `backend/main.py`:
 ```python
 MONGO_URL = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
 DB_NAME = "kindergarten"
@@ -259,7 +259,7 @@ Using InsightFace (buffalo_l model):
 
 - Facial data stored as encrypted embeddings (not raw images after processing)
 - MongoDB access controlled via credentials
-- CORS enabled for local development only
+- CORS is controlled by `ALLOWED_ORIGINS`
 - API routes can be protected with authentication
 
 ## Future Enhancements

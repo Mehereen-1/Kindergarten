@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, unlink, writeFile } from "fs/promises";
+import os from "os";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import twilio from "twilio";
@@ -6,7 +7,7 @@ import { speechToText } from "@/lib/calling/stt";
 import { generateReply, FALLBACK_BN } from "@/lib/calling/llm";
 import { textToSpeech } from "@/lib/calling/tts";
 
-const TMP_DIR = path.join(process.cwd(), "tmp");
+const TMP_DIR = path.join(os.tmpdir(), "kindergarten-calling");
 const baseUrl = (process.env.BASE_URL || "").replace(/\/$/, "");
 
 async function downloadTwilioRecording(recordingUrl: string): Promise<Buffer> {
@@ -61,6 +62,7 @@ function buildTwimlSayAndRecord(text: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  let inputPath: string | null = null;
   try {
     await mkdir(TMP_DIR, { recursive: true });
 
@@ -71,7 +73,7 @@ export async function POST(req: NextRequest) {
       throw new Error("RecordingUrl missing from Twilio webhook payload");
     }
 
-    const inputPath = path.join(TMP_DIR, `input-${Date.now()}.wav`);
+    inputPath = path.join(TMP_DIR, `input-${Date.now()}.wav`);
     const audioBuffer = await downloadTwilioRecording(recordingUrl);
     await writeFile(inputPath, new Uint8Array(audioBuffer));
 
@@ -119,5 +121,9 @@ export async function POST(req: NextRequest) {
       headers: { "Content-Type": "text/xml" },
       status: 200,
     });
+  } finally {
+    if (inputPath) {
+      await unlink(inputPath).catch(() => undefined);
+    }
   }
 }

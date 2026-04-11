@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import path from 'path';
-import fs from 'fs/promises';
 import Topic from '@/lib/models/Topic';
 import Quiz from '@/lib/models/Quiz';
 import StudentQuizAttempt from '@/lib/models/StudentQuizAttempt';
@@ -10,6 +8,7 @@ import ContentChunk from '@/lib/models/ContentChunk';
 import { processContentWithAI } from '@/lib/aiProcessingLayer';
 import { updateStudentMetrics, updateTopicMetrics } from '@/lib/mathIntelligenceEngine';
 import { chunkText, embedTexts } from '@/lib/ragUtils';
+import { deleteStoredAssetByUrl, storeWebFileAsset } from '@/lib/serverStorage';
 
 const pdfParse = require('pdf-parse');
 
@@ -70,15 +69,13 @@ export async function POST(request: NextRequest) {
     if (uploadedFile) {
       const fileArrayBuffer = await uploadedFile.arrayBuffer();
       const fileBuffer = Buffer.from(fileArrayBuffer);
-      const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-      await fs.mkdir(uploadsDir, { recursive: true });
+      const storedAsset = await storeWebFileAsset(uploadedFile, {
+        purpose: 'ildce-topic-file',
+        teacherId,
+        classId,
+      });
 
-      const safeName = uploadedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const storedName = `${Date.now()}_${safeName}`;
-      const filePath = path.join(uploadsDir, storedName);
-      await fs.writeFile(filePath, new Uint8Array(fileArrayBuffer));
-
-      fileUrl = `/uploads/${storedName}`;
+      fileUrl = storedAsset.url;
       console.log('File saved to:', fileUrl);
       fileName = uploadedFile.name;
       fileType = uploadedFile.type || 'application/octet-stream';
@@ -335,27 +332,19 @@ export async function PUT(request: NextRequest) {
     }
 
     // Delete old file if exists
-    if (existingTopic.file_url) {
-      try {
-        const oldFilePath = path.join(process.cwd(), 'public', existingTopic.file_url.replace(/^\//, ''));
-        await fs.unlink(oldFilePath);
-      } catch (err) {
-        console.log('Old file already deleted or not found:', err);
-      }
-    }
+    await deleteStoredAssetByUrl(existingTopic.file_url);
 
     // Save new file
     const fileArrayBuffer = await uploadedFile.arrayBuffer();
     const fileBuffer = Buffer.from(fileArrayBuffer);
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-    await fs.mkdir(uploadsDir, { recursive: true });
+    const storedAsset = await storeWebFileAsset(uploadedFile, {
+      purpose: 'ildce-topic-file',
+      teacherId: String(existingTopic.teacherId),
+      classId: String(existingTopic.classId),
+      topicId,
+    });
 
-    const safeName = uploadedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storedName = `${Date.now()}_${safeName}`;
-    const filePath = path.join(uploadsDir, storedName);
-    await fs.writeFile(filePath, new Uint8Array(fileArrayBuffer));
-
-    const fileUrl = `/uploads/${storedName}`;
+    const fileUrl = storedAsset.url;
     const fileName = uploadedFile.name;
     const fileType = uploadedFile.type || 'application/octet-stream';
     const fileSize = uploadedFile.size;
@@ -454,14 +443,7 @@ export async function DELETE(request: NextRequest) {
     await TopicMetrics.deleteMany({ topic_id: topicId });
 
     // If there was an uploaded file, delete it from disk
-    if (deletedTopic.file_url) {
-      try {
-        const filePath = path.join(process.cwd(), 'public', deletedTopic.file_url.replace(/^\//, ''));
-        await fs.unlink(filePath);
-      } catch (err) {
-        console.log('File already deleted or not found:', err);
-      }
-    }
+    await deleteStoredAssetByUrl(deletedTopic.file_url);
 
     return NextResponse.json(
       { message: 'Topic deleted successfully', topic: deletedTopic },

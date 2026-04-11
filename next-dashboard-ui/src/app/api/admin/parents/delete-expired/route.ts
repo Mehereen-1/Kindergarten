@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       // Delete user
       await User.findByIdAndDelete(parent._id);
 
-      deletedIds.push(String(parent._id));
+      deletedIds.push(parent._id.toString());
     }
 
     return NextResponse.json({

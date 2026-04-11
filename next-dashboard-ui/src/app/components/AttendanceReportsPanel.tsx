@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getClientCctvBackendUrl } from "@/lib/clientConfig";
 
 interface ExportFileItem {
   filename: string;
@@ -13,7 +14,7 @@ interface AttendanceReportsPanelProps {
   subtitle: string;
 }
 
-const BACKEND_BASE = process.env.NEXT_PUBLIC_PYTHON_BACKEND_URL || "http://localhost:8000";
+const BACKEND_BASE = getClientCctvBackendUrl();
 
 function formatBytes(bytes: number): string {
   if (!bytes) return "0 B";
@@ -29,6 +30,7 @@ function formatBytes(bytes: number): string {
 
 export default function AttendanceReportsPanel({ title, subtitle }: AttendanceReportsPanelProps) {
   const today = new Date().toISOString().slice(0, 10);
+  const [className, setClassName] = useState("");
   const [date, setDate] = useState(today);
   const [month, setMonth] = useState(String(new Date().getMonth() + 1).padStart(2, "0"));
   const [year, setYear] = useState(String(new Date().getFullYear()));
@@ -59,12 +61,17 @@ export default function AttendanceReportsPanel({ title, subtitle }: AttendanceRe
   }, []);
 
   const exportDaily = async () => {
+    if (!className.trim()) {
+      setMessage("Please enter a class name before exporting.");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
     try {
-      const url = `${BACKEND_BASE}/export/daily?date=${encodeURIComponent(date)}`;
+      const url = `${BACKEND_BASE}/export/daily?class=${encodeURIComponent(className.trim())}&date=${encodeURIComponent(date)}`;
       window.open(url, "_blank");
-      setMessage(`Daily report requested for ${date}.`);
+      setMessage(`Daily report requested for ${className.trim()} on ${date}.`);
       setTimeout(loadFiles, 1200);
     } catch (error) {
       setMessage(`Daily export failed: ${String(error)}`);
@@ -74,12 +81,17 @@ export default function AttendanceReportsPanel({ title, subtitle }: AttendanceRe
   };
 
   const exportMonthly = async () => {
+    if (!className.trim()) {
+      setMessage("Please enter a class name before exporting.");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
     try {
-      const url = `${BACKEND_BASE}/export/monthly?month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`;
+      const url = `${BACKEND_BASE}/export/monthly?class=${encodeURIComponent(className.trim())}&month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`;
       window.open(url, "_blank");
-      setMessage(`Monthly report requested for ${year}-${month}.`);
+      setMessage(`Monthly report requested for ${className.trim()} (${year}-${month}).`);
       setTimeout(loadFiles, 1200);
     } catch (error) {
       setMessage(`Monthly export failed: ${String(error)}`);
@@ -101,6 +113,21 @@ export default function AttendanceReportsPanel({ title, subtitle }: AttendanceRe
             {message}
           </div>
         )}
+
+        <div className="rounded-xl border border-slate-200 p-5 shadow-sm">
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
+            Class Name
+          </label>
+          <input
+            value={className}
+            onChange={(e) => setClassName(e.target.value)}
+            placeholder="e.g. KG-A"
+            className="w-full max-w-sm border border-slate-300 rounded-lg px-3 py-2"
+          />
+          <p className="text-xs text-slate-500 mt-2">
+            Use the same class name your attendance records are stored with.
+          </p>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <section className="rounded-xl border border-slate-200 p-5 shadow-sm">

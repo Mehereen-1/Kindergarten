@@ -20,26 +20,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    type TeacherXmlImportSuccessItem = {
-      email: string;
-      password: string;
-      name: string;
-      phone: string;
-      subject: string;
-      qualification: string;
-      employeeId: string;
-      userId: string;
-    };
-
-    type TeacherXmlImportFailedItem = {
-      row: number;
-      data: any;
-      error: string;
-    };
-
     const results: {
-      success: TeacherXmlImportSuccessItem[];
-      failed: TeacherXmlImportFailedItem[];
+      success: Array<Record<string, unknown>>;
+      failed: Array<Record<string, unknown>>;
       total: number;
     } = {
       success: [],
@@ -73,18 +56,13 @@ export async function POST(request: NextRequest) {
           importedAt: new Date(),
         });
 
-        if (!userRes.success) {
+        if (!userRes.success || !userRes.data) {
           throw new Error(userRes.message);
-        }
-
-        const createdUserId = userRes.data?.id;
-        if (!createdUserId) {
-          throw new Error('User creation response missing user id');
         }
 
         // 2️⃣ Create teacher profile
         await createTeacherProfile({
-          userId: createdUserId,
+          userId: userRes.data.id,
           qualification: row.qualification || '',
           subjects: row.subject
             ? row.subject.split(',').map((s: string) => s.trim())
@@ -108,7 +86,7 @@ export async function POST(request: NextRequest) {
           subject: row.subject || '',
           qualification: row.qualification || '',
           employeeId: `TCH${String(teacherCount + results.success.length + 1).padStart(4, '0')}`,
-          userId: createdUserId,
+          userId: userRes.data.id,
         });
 
       } catch (err: any) {

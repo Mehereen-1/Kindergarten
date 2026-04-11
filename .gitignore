@@ -23,6 +23,7 @@ venv310/
 
 # Logs
 *.log
+next-dashboard-ui/attendance_cctv/quick-tunnel-url.txt
 
 # InsightFace models
 .insightface/
@@ -36,3 +37,6 @@ node_modules/
 .next/
 dist/
 out/
+
+# Local tunnel tooling
+next-dashboard-ui/attendance_cctv/tools/cloudflared.exe
