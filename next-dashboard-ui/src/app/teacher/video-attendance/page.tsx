@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import TeacherTopBar from "@/app/components/TeacherTopBar";
 import { Upload, Play, Square, RefreshCw, Check, X, Users, Database, BarChart3 } from "lucide-react";
+import { getClientCctvBackendUrl } from "@/lib/clientConfig";
 
 interface ExtractedFace {
   id: string;
@@ -81,7 +82,7 @@ export default function VideoAttendancePage() {
   const videoInputRef = useRef<HTMLInputElement>(null);
   const statusPollRef = useRef<NodeJS.Timeout | null>(null);
   
-  const BACKEND_URL = "/api/attendance/backend";
+  const BACKEND_URL = getClientCctvBackendUrl();
 
   // Check backend status on mount
   useEffect(() => {
@@ -197,6 +198,14 @@ export default function VideoAttendancePage() {
       return;
     }
 
+    if ((videoFile.size || 0) > 4 * 1024 * 1024 && BACKEND_URL.startsWith("/api/")) {
+      setMessage({
+        text: "Video is too large for Vercel API proxy limits. Set NEXT_PUBLIC_CCTV_BACKEND_URL to your Railway backend URL for direct upload.",
+        type: "error",
+      });
+      return;
+    }
+
     setMessage({ text: "", type: "" });
     setExtractedFaces([]);
     setAnalytics(null);
@@ -216,8 +225,20 @@ export default function VideoAttendancePage() {
         await fetchTrackerStatus();
         await fetchAnalytics();
       } else {
-        const err = await res.json();
-        setMessage({ text: err.detail || "Failed to start", type: "error" });
+        const raw = await res.text();
+        let err: any = {};
+        try {
+          err = raw ? JSON.parse(raw) : {};
+        } catch {
+          err = { detail: raw };
+        }
+        const detail =
+          err?.detail ||
+          err?.error ||
+          (res.status === 413 || /request entity too large|function_payload_too_large/i.test(raw)
+            ? "Upload is too large for the current endpoint. Use direct Railway backend URL and/or smaller video."
+            : "Failed to start");
+        setMessage({ text: detail, type: "error" });
         setIsProcessing(false);
       }
     } catch {
