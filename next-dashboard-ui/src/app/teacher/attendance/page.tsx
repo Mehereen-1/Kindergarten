@@ -36,6 +36,22 @@ interface BrowserFrameDetection {
   confirmed?: boolean;
 }
 
+interface StudentDetailsData {
+  _id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  rollNo?: string;
+  className?: string;
+  classId?: string;
+  grade?: string;
+  academicYear?: string;
+  bloodGroup?: string;
+  sex?: string;
+  birthday?: string | null;
+  address?: string;
+}
+
 const CCTV_BACKEND_URL = getClientCctvBackendUrl();
 
 function AttendancePageContent() {
@@ -108,6 +124,12 @@ function AttendancePageContent() {
   const [exportDate, setExportDate] = useState(new Date().toISOString().split("T")[0]);
   const [exportMonth, setExportMonth] = useState(String(new Date().getMonth() + 1).padStart(2, "0"));
   const [exportYear, setExportYear] = useState(String(new Date().getFullYear()));
+  const [knownStudentNamesById, setKnownStudentNamesById] = useState<Record<string, string>>({});
+  const [attendanceOverrides, setAttendanceOverrides] = useState<Record<string, AttendanceStatus>>({});
+  const [studentDetailsId, setStudentDetailsId] = useState<string | null>(null);
+  const [studentDetails, setStudentDetails] = useState<StudentDetailsData | null>(null);
+  const [studentDetailsLoading, setStudentDetailsLoading] = useState(false);
+  const [studentDetailsError, setStudentDetailsError] = useState("");
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
   const seenAttendanceIds = useRef<Set<string>>(new Set());
   const confirmedPresenceIdsRef = useRef<Set<string>>(new Set());
@@ -118,6 +140,33 @@ function AttendancePageContent() {
     if (!preselectedAcademicYear) return;
     setAcademicYear(preselectedAcademicYear);
   }, [preselectedAcademicYear]);
+
+  useEffect(() => {
+    const loadKnownStudents = async () => {
+      try {
+        const response = await fetch("/api/attendance/students", { cache: "no-store" });
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (!Array.isArray(data)) return;
+
+        const nextMap: Record<string, string> = {};
+        data.forEach((item: any) => {
+          const id = String(item?._id || "");
+          const name = String(item?.name || "").trim();
+          if (id && name) {
+            nextMap[id] = name;
+          }
+        });
+
+        setKnownStudentNamesById(nextMap);
+      } catch {
+        // Keep UI functional even if this helper lookup fails.
+      }
+    };
+
+    void loadKnownStudents();
+  }, []);
 
   useEffect(() => {
     detectionsRef.current = detections;
@@ -200,9 +249,67 @@ function AttendancePageContent() {
       .map(([studentId, count]) => ({
         studentId,
         count,
-        name: detectedNamesById[studentId] || studentId,
+        name: detectedNamesById[studentId] || knownStudentNamesById[studentId] || studentId,
       }));
-  }, [studentRecognitionCount, classStudentIdSet, detectedNamesById]);
+  }, [studentRecognitionCount, classStudentIdSet, detectedNamesById, knownStudentNamesById]);
+
+  const resolveStudentName = (studentId: string, fallbackName?: string) => {
+    const classStudent = students.find((student) => String(student._id) === String(studentId));
+    if (classStudent?.name) return classStudent.name;
+    if (detectedNamesById[studentId]) return detectedNamesById[studentId];
+    if (knownStudentNamesById[studentId]) return knownStudentNamesById[studentId];
+    if (fallbackName && fallbackName !== studentId) return fallbackName;
+    return studentId;
+  };
+
+  const getEffectiveAttendanceStatus = (studentId: string): AttendanceStatus => {
+    const override = attendanceOverrides[studentId];
+    if (override) return override;
+    return presentStudents.has(studentId) ? "present" : "absent";
+  };
+
+  const setAttendanceOverride = (studentId: string, status: AttendanceStatus) => {
+    setAttendanceOverrides((prev) => ({
+      ...prev,
+      [studentId]: status,
+    }));
+  };
+
+  const openStudentDetails = async (studentId: string) => {
+    setStudentDetailsId(studentId);
+    setStudentDetailsLoading(true);
+    setStudentDetailsError("");
+
+    try {
+      if (!user?.id) {
+        throw new Error("Teacher account not found");
+      }
+
+      const response = await fetch(
+        `/api/teacher/students/${encodeURIComponent(studentId)}?teacherId=${encodeURIComponent(user.id)}&academicYear=${encodeURIComponent(academicYear)}`,
+        { cache: "no-store" }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to load student details");
+      }
+
+      setStudentDetails(data?.student || null);
+    } catch (error: any) {
+      setStudentDetails(null);
+      setStudentDetailsError(error?.message || "Unable to load student details");
+    } finally {
+      setStudentDetailsLoading(false);
+    }
+  };
+
+  const closeStudentDetails = () => {
+    setStudentDetailsId(null);
+    setStudentDetails(null);
+    setStudentDetailsError("");
+    setStudentDetailsLoading(false);
+  };
 
   useEffect(() => {
     const liveModeActive = cctvMode === "live" && cameraActive;
@@ -310,6 +417,7 @@ function AttendancePageContent() {
 
     setStudentLoadError("");
     setStudents(classStudents);
+    setAttendanceOverrides({});
 
     const initialAttendance: Record<string, AttendanceStatus> = {};
     classStudents.forEach((student) => {
@@ -1392,7 +1500,12 @@ interface CCTVTabProps {
     try {
       const attendanceArray = students.map((student) => ({
         studentId: student._id,
-        status: presentStudents.has(student._id) ? "Present" : "Absent",
+        status:
+          getEffectiveAttendanceStatus(student._id) === "late"
+            ? "Late"
+            : getEffectiveAttendanceStatus(student._id) === "present"
+            ? "Present"
+            : "Absent",
       }));
 
       const response = await fetch("/api/teacher/attendance/bulk", {
@@ -1938,8 +2051,7 @@ interface CCTVTabProps {
                             </p>
                             <div className="flex flex-wrap gap-2">
                               {Array.from(presentStudents).map((studentId) => {
-                                const student = students.find((s) => s._id === studentId);
-                                const displayName = student?.name || detectedNamesById[studentId] || studentId;
+                                const displayName = resolveStudentName(studentId);
                                 return (
                                   <span
                                     key={studentId}
@@ -1961,9 +2073,8 @@ interface CCTVTabProps {
                               {Object.entries(studentRecognitionCount)
                                 .sort(([, a], [, b]) => b - a)
                                 .map(([studentId, count]) => {
-                                  const student = students.find((s) => s._id === studentId);
                                   const isPresent = presentStudents.has(studentId);
-                                  const displayName = student?.name || detectedNamesById[studentId] || studentId;
+                                  const displayName = resolveStudentName(studentId);
                                   return (
                                     <div
                                       key={studentId}
@@ -2214,9 +2325,8 @@ interface CCTVTabProps {
                                   {Object.entries(studentRecognitionCount)
                                     .sort((a, b) => b[1] - a[1])
                                     .map(([studentId, count]) => {
-                                      const student = students.find(s => s._id === studentId);
                                       const isPresent = presentStudents.has(studentId);
-                                      const displayName = student?.name || detectedNamesById[studentId] || studentId;
+                                      const displayName = resolveStudentName(studentId);
                                       return (
                                         <div
                                           key={studentId}
@@ -2276,7 +2386,7 @@ interface CCTVTabProps {
                                   >
                                     <div>
                                       <p className="text-sm font-semibold text-slate-900">{entry.name}</p>
-                                      <p className="text-xs text-slate-600">ID: {entry.studentId} • {entry.count} recognitions</p>
+                                      <p className="text-xs text-slate-600">Student ID: {entry.studentId} • {entry.count} recognitions</p>
                                     </div>
                                     <button
                                       onClick={() =>
@@ -2325,28 +2435,63 @@ interface CCTVTabProps {
                                   <th className="text-left px-3 py-2 font-semibold text-slate-600">Student</th>
                                   <th className="text-left px-3 py-2 font-semibold text-slate-600">Recognition Count</th>
                                   <th className="text-left px-3 py-2 font-semibold text-slate-600">Status</th>
+                                  <th className="text-left px-3 py-2 font-semibold text-slate-600">Override</th>
+                                  <th className="text-left px-3 py-2 font-semibold text-slate-600">Details</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {students.map((student) => {
                                   const sid = student._id;
                                   const count = studentRecognitionCount[sid] || 0;
-                                  const isPresent = presentStudents.has(sid);
+                                  const status = getEffectiveAttendanceStatus(sid);
+                                  const isManualOverride = attendanceOverrides[sid] !== undefined;
                                   return (
                                     <tr key={sid} className="border-t border-slate-100">
                                       <td className="px-3 py-2 font-medium text-slate-800">{student.name}</td>
                                       <td className="px-3 py-2 text-slate-600">{count}</td>
                                       <td className="px-3 py-2">
-                                        <span className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${isPresent ? "bg-green-100 text-green-800" : "bg-red-100 text-red-700"}`}>
-                                          {isPresent ? "Present" : "Absent"}
+                                        <span
+                                          className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${
+                                            status === "present"
+                                              ? "bg-green-100 text-green-800"
+                                              : status === "late"
+                                              ? "bg-yellow-100 text-yellow-800"
+                                              : "bg-red-100 text-red-700"
+                                          }`}
+                                        >
+                                          {status === "present" ? "Present" : status === "late" ? "Late" : "Absent"}
                                         </span>
+                                        {isManualOverride && (
+                                          <span className="ml-2 inline-flex px-2 py-1 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700">
+                                            Manual
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <select
+                                          value={status}
+                                          onChange={(event) => setAttendanceOverride(sid, event.target.value as AttendanceStatus)}
+                                          className="border border-slate-300 rounded-md px-2 py-1 bg-white text-xs font-semibold"
+                                        >
+                                          <option value="present">Present</option>
+                                          <option value="absent">Absent</option>
+                                          <option value="late">Late</option>
+                                        </select>
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <button
+                                          onClick={() => openStudentDetails(sid)}
+                                          className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
+                                        >
+                                          View Details
+                                        </button>
                                       </td>
                                     </tr>
                                   );
                                 })}
                                 {students.length === 0 && (
                                   <tr>
-                                    <td colSpan={3} className="px-3 py-6 text-center text-slate-500">No students available for this class.</td>
+                                    <td colSpan={5} className="px-3 py-6 text-center text-slate-500">No students available for this class.</td>
                                   </tr>
                                 )}
                               </tbody>
@@ -2380,6 +2525,53 @@ interface CCTVTabProps {
                       </p>
                     </div>
                   )}
+                </div>
+              )}
+
+              {studentDetailsId && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" role="dialog" aria-modal="true">
+                  <div className="w-full max-w-xl rounded-xl bg-white shadow-2xl border border-slate-200">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+                      <h4 className="text-lg font-bold text-slate-900">Student Details</h4>
+                      <button
+                        onClick={closeStudentDetails}
+                        className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold"
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    <div className="px-5 py-4 space-y-3 text-sm">
+                      {studentDetailsLoading ? (
+                        <p className="text-slate-600">Loading details...</p>
+                      ) : studentDetailsError ? (
+                        <div className="space-y-2">
+                          <p className="text-red-600 font-semibold">{studentDetailsError}</p>
+                          <p className="text-slate-700">
+                            Name: <span className="font-semibold">{resolveStudentName(studentDetailsId)}</span>
+                          </p>
+                          <p className="text-slate-700">Student ID: <span className="font-mono text-xs">{studentDetailsId}</span></p>
+                        </div>
+                      ) : studentDetails ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <p><span className="font-semibold text-slate-700">Name:</span> {studentDetails.name || "-"}</p>
+                          <p><span className="font-semibold text-slate-700">Roll No:</span> {studentDetails.rollNo || "-"}</p>
+                          <p><span className="font-semibold text-slate-700">Class:</span> {studentDetails.className || "-"}</p>
+                          <p><span className="font-semibold text-slate-700">Grade:</span> {studentDetails.grade || "-"}</p>
+                          <p><span className="font-semibold text-slate-700">Academic Year:</span> {studentDetails.academicYear || "-"}</p>
+                          <p><span className="font-semibold text-slate-700">Email:</span> {studentDetails.email || "-"}</p>
+                          <p><span className="font-semibold text-slate-700">Phone:</span> {studentDetails.phone || "-"}</p>
+                          <p><span className="font-semibold text-slate-700">Blood Group:</span> {studentDetails.bloodGroup || "-"}</p>
+                          <p><span className="font-semibold text-slate-700">Gender:</span> {studentDetails.sex || "-"}</p>
+                          <p><span className="font-semibold text-slate-700">Birthday:</span> {studentDetails.birthday ? new Date(studentDetails.birthday).toLocaleDateString() : "-"}</p>
+                          <p className="sm:col-span-2"><span className="font-semibold text-slate-700">Address:</span> {studentDetails.address || "-"}</p>
+                          <p className="sm:col-span-2"><span className="font-semibold text-slate-700">Student ID:</span> <span className="font-mono text-xs">{studentDetails._id}</span></p>
+                        </div>
+                      ) : (
+                        <p className="text-slate-600">No details found.</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 

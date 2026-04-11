@@ -1,0 +1,5 @@
+[phases.setup]
+aptPkgs = ["ffmpeg", "libglib2.0-0", "libgomp1"]
+
+[start]
+cmd = "cd backend && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"
