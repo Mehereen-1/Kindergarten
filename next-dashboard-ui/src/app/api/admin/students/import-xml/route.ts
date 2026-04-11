@@ -19,7 +19,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const results = {
+    type ImportStudentSuccessItem = {
+      studentName: string;
+      studentEmail: string;
+      parentEmail: string;
+      parentName: string;
+      classId: string;
+      academicYear: string;
+      roll: string;
+      studentId: string;
+      parentId: string;
+    };
+
+    type ImportStudentFailedItem = {
+      row: number;
+      data: any;
+      error: string;
+    };
+
+    const results: {
+      success: ImportStudentSuccessItem[];
+      failed: ImportStudentFailedItem[];
+      total: number;
+    } = {
       success: [],
       failed: [],
       total: records.length,

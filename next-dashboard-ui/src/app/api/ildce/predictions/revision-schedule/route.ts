@@ -156,7 +156,7 @@ function calculateOptimalRevisionFrequency(learningVelocity: number): string {
 }
 
 function generateRevisionInsights(schedules: any[]): string[] {
-  const insights = [];
+  const insights: string[] = [];
 
   const studentsNeedingUrgentRevision = schedules.filter(
     s => s.topicsNeedingRevision.some((t: any) => t.urgency === 'Critical')

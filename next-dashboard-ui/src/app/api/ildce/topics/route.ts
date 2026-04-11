@@ -167,7 +167,15 @@ export async function POST(request: NextRequest) {
     });
 
     // Convert AI questions to quiz format
-    const questions = [];
+    const questions: Array<{
+      question_text: string;
+      question_type: 'mcq' | 'short_answer' | 'true_false';
+      options: string[];
+      correct_answer: any;
+      difficulty: any;
+      concept_tag: any;
+      explanation: any;
+    }> = [];
 
     // Add MCQ
     aiResults.generated_questions.mcq.forEach((q) => {

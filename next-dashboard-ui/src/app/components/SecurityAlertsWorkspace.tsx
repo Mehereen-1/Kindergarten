@@ -649,7 +649,7 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
             <div className="rounded-2xl bg-slate-50 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Service URL</p>
               <p className="mt-1 break-all text-sm font-bold text-slate-900">
-                {serviceStatus?.serviceUrl || 'http://127.0.0.1:8010'}
+                {serviceStatus?.serviceUrl || process.env.NEXT_PUBLIC_ANOMALY_SERVICE_URL || 'http://127.0.0.1:8010'}
               </p>
             </div>
             <div className="rounded-2xl bg-slate-50 px-4 py-3">

@@ -259,7 +259,7 @@ export async function PATCH(
       data: batch,
     });
   } catch (error: any) {
-    console.error(`Batch ${body?.action} error:`, error);
+    console.error('Batch action error:', error);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }

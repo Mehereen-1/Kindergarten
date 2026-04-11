@@ -64,7 +64,8 @@ export default function Chat({ currentUser }: ChatProps) {
 
   // Initialize socket connection
   useEffect(() => {
-    const socketConnection = io('http://localhost:3000');
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || window.location.origin;
+    const socketConnection = io(socketUrl);
     setSocket(socketConnection);
 
     socketConnection.on('connect', () => {

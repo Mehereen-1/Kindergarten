@@ -224,7 +224,7 @@ const ParentTopBar = () => {
                   onClick={() => setProfileMenu(false)}
                 >
                   <User className="w-4 h-4" />
-                  Child's Profile
+                  Child&apos;s Profile
                 </Link>
                 <Link
                   href="/parent/settings"

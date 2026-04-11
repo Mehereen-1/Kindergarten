@@ -1,6 +1,6 @@
 import { connectDB } from '../mongodb';
-import { Class } from '../models/Class';
-import { Student } from '../models/Student';
+import Class from '../models/Class';
+import Student from '../models/Student';
 
 interface CreateClassInput {
   name: string;

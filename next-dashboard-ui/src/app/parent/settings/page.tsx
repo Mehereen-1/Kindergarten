@@ -34,7 +34,10 @@ export default function ParentSettingsPage() {
     const padding = '='.repeat((4 - (vapidPublicKey.length % 4)) % 4);
     const base64 = (vapidPublicKey + padding).replace(/-/g, '+').replace(/_/g, '/');
     const rawData = window.atob(base64);
-    const applicationServerKey = Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+    const applicationServerKey = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; i++) {
+      applicationServerKey[i] = rawData.charCodeAt(i);
+    }
 
     const registration = await navigator.serviceWorker.register('/sw.js');
     let subscription = await registration.pushManager.getSubscription();

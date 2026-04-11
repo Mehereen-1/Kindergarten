@@ -154,7 +154,7 @@ function generateEntropyInsights(
   strongCount: number,
   total: number
 ): string[] {
-  const insights = [];
+  const insights: string[] = [];
 
   const weakPct = (weakCount / total) * 100;
   const moderatePct = (moderateCount / total) * 100;
@@ -212,7 +212,7 @@ function generateRecommendations(
   entropy: number,
   avgVelocity: number
 ): string[] {
-  const recommendations = [];
+  const recommendations: string[] = [];
 
   if (weakCount > total * 0.3) {
     recommendations.push('Provide small group / one-on-one tutoring for struggling students');

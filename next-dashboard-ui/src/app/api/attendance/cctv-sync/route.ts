@@ -39,8 +39,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const attendanceRecords = [];
-    const failedRecords = [];
+    const attendanceRecords: any[] = [];
+    const failedRecords: Array<{ studentId: string; error: string }> = [];
 
     const dayStart = new Date(date + 'T00:00:00Z');
     const dayEnd = new Date(date + 'T23:59:59Z');

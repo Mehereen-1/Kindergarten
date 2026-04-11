@@ -31,7 +31,12 @@ export async function POST(request: NextRequest) {
 
     let correct_answers = 0;
     const concept_performance: any = {};
-    const processedAnswers = [];
+    const processedAnswers: Array<{
+      questionId: any;
+      student_answer: any;
+      is_correct: boolean;
+      time_spent: number;
+    }> = [];
 
     // Process answers
     answers.forEach((answer: any) => {

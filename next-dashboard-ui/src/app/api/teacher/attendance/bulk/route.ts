@@ -34,7 +34,11 @@ export async function POST(request: NextRequest) {
     const attendanceDate = new Date(date);
     attendanceDate.setHours(0, 0, 0, 0);
 
-    const results = {
+    const results: {
+      success: Array<{ studentId: any; status: any; _id: any }>;
+      failed: Array<{ studentId: any; error: string }>;
+      updated: Array<{ studentId: any; status: any; _id: any }>;
+    } = {
       success: [],
       failed: [],
       updated: []

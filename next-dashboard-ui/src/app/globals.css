@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+.font-display-local {
+  font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.font-body-local {
+  font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.font-script-local {
+  font-family: "Bradley Hand", "Snell Roundhand", "Segoe Script", cursive;
+}
+
 /* Teacher Panel Theme */
 @layer base {
   :root {

@@ -20,7 +20,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const results = {
+    type ImportSuccessItem = {
+      email: string;
+      password: string;
+      name: string;
+      phone: string;
+      address: string;
+      occupation: string;
+      parentId: string;
+      userId: string;
+    };
+
+    type ImportFailedItem = {
+      row: number;
+      data: any;
+      error: string;
+    };
+
+    const results: {
+      success: ImportSuccessItem[];
+      failed: ImportFailedItem[];
+      total: number;
+    } = {
       success: [],
       failed: [],
       total: records.length,
@@ -56,9 +77,14 @@ export async function POST(request: NextRequest) {
           throw new Error(userRes.message);
         }
 
+        const createdUserId = userRes.data?.id;
+        if (!createdUserId) {
+          throw new Error('User creation response missing user id');
+        }
+
         // 2️⃣ Create parent profile
         await createParentProfile({
-          userId: userRes.data.id,
+          userId: createdUserId,
           address: row.address || '',
           occupation: row.occupation || '',
           children: [], // Will be assigned later
@@ -80,7 +106,7 @@ export async function POST(request: NextRequest) {
           address: row.address || '',
           occupation: row.occupation || '',
           parentId: `PAR${String(parentCount + results.success.length + 1).padStart(4, '0')}`,
-          userId: userRes.data.id,
+          userId: createdUserId,
         });
 
       } catch (err: any) {

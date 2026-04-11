@@ -1,5 +1,5 @@
 import { connectDB } from '../mongodb';
-import { Announcement } from '../models/Announcement';
+import Announcement from '../models/Announcement';
 
 interface CreateAnnouncementInput {
   title: string;

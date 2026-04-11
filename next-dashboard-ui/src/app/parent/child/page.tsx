@@ -82,7 +82,7 @@ export default function ParentChildPage() {
           {/* Header */}
           <div className="mb-8">
             <h1 className="text-4xl font-bold text-gray-900 mb-2">My Children</h1>
-            <p className="text-gray-600">View and manage your children's information</p>
+            <p className="text-gray-600">View and manage your children&apos;s information</p>
           </div>
 
           {children.length === 0 ? (

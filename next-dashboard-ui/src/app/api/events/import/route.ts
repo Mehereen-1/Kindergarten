@@ -67,19 +67,22 @@ function parseCsv(content: string, role: 'all' | 'teacher' | 'parent' | 'student
 
   if (dateIdx === -1 || titleIdx === -1) return [];
 
-  return lines.slice(1).map((line) => {
+  const parsedRows: ParsedEventRow[] = [];
+  for (const line of lines.slice(1)) {
     const cells = line.split(',').map((c) => c.trim());
     const date = parseDateValue(cells[dateIdx]);
-    if (!date) return null;
+    if (!date) continue;
 
-    return {
+    parsedRows.push({
       title: cells[titleIdx] || 'Untitled Event',
       description: descIdx >= 0 ? cells[descIdx] : '',
       date,
       targetRole: role,
       location: locationIdx >= 0 ? cells[locationIdx] : '',
-    };
-  }).filter((row): row is ParsedEventRow => Boolean(row));
+    });
+  }
+
+  return parsedRows;
 }
 
 function parseXlsx(buffer: Buffer, role: 'all' | 'teacher' | 'parent' | 'student'): ParsedEventRow[] {

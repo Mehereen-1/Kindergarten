@@ -1,6 +1,6 @@
 import { connectDB } from '../mongodb';
-import { Activity } from '../models/Activity';
-import { Class } from '../models/Class';
+import Activity from '../models/Activity';
+import Class from '../models/Class';
 
 interface CreateActivityInput {
   title: string;

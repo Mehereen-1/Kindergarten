@@ -100,7 +100,7 @@ async function executeAction(intent: ToolUseIntent): Promise<QueryResult> {
         const student = await getStudentDetails(parameters.studentId);
         return {
           success: !!student,
-          data: student,
+          data: student ?? undefined,
           message: student ? 'Student details retrieved successfully' : 'Student not found',
         };
       }
@@ -124,7 +124,7 @@ async function executeAction(intent: ToolUseIntent): Promise<QueryResult> {
         const schedule = await getTeacherSchedule(parameters.teacherId);
         return {
           success: !!schedule,
-          data: schedule,
+          data: schedule ?? undefined,
           message: schedule ? 'Teacher schedule retrieved successfully' : 'Teacher not found',
         };
       }

@@ -3,22 +3,10 @@
 import { useRouter } from 'next/navigation';
 import { BookOpen, Users, Calendar, Award, ArrowRight, LogIn, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
-import { Fredoka, Raleway, Caveat } from 'next/font/google';
 
-const fredoka = Fredoka({ 
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700']
-});
-
-const raleway = Raleway({ 
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700']
-});
-
-const caveat = Caveat({ 
-  subsets: ['latin'],
-  weight: ['400', '700']
-});
+const fredoka = { className: 'font-display-local' };
+const raleway = { className: 'font-body-local' };
+const caveat = { className: 'font-script-local' };
 
 export default function Homepage() {
   const router = useRouter();

@@ -177,7 +177,7 @@ export default function TeacherSettingsPage() {
                     <ul className="space-y-2 text-sm text-blue-800">
                       <li>• Use a strong password with at least 6 characters</li>
                       <li>• Mix uppercase, lowercase, numbers, and symbols</li>
-                      <li>• Don't share your password with anyone</li>
+                      <li>• Don&apos;t share your password with anyone</li>
                       <li>• Change your password regularly for security</li>
                     </ul>
                   </div>

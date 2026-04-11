@@ -37,7 +37,37 @@ export async function POST(request: NextRequest) {
     // Validate headers
     const requiredHeaders = ['Student Name', 'Class ID', 'Roll Number', 'Academic Year', 'Parent Name', 'Parent Phone'];
     
-    const results = {
+    type StudentImportSuccessItem = {
+      row: number;
+      student: {
+        name: string;
+        email: string;
+        password: string;
+        classId: any;
+        academicYear: string;
+        rollNumber: number;
+        _id: any;
+      };
+      parent: {
+        name: string;
+        email: string;
+        phone: string;
+        _id: any;
+        isNew: boolean;
+      };
+    };
+
+    type StudentImportFailedItem = {
+      row: number;
+      data: any;
+      error: string;
+    };
+
+    const results: {
+      success: StudentImportSuccessItem[];
+      failed: StudentImportFailedItem[];
+      total: number;
+    } = {
       success: [],
       failed: [],
       total: lines.length - 1

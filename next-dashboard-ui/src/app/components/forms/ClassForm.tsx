@@ -12,7 +12,8 @@ const schema = z.object({
   capacity: z.coerce.number().min(0, { message: "Capacity must be 0 or more!" }),
 });
 
-type Inputs = z.infer<typeof schema>;
+type FormValues = z.input<typeof schema>;
+type Inputs = z.output<typeof schema>;
 
 type ClassFormProps = {
   type: "create" | "update";
@@ -30,7 +31,7 @@ const ClassForm = ({ type, data }: ClassFormProps) => {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<Inputs>({
+  } = useForm<FormValues, any, Inputs>({
     resolver: zodResolver(schema),
   });
 
@@ -91,7 +92,7 @@ const ClassForm = ({ type, data }: ClassFormProps) => {
           type="number"
           defaultValue={data?.capacity?.toString()}
           register={register}
-          error={errors.capacity}
+          error={errors.capacity as any}
           inputProps={{ min: 0 }}
         />
       </div>

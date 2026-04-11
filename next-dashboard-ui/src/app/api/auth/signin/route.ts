@@ -26,11 +26,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+      const user = result.data;
+      if (!user) {
+        return NextResponse.json({ error: 'Authentication succeeded without user payload' }, { status: 500 });
+      }
+
     // For first login, return flag to redirect to change password
     return NextResponse.json({
       message: result.message,
-      user: result.data,
-      redirectToChangePassword: result.data.isFirstLogin
+        user,
+        redirectToChangePassword: user.isFirstLogin
     }, { status: 200 });
 
   } catch (error: any) {

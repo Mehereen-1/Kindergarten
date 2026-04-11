@@ -81,7 +81,7 @@ export default function VideoAttendancePage() {
   const videoInputRef = useRef<HTMLInputElement>(null);
   const statusPollRef = useRef<NodeJS.Timeout | null>(null);
   
-  const BACKEND_URL = "http://localhost:8000";
+  const BACKEND_URL = process.env.NEXT_PUBLIC_PYTHON_BACKEND_URL || "http://localhost:8000";
 
   // Check backend status on mount
   useEffect(() => {

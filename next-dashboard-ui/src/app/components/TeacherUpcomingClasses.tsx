@@ -46,7 +46,7 @@ const TeacherUpcomingClasses = ({ upcomingClasses }: TeacherUpcomingClassesProps
       <div className="flex items-center justify-between px-2">
         <h3 className="text-2xl font-black text-[#352f00] flex items-center gap-2">
           <span className="material-symbols-outlined text-[#705900]">schedule</span>
-          Today's Schedule
+          Today&apos;s Schedule
         </h3>
         <Link href="/teacher/events" className="text-[#904800] font-bold hover:underline flex items-center gap-1">
           View Calendar <span className="material-symbols-outlined text-sm">arrow_forward</span>

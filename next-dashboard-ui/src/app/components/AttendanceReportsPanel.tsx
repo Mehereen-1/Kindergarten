@@ -13,7 +13,7 @@ interface AttendanceReportsPanelProps {
   subtitle: string;
 }
 
-const BACKEND_BASE = "http://localhost:8000";
+const BACKEND_BASE = process.env.NEXT_PUBLIC_PYTHON_BACKEND_URL || "http://localhost:8000";
 
 function formatBytes(bytes: number): string {
   if (!bytes) return "0 B";

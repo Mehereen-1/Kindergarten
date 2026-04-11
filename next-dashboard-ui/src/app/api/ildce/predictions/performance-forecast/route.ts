@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
       const confidence = getConfidenceLevel(consistency, studentAttempts.length);
 
       // Generate forecast points for chart
-      const forecastPoints = [];
+      const forecastPoints: Array<{ day: number; predicted: number }> = [];
       for (let day = 0; day <= daysAhead; day += daysAhead / 6) {
         forecastPoints.push({
           day: Math.round(day),
@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
     };
 
     // Trend chart data
-    const trendPoints = [];
+    const trendPoints: Array<{ day: number; strong: number; moderate: number; weak: number }> = [];
     for (let day = 0; day <= daysAhead; day += daysAhead / 10) {
       const studentsAtLevel = (level: number, margin: number = 0.05) =>
         forecasts.filter((f: any) => {
@@ -235,7 +235,7 @@ function generateStudentRecommendations(
   consistency: number,
   trajectory: string
 ): string[] {
-  const recommendations = [];
+  const recommendations: string[] = [];
 
   if (velocity < -0.02) {
     recommendations.push('Performance declining - review recent material');
@@ -257,7 +257,7 @@ function generateStudentRecommendations(
 }
 
 function generateClassForecastInsights(classForecasts: any, forecasts: any[]): string[] {
-  const insights = [];
+  const insights: string[] = [];
 
   if (classForecasts.avgForecastedMastery > classForecasts.avgCurrentMastery + 0.05) {
     insights.push('✅ Class expected to improve over next period');
@@ -279,7 +279,7 @@ function generateClassForecastInsights(classForecasts: any, forecasts: any[]): s
 }
 
 function generateClassRecommendations(classForecasts: any, forecasts: any[]): string[] {
-  const recommendations = [];
+  const recommendations: string[] = [];
 
   if (classForecasts.atRisk > forecasts.length * 0.25) {
     recommendations.push('Schedule intensive review or intervention sessions');

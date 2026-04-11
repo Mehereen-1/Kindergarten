@@ -96,7 +96,7 @@ export default function TestResearchModelsPage() {
                   return (
                     <Button
                       key={option.value}
-                      variant={testType === option.value ? 'default' : 'outline'}
+                      variant={testType === option.value ? 'primary' : 'outline'}
                       onClick={() => setTestType(option.value)}
                       className="flex items-center gap-2"
                     >
@@ -356,7 +356,7 @@ export default function TestResearchModelsPage() {
               <div>
                 <h3 className="font-semibold mb-2">1. Select Test Type</h3>
                 <p className="text-sm text-gray-600">
-                  Choose "All Models" to test everything, or pick individual models to test specific features.
+                  Choose &quot;All Models&quot; to test everything, or pick individual models to test specific features.
                 </p>
               </div>
               <div>
@@ -366,7 +366,7 @@ export default function TestResearchModelsPage() {
                 </p>
               </div>
               <div>
-                <h3 className="font-semibold mb-2">3. Click "Run Tests"</h3>
+                <h3 className="font-semibold mb-2">3. Click &quot;Run Tests&quot;</h3>
                 <p className="text-sm text-gray-600">
                   The system will test all selected mathematical models and show detailed results.
                 </p>
@@ -374,7 +374,7 @@ export default function TestResearchModelsPage() {
               <div className="bg-yellow-50 p-4 rounded-lg">
                 <p className="text-sm text-yellow-900">
                   <strong>⚠️ Note:</strong> You need quiz data in your database for meaningful results. 
-                  If you see "insufficient data" errors, create some quiz attempts first.
+                  If you see &quot;insufficient data&quot; errors, create some quiz attempts first.
                 </p>
               </div>
             </CardContent>

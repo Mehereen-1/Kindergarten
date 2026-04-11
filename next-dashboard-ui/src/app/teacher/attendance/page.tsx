@@ -28,6 +28,7 @@ interface TeacherClass {
 export default function AttendancePage() {
   const { user, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
+  const BACKEND_BASE = process.env.NEXT_PUBLIC_PYTHON_BACKEND_URL || "http://localhost:8000";
   const currentYear = String(new Date().getFullYear());
   const preselectedClassId = searchParams.get("classId") || "";
   const preselectedAcademicYear = searchParams.get("academicYear") || "";
@@ -44,7 +45,7 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [studentLoadError, setStudentLoadError] = useState<string>("");
-  const [cctvFeedUrl] = useState("http://localhost:8000/video");
+  const [cctvFeedUrl] = useState(`${BACKEND_BASE}/video`);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedStudent, setSelectedStudent] = useState<string>("");
   const [studentImageCounts, setStudentImageCounts] = useState<Record<string, number>>({});
@@ -158,7 +159,7 @@ export default function AttendancePage() {
     if (cameraActive && cctvMode === "live") {
       interval = setInterval(async () => {
         try {
-          const res = await fetch("http://localhost:8000/video-detections");
+          const res = await fetch(`${BACKEND_BASE}/video-detections`);
           const detData = await res.json();
           const data = Array.isArray(detData) ? detData : (detData.detections || []);
           
@@ -268,7 +269,7 @@ export default function AttendancePage() {
       
       // Stop processing if still active
       if (isVideoProcessing) {
-        fetch("http://localhost:8000/stop-processing", { method: "POST" }).catch(err => 
+        fetch(`${BACKEND_BASE}/stop-processing`, { method: "POST" }).catch(err => 
           console.error("Error stopping processing on unmount:", err)
         );
       }
@@ -423,7 +424,7 @@ export default function AttendancePage() {
 
       // Reload embeddings
       try {
-        const reloadRes = await fetch('http://localhost:8000/reload-embeddings', {
+        const reloadRes = await fetch(`${BACKEND_BASE}/reload-embeddings`, {
           method: 'POST',
         });
         const reloadData = await reloadRes.json();
@@ -486,7 +487,7 @@ export default function AttendancePage() {
         // Reload embeddings from backend
         console.log("🔄 Reloading facial embeddings from backend...");
         try {
-          const reloadRes = await fetch("http://localhost:8000/reload-embeddings", {
+          const reloadRes = await fetch(`${BACKEND_BASE}/reload-embeddings`, {
             method: "POST",
           });
           const reloadData = await reloadRes.json();
@@ -597,7 +598,7 @@ interface CCTVTabProps {
     setLoading(true);
     setMessage("");
     try {
-      const res = await fetch("http://localhost:8000/start-camera", {
+      const res = await fetch(`${BACKEND_BASE}/start-camera`, {
         method: "POST",
       });
       const data = await res.json();
@@ -620,7 +621,7 @@ interface CCTVTabProps {
   const stopCamera = async () => {
     setLoading(true);
     try {
-      await fetch("http://localhost:8000/stop-camera", {
+      await fetch(`${BACKEND_BASE}/stop-camera`, {
         method: "POST",
       });
       setMessage("✅ Camera stopped");
@@ -646,7 +647,7 @@ interface CCTVTabProps {
     }
     
     try {
-      await fetch("http://localhost:8000/stop-processing", {
+      await fetch(`${BACKEND_BASE}/stop-processing`, {
         method: "POST",
       });
       console.log("Processing stopped");
@@ -678,7 +679,7 @@ interface CCTVTabProps {
       const formData = new FormData();
       formData.append("video", file);
 
-      const response = await fetch("http://localhost:8000/process-video", {
+      const response = await fetch(`${BACKEND_BASE}/process-video`, {
         method: "POST",
         body: formData,
       });
@@ -686,7 +687,7 @@ interface CCTVTabProps {
       const result = await response.json();
 
       if (response.ok) {
-        await fetch("http://localhost:8000/clear-extracted-faces", {
+        await fetch(`${BACKEND_BASE}/clear-extracted-faces`, {
           method: "POST",
         }).catch(() => undefined);
 
@@ -698,7 +699,7 @@ interface CCTVTabProps {
         setMessage(`✅ Video processing started. Displaying detections in real-time...`);
         
         // Point to the processed video stream from backend
-        setProcessedVideoUrl("http://localhost:8000/video-stream-processed");
+        setProcessedVideoUrl(`${BACKEND_BASE}/video-stream-processed`);
         
         // Poll for detection results
         let lastDetectionCount = 0;
@@ -708,8 +709,8 @@ interface CCTVTabProps {
         const pollInterval = setInterval(async () => {
           try {
             const [detRes, facesRes] = await Promise.all([
-              fetch("http://localhost:8000/video-detections", { method: "GET" }),
-              fetch("http://localhost:8000/extracted-faces", { method: "GET" }),
+              fetch(`${BACKEND_BASE}/video-detections`, { method: "GET" }),
+              fetch(`${BACKEND_BASE}/extracted-faces`, { method: "GET" }),
             ]);
             const detData = await detRes.json();
             const facesData = await facesRes.json();
@@ -911,7 +912,7 @@ interface CCTVTabProps {
       setMessage("❌ Please select a class before exporting reports.");
       return;
     }
-    const url = `http://localhost:8000/export/daily?class=${encodeURIComponent(className)}&date=${encodeURIComponent(exportDate)}`;
+    const url = `${BACKEND_BASE}/export/daily?class=${encodeURIComponent(className)}&date=${encodeURIComponent(exportDate)}`;
     window.open(url, "_blank");
     setMessage(`✅ Daily report requested for ${className} on ${exportDate}`);
   };
@@ -923,7 +924,7 @@ interface CCTVTabProps {
       setMessage("❌ Please select a class before exporting reports.");
       return;
     }
-    const url = `http://localhost:8000/export/monthly?class=${encodeURIComponent(className)}&month=${encodeURIComponent(exportMonth)}&year=${encodeURIComponent(exportYear)}`;
+    const url = `${BACKEND_BASE}/export/monthly?class=${encodeURIComponent(className)}&month=${encodeURIComponent(exportMonth)}&year=${encodeURIComponent(exportYear)}`;
     window.open(url, "_blank");
     setMessage(`✅ Monthly report requested for ${className} (${exportYear}-${exportMonth})`);
   };
@@ -1285,7 +1286,7 @@ interface CCTVTabProps {
                     {cameraActive ? (
                       <iframe
                         key={`stream-${cameraActive}`}
-                        src="http://localhost:8000/video"
+                        src={`${BACKEND_BASE}/video`}
                         title="CCTV Feed"
                         className="w-full h-full border-0"
                         onError={(e) => {

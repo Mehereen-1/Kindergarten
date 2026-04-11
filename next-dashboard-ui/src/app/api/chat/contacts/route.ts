@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
       ...contacts[0].receiverIds.filter(id => id.toString() !== currentUserId)
     ];
 
-    const uniqueContactIds = [...new Set(allContactIds.map(id => id.toString()))];
+    const uniqueContactIds = Array.from(new Set(allContactIds.map((id) => id.toString())));
 
     // Get user details
     const contactUsers = await User.find({ _id: { $in: uniqueContactIds } })

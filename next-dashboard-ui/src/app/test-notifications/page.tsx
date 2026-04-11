@@ -30,26 +30,26 @@ export default function TestNotificationsPage() {
             <div className="space-y-4 text-sm">
               <div>
                 <h4 className="font-bold text-amber-900">Step 1: Check Permission</h4>
-                <p className="text-gray-600">Click "Check Permission" button. You should see "Permission: granted"</p>
-                <p className="text-xs text-amber-600 mt-2">If you see "denied", go to browser settings and allow notifications</p>
+                <p className="text-gray-600">Click &quot;Check Permission&quot; button. You should see &quot;Permission: granted&quot;</p>
+                <p className="text-xs text-amber-600 mt-2">If you see &quot;denied&quot;, go to browser settings and allow notifications</p>
               </div>
 
               <div>
                 <h4 className="font-bold text-amber-900">Step 2: Test Sound</h4>
-                <p className="text-gray-600">Click "Test Sound" button. You should hear a beep sound.</p>
+                <p className="text-gray-600">Click &quot;Test Sound&quot; button. You should hear a beep sound.</p>
                 <p className="text-xs text-amber-600 mt-2">If no sound, check your speaker volume and browser settings</p>
               </div>
 
               <div>
                 <h4 className="font-bold text-amber-900">Step 3: Test Notification</h4>
-                <p className="text-gray-600">Click "Test Notification" button. You should see a browser notification popup.</p>
+                <p className="text-gray-600">Click &quot;Test Notification&quot; button. You should see a browser notification popup.</p>
                 <p className="text-xs text-amber-600 mt-2">The notification should appear in the top-right corner</p>
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded p-3">
                 <h4 className="font-bold text-blue-900 mb-2">Browser Console Logs</h4>
                 <p className="text-xs text-gray-600">Press F12 to open Developer Tools → Console tab</p>
-                <p className="text-xs text-gray-600 mt-1">You'll see detailed logs with [Notification] and [Sound] prefixes</p>
+                <p className="text-xs text-gray-600 mt-1">You&apos;ll see detailed logs with [Notification] and [Sound] prefixes</p>
               </div>
             </div>
           </div>
@@ -61,17 +61,17 @@ export default function TestNotificationsPage() {
           
           <div className="space-y-3 text-sm">
             <div>
-              <h4 className="font-bold">❌ "Notifications not supported"</h4>
-              <p className="text-gray-600">Your browser doesn't support notifications. Try Chrome, Firefox, or Edge.</p>
+              <h4 className="font-bold">❌ &quot;Notifications not supported&quot;</h4>
+              <p className="text-gray-600">Your browser doesn&apos;t support notifications. Try Chrome, Firefox, or Edge.</p>
             </div>
 
             <div>
-              <h4 className="font-bold">❌ "Permission: denied"</h4>
+              <h4 className="font-bold">❌ &quot;Permission: denied&quot;</h4>
               <p className="text-gray-600">You blocked notifications. Fix it:</p>
               <ol className="list-decimal list-inside text-gray-600 mt-1 ml-2">
                 <li>Click the lock icon in the address bar</li>
-                <li>Find "Notifications" setting</li>
-                <li>Change to "Allow"</li>
+                <li>Find &quot;Notifications&quot; setting</li>
+                <li>Change to &quot;Allow&quot;</li>
                 <li>Reload the page</li>
               </ol>
             </div>
@@ -91,7 +91,7 @@ export default function TestNotificationsPage() {
               <h4 className="font-bold">❌ No notification popup</h4>
               <p className="text-gray-600">Check:</p>
               <ol className="list-decimal list-inside text-gray-600 mt-1 ml-2">
-                <li>Permission is "granted" (not "default" or "denied")</li>
+                <li>Permission is &quot;granted&quot; (not &quot;default&quot; or &quot;denied&quot;)</li>
                 <li>Check top-right corner of screen</li>
                 <li>Notification might appear in system tray</li>
                 <li>Open console (F12) for error logs</li>

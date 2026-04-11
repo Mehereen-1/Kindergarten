@@ -44,7 +44,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const results = {
+    type TeacherImportSuccessItem = {
+      row: number;
+      name: string;
+      email: string;
+      password: string;
+      phone: string;
+      employeeId: string;
+      subject: string;
+      qualification: string;
+      userId: any;
+    };
+
+    type TeacherImportFailedItem = {
+      row: number;
+      data: any;
+      error: string;
+    };
+
+    const results: {
+      success: TeacherImportSuccessItem[];
+      failed: TeacherImportFailedItem[];
+      total: number;
+    } = {
       success: [],
       failed: [],
       total: lines.length - 1

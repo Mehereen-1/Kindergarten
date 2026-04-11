@@ -9,9 +9,14 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 
 const dev = process.env.NODE_ENV !== 'production';
-const hostname = 'localhost';
+const hostname = process.env.HOSTNAME || '0.0.0.0';
+const internalHost = process.env.INTERNAL_APP_HOST || '127.0.0.1';
 const requestedPort = Number(process.env.PORT) || 3000;
 const remindersIntervalMs = Number(process.env.EVENT_REMINDER_INTERVAL_MS || 60 * 60 * 1000);
+const socketCorsOrigins = (process.env.SOCKET_CORS_ORIGINS || process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${requestedPort}`)
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 const dnsServers = (process.env.DNS_SERVERS || '8.8.8.8,1.1.1.1')
   .split(',')
@@ -53,7 +58,7 @@ function findAvailablePort(startPort) {
 function startEventReminderScheduler(port) {
   const runReminders = async () => {
     try {
-      const response = await fetch(`http://${hostname}:${port}/api/events/reminders/run`, {
+      const response = await fetch(`http://${internalHost}:${port}/api/events/reminders/run`, {
         method: 'POST',
       });
 
@@ -108,7 +113,7 @@ findAvailablePort(requestedPort).then((initialPort) => {
     // Initialize Socket.IO
     const io = new Server(httpServer, {
       cors: {
-        origin: `http://${hostname}:${activePort}`,
+        origin: socketCorsOrigins,
         methods: ["GET", "POST"]
       }
     });
@@ -277,7 +282,8 @@ findAvailablePort(requestedPort).then((initialPort) => {
 
       httpServer.listen(portToTry, () => {
         activePort = portToTry;
-        console.log(`> Ready on http://${hostname}:${activePort}`);
+        const externalUrl = process.env.APP_URL || `http://localhost:${activePort}`;
+        console.log(`> Ready on ${externalUrl} (bound to ${hostname}:${activePort})`);
         startEventReminderScheduler(activePort);
       });
     };
