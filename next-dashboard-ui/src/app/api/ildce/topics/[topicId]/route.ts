@@ -4,12 +4,12 @@ import Topic from '@/lib/models/Topic';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { topicId: string } }
 ) {
   try {
     await connectDB();
 
-    const topicId = params.id;
+    const topicId = params.topicId;
 
     if (!topicId) {
       return NextResponse.json(
@@ -29,9 +29,8 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
-      topic
+      topic,
     });
-
   } catch (error: any) {
     console.error('Error fetching topic:', error);
     return NextResponse.json(

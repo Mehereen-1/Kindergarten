@@ -2,11 +2,12 @@
 
 export const dynamic = 'force-dynamic';
 
+import { Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import ResultCardAssessmentEditor from '@/app/components/results/ResultCardAssessmentEditor';
 
-export default function TeacherResultAssessmentsPage() {
+function TeacherResultAssessmentsPageContent() {
   const searchParams = useSearchParams();
   const examCycleId = searchParams.get('examCycleId') || '';
   const classId = searchParams.get('classId') || '';
@@ -50,5 +51,13 @@ export default function TeacherResultAssessmentsPage() {
         description="The class teacher can fill the final report-card assessment values from here."
       />
     </div>
+  );
+}
+
+export default function TeacherResultAssessmentsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 max-w-6xl mx-auto text-slate-500">Loading assessment editor...</div>}>
+      <TeacherResultAssessmentsPageContent />
+    </Suspense>
   );
 }

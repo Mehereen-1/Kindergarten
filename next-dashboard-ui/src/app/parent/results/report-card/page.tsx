@@ -2,12 +2,12 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import axios from 'axios';
 import ResultCardView from '@/app/components/results/ResultCardView';
 
-export default function ParentReportCardPage() {
+function ParentReportCardPageContent() {
   const searchParams = useSearchParams();
   const studentId = searchParams.get('studentId') || '';
   const examCycleId = searchParams.get('examCycleId') || '';
@@ -58,4 +58,12 @@ export default function ParentReportCardPage() {
   }
 
   return <ResultCardView data={cardData} onPrint={() => window.print()} />;
+}
+
+export default function ParentReportCardPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-slate-500">Loading report card...</div>}>
+      <ParentReportCardPageContent />
+    </Suspense>
+  );
 }

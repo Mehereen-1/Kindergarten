@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Brain, FileText, Loader2, Send, Sparkles, Wand2 } from 'lucide-react';
+import { ArrowLeft, Brain, Download, ExternalLink, FileText, Loader2, Send, Sparkles, Wand2 } from 'lucide-react';
 
 type TopicDetail = {
   topicId: string;
@@ -14,7 +14,7 @@ type TopicDetail = {
   file?: { url: string; name: string; type?: string; size?: number } | null;
   ai?: { summary?: string; keyPoints?: string[]; concepts?: string[] };
   rag?: { ready: boolean; chunkCount: number };
-  quiz?: { quizId: string; totalQuestions: number } | null;
+  quiz?: { quizId: string; totalQuestions: number; isPublished?: boolean } | null;
 };
 
 function ParentTopicWorkspacePageContent() {
@@ -36,7 +36,7 @@ function ParentTopicWorkspacePageContent() {
   const [sources, setSources] = useState<any[]>([]);
 
   const [summaryLoading, setSummaryLoading] = useState(false);
-  const [quizLoading, setQuizLoading] = useState(false);
+  const [showEmbeddedPreview, setShowEmbeddedPreview] = useState(false);
 
   const classId = topic?.classId || classIdFromQuery;
 
@@ -66,6 +66,7 @@ function ParentTopicWorkspacePageContent() {
   };
 
   useEffect(() => {
+    setShowEmbeddedPreview(false);
     fetchTopic();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicId]);
@@ -89,40 +90,6 @@ function ParentTopicWorkspacePageContent() {
       alert(err.message || 'Failed to generate summary');
     } finally {
       setSummaryLoading(false);
-    }
-  };
-
-  const handleGenerateQuiz = async () => {
-    if (!topicId) return;
-
-    try {
-      setQuizLoading(true);
-      const response = await fetch(`/api/parent/class-content/${topicId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'generate_quiz' }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate quiz');
-      }
-      setTopic((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          quiz: data?.quiz
-            ? {
-                quizId: data.quiz.quizId,
-                totalQuestions: data.quiz.totalQuestions || 0,
-              }
-            : prev.quiz,
-        };
-      });
-      await fetchTopic();
-    } catch (err: any) {
-      alert(err.message || 'Failed to generate quiz');
-    } finally {
-      setQuizLoading(false);
     }
   };
 
@@ -207,8 +174,45 @@ function ParentTopicWorkspacePageContent() {
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-4">Content Preview</h2>
           {topic.file?.url ? (
-            <div className="border border-gray-200 rounded-lg overflow-hidden bg-slate-100">
-              {isPdf ? (
+            <div className="border border-gray-200 rounded-lg bg-slate-100">
+              <div className="p-4 border-b border-gray-200 bg-white flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-gray-800 font-semibold">{topic.file.name || 'Uploaded file'}</p>
+                  <p className="text-xs text-gray-500">Use explicit actions below to preview or download.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isPdf ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowEmbeddedPreview((prev) => !prev)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 hover:text-indigo-900"
+                    >
+                      {showEmbeddedPreview ? 'Hide Preview' : 'Preview File'}
+                    </button>
+                  ) : (
+                    <a
+                      href={topic.file.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 hover:text-indigo-900"
+                    >
+                      Open File
+                      <ExternalLink size={12} />
+                    </a>
+                  )}
+                  <a
+                    href={`${topic.file.url}${String(topic.file.url).includes('?') ? '&' : '?'}download=1`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-900"
+                  >
+                    Download
+                    <Download size={12} />
+                  </a>
+                </div>
+              </div>
+
+              {isPdf && showEmbeddedPreview ? (
                 <iframe
                   src={topic.file.url}
                   title={topic.file.name || 'Uploaded PDF'}
@@ -217,15 +221,7 @@ function ParentTopicWorkspacePageContent() {
               ) : (
                 <div className="p-8 text-center">
                   <FileText className="mx-auto text-gray-500 mb-2" size={28} />
-                  <p className="text-gray-700 font-semibold">{topic.file.name || 'Uploaded file'}</p>
-                  <a
-                    href={topic.file.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex mt-3 text-sm font-semibold text-indigo-700 hover:text-indigo-900"
-                  >
-                    Open file in new tab
-                  </a>
+                  <p className="text-gray-700">File preview is manual to prevent accidental downloads.</p>
                 </div>
               )}
             </div>
@@ -296,17 +292,8 @@ function ParentTopicWorkspacePageContent() {
           <div className="flex items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2">
               <Sparkles className="text-indigo-600" size={20} />
-              <h2 className="text-xl font-bold text-gray-900">Generate Home Quiz (10 MCQ)</h2>
+              <h2 className="text-xl font-bold text-gray-900">Teacher-Published Quiz</h2>
             </div>
-            <button
-              type="button"
-              onClick={handleGenerateQuiz}
-              disabled={quizLoading}
-              className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg"
-            >
-              {quizLoading ? <Loader2 className="animate-spin" size={16} /> : <Wand2 size={16} />}
-              Generate Quiz
-            </button>
           </div>
 
           {topic.quiz?.quizId ? (
@@ -317,7 +304,7 @@ function ParentTopicWorkspacePageContent() {
               Start Home Quiz
             </a>
           ) : (
-            <p className="text-gray-600">No quiz generated yet. Click Generate Quiz.</p>
+            <p className="text-gray-600">No quiz published yet. The teacher needs to confirm this quiz before it appears here.</p>
           )}
         </div>
       </div>

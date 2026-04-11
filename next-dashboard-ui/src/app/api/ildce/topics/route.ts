@@ -161,6 +161,7 @@ export async function POST(request: NextRequest) {
       title: `${topic_name} - Auto-Generated Quiz`,
       description: `AI-generated quiz for ${topic_name}`,
       is_ai_generated: true,
+      is_published: false,
     });
 
     // Convert AI questions to quiz format
@@ -234,7 +235,7 @@ export async function POST(request: NextRequest) {
         topic: savedTopic,
         quiz: quiz,
         ai_processing: aiResults,
-        message: 'Topic created successfully with AI-generated quiz',
+        message: 'Topic created successfully with AI-generated quiz draft',
       },
       { status: 201 }
     );

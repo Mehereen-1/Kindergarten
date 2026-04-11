@@ -9,7 +9,7 @@ export async function GET(
   try {
     await connectDB();
 
-    const quiz: any = await Quiz.findById(params.id).lean();
+    const quiz: any = await Quiz.findOne({ _id: params.id, is_published: true }).lean();
 
     if (!quiz) {
       return NextResponse.json({ error: 'Quiz not found' }, { status: 404 });

@@ -75,6 +75,55 @@ function parseModelJson(rawText) {
   }
 }
 
+function detectPrimaryContentLanguage(text = '') {
+  const sample = String(text || '').slice(0, 8000);
+  const banglaChars = (sample.match(/[\u0980-\u09FF]/g) || []).length;
+  const latinChars = (sample.match(/[A-Za-z]/g) || []).length;
+  const totalLetters = banglaChars + latinChars;
+  const banglaRatio = totalLetters > 0 ? banglaChars / totalLetters : 0;
+  const banglaMarkers = /\b(bangla|bengali|kobita|kabita|sahitto|sahitya|bhasha)\b/i.test(sample);
+
+  // Prefer Bangla aggressively whenever Bangla script is present.
+  if (banglaChars > 0 && latinChars === 0) {
+    return 'bn';
+  }
+
+  if (banglaChars >= 8 || banglaRatio >= 0.02) {
+    return 'bn';
+  }
+
+  // Fallback for PDFs where Bangla text is extracted as transliterated Latin text.
+  if (banglaMarkers) {
+    return 'bn';
+  }
+
+  return 'en';
+}
+
+function hasBanglaInQuizPayload(parsed) {
+  if (!parsed || typeof parsed !== 'object') return false;
+
+  const segments = [];
+  const pushQuestion = (q) => {
+    if (!q) return;
+    segments.push(String(q.question || ''));
+    segments.push(String(q.correct_answer || ''));
+    segments.push(String(q.concept_tag || ''));
+    segments.push(String(q.explanation || ''));
+    if (Array.isArray(q.options)) {
+      q.options.forEach((opt) => segments.push(String(opt || '')));
+    }
+  };
+
+  (parsed.mcq || []).forEach(pushQuestion);
+  (parsed.short_answer || []).forEach(pushQuestion);
+  (parsed.true_false || []).forEach(pushQuestion);
+
+  const merged = segments.join(' ');
+  const banglaChars = (merged.match(/[\u0980-\u09FF]/g) || []).length;
+  return banglaChars >= 8;
+}
+
 /**
  * 🔥 A. AUTO SUMMARIZER
  * Converts content into structured summaries
@@ -136,6 +185,11 @@ Respond ONLY with valid JSON in this exact format:
  */
 async function generateQuizQuestions(contentText, numMCQ = 5, numShortAnswer = 3, numTrueFalse = 2) {
   try {
+    const detectedLanguage = detectPrimaryContentLanguage(contentText);
+    const languageInstruction = detectedLanguage === 'bn'
+      ? 'Important: Write every question, option, answer, concept_tag, and explanation in Bangla (Bengali script). NEVER translate to English.'
+      : 'Important: Write every question, option, answer, concept_tag, and explanation in English.';
+
     const prompt = `
 You are an expert quiz designer. Generate questions based on the following content.
 
@@ -182,6 +236,7 @@ Requirements:
 - Each question must have a concept_tag
 - Each question must test different aspects of the content
 - Ensure variety in difficulty levels
+- ${languageInstruction}
 
 Return ONLY valid JSON.`;
 
@@ -190,10 +245,21 @@ Return ONLY valid JSON.`;
 
     // Retry with a stricter prompt if the model output is not parseable or lacks MCQs
     if (!parsed || !Array.isArray(parsed.mcq) || parsed.mcq.length === 0) {
-      const retryPrompt = `Return only JSON. Generate exactly ${numMCQ} multiple-choice questions from the content below.\n\nEach question must include:\n- question\n- options (4 options)\n- correct_answer\n- difficulty (1-5)\n- concept_tag\n- explanation\n\nReturn this exact JSON shape:\n{\n  "mcq": [ { "question": "", "options": ["", "", "", ""], "correct_answer": "", "difficulty": 3, "concept_tag": "", "explanation": "" } ],\n  "short_answer": [],\n  "true_false": []\n}\n\nCONTENT:\n${contentText}`;
+      const retryPrompt = `Return only JSON. Generate exactly ${numMCQ} multiple-choice questions from the content below.\n\nEach question must include:\n- question\n- options (4 options)\n- correct_answer\n- difficulty (1-5)\n- concept_tag\n- explanation\n\nLanguage requirement: ${detectedLanguage === 'bn' ? 'Use Bangla (Bengali script) for all fields.' : 'Use English for all fields.'}\n\nReturn this exact JSON shape:\n{\n  "mcq": [ { "question": "", "options": ["", "", "", ""], "correct_answer": "", "difficulty": 3, "concept_tag": "", "explanation": "" } ],\n  "short_answer": [],\n  "true_false": []\n}\n\nCONTENT:\n${contentText}`;
 
       const retryContent = await generateLlmText(retryPrompt, { temperature: 0.1, maxTokens: 2200 });
       parsed = parseModelJson(retryContent);
+    }
+
+    // If detected Bangla but model responded in English, force one strict retry.
+    if (detectedLanguage === 'bn' && parsed && !hasBanglaInQuizPayload(parsed)) {
+      const strictBanglaPrompt = `Return only JSON. The source content is Bangla. Create quiz questions ONLY in Bangla Bengali script. Do not output any English words except unavoidable technical symbols.\n\nGenerate exactly ${numMCQ} MCQ, ${numShortAnswer} short answer, and ${numTrueFalse} true/false questions.\n\nRequired JSON format:\n{\n  "mcq": [\n    {\n      "question": "",\n      "options": ["", "", "", ""],\n      "correct_answer": "",\n      "difficulty": 3,\n      "concept_tag": "",\n      "explanation": ""\n    }\n  ],\n  "short_answer": [\n    {\n      "question": "",\n      "correct_answer": "",\n      "difficulty": 3,\n      "concept_tag": "",\n      "explanation": ""\n    }\n  ],\n  "true_false": [\n    {\n      "question": "",\n      "correct_answer": true,\n      "difficulty": 2,\n      "concept_tag": "",\n      "explanation": ""\n    }\n  ]\n}\n\nCONTENT:\n${contentText}`;
+
+      const strictContent = await generateLlmText(strictBanglaPrompt, { temperature: 0.1, maxTokens: 2400 });
+      const strictParsed = parseModelJson(strictContent);
+      if (strictParsed && hasBanglaInQuizPayload(strictParsed)) {
+        parsed = strictParsed;
+      }
     }
 
     if (!parsed) {
