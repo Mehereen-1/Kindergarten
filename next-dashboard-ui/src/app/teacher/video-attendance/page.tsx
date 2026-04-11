@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import TeacherTopBar from "@/app/components/TeacherTopBar";
 import { Upload, Play, Square, RefreshCw, Check, X, Users, Database, BarChart3 } from "lucide-react";
-import { getClientCctvBackendUrl } from "@/lib/clientConfig";
 
 interface ExtractedFace {
   id: string;
@@ -82,7 +81,7 @@ export default function VideoAttendancePage() {
   const videoInputRef = useRef<HTMLInputElement>(null);
   const statusPollRef = useRef<NodeJS.Timeout | null>(null);
   
-  const BACKEND_URL = getClientCctvBackendUrl();
+  const BACKEND_URL = "/api/attendance/backend";
 
   // Check backend status on mount
   useEffect(() => {

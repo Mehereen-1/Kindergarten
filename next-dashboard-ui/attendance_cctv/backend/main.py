@@ -307,21 +307,21 @@ class BoundingBoxSmoother:
         self.alpha = alpha
         self.max_jump = max_jump
         self._lock = threading.Lock()
-        self.tracked: dict = {}  # name -> {"bbox": [x1,y1,x2,y2], "last_frame": int}
+        self.tracked: dict = {}  # track_key -> {"bbox": [x1,y1,x2,y2], "last_frame": int}
 
-    def smooth(self, name: str, raw_bbox: tuple, frame_num: int) -> tuple:
+    def smooth(self, track_key: str, raw_bbox: tuple, frame_num: int) -> tuple:
         """Apply EMA smoothing. Called ONCE per box per frame."""
         with self._lock:
             x1, y1, x2, y2 = raw_bbox
 
-            if name not in self.tracked:
-                self.tracked[name] = {
+            if track_key not in self.tracked:
+                self.tracked[track_key] = {
                     "bbox": [float(x1), float(y1), float(x2), float(y2)],
                     "last_frame": frame_num
                 }
                 return raw_bbox
 
-            prev = self.tracked[name]
+            prev = self.tracked[track_key]
             cx_new = (x1 + x2) / 2
             cy_new = (y1 + y2) / 2
             cx_old = (prev["bbox"][0] + prev["bbox"][2]) / 2
@@ -330,7 +330,7 @@ class BoundingBoxSmoother:
 
             # Reset on large jump or stale box
             if dist2 > self.max_jump ** 2 or frame_num - prev["last_frame"] > BOX_TTL:
-                self.tracked[name] = {
+                self.tracked[track_key] = {
                     "bbox": [float(x1), float(y1), float(x2), float(y2)],
                     "last_frame": frame_num
                 }
@@ -343,7 +343,7 @@ class BoundingBoxSmoother:
                 prev["bbox"][2] + a * (x2 - prev["bbox"][2]),
                 prev["bbox"][3] + a * (y2 - prev["bbox"][3]),
             ]
-            self.tracked[name] = {"bbox": s, "last_frame": frame_num}
+            self.tracked[track_key] = {"bbox": s, "last_frame": frame_num}
             return (int(s[0]), int(s[1]), int(s[2]), int(s[3]))
 
     def reset(self):
@@ -457,14 +457,25 @@ def draw_boxes(frame: np.ndarray, results: list,
         raw_x1, raw_y1, raw_x2, raw_y2 = r["bbox"]
         name = r.get("name", "Unknown")
         base_name = name.replace("✓ ", "").split(" [")[0].split(" (")[0]
+        student_id = r.get("student_id")
 
         # Skip invalid boxes early; avoids drawing failures on malformed detections.
         if raw_x2 <= raw_x1 or raw_y2 <= raw_y1:
             continue
 
+        # Use a per-face key for smoothing.
+        # Root-cause fix: using only `name` caused all "Unknown"/"Spoof" detections
+        # to share one track, blending boxes across different faces.
+        if student_id:
+            track_key = f"id:{student_id}"
+        else:
+            cx = (raw_x1 + raw_x2) / 2
+            cy = (raw_y1 + raw_y2) / 2
+            track_key = f"{base_name}@{int(cx // 80)}x{int(cy // 80)}"
+
         # Single smooth call — convert original coords to smoothed original coords
         smoothed = bbox_smoother.smooth(
-            base_name, (raw_x1, raw_y1, raw_x2, raw_y2), current_frame
+            track_key, (raw_x1, raw_y1, raw_x2, raw_y2), current_frame
         )
 
         # Scale to display size after smoothing
@@ -594,10 +605,14 @@ def playback_thread(video_path: str, draw_boxes_func):
         if frame_number % PROCESS_EVERY_N == 0:
             video_state["recognition_queue"].append((frame_number, frame.copy()))
 
+        # Keep moderate sync for uploaded videos without making playback feel slow.
+        # We only wait when backlog grows and we cap wait time aggressively.
+        upload_sync_backlog = max(2, SYNC_BACKLOG_HIGH)
+        upload_sync_wait_max = min(max(SYNC_WAIT_MAX, 0.12), 0.2)
         backlog_waited = 0.0
-        while (len(video_state["recognition_queue"]) >= SYNC_BACKLOG_HIGH
+        while (len(video_state["recognition_queue"]) >= upload_sync_backlog
                and not video_state["stop_event"].is_set()
-               and backlog_waited < SYNC_WAIT_MAX):
+               and backlog_waited < upload_sync_wait_max):
             time.sleep(SYNC_WAIT_STEP)
             backlog_waited += SYNC_WAIT_STEP
 
@@ -624,7 +639,9 @@ def playback_thread(video_path: str, draw_boxes_func):
             video_state["frame_queue"].append(buf.tobytes())
 
         # Absolute-time scheduling — immune to per-frame jitter
-        next_frame_time += frame_delay + backlog_waited
+        # Backlog wait already consumed wall-clock time above; don't add it again
+        # here or playback gets noticeably slower than intended.
+        next_frame_time += frame_delay
         sleep_time = next_frame_time - time.perf_counter()
         if sleep_time > 0:
             time.sleep(sleep_time)
@@ -959,13 +976,9 @@ def recognition_thread(video_state_dict, video_analytics_dict, analytics_lock_ob
                 extract_and_store_face_func(frame, orig_bbox, name, student_id,
                                        0.0, frame_num, is_confirmed)
 
-            # Rebase detected_at_frame to the CURRENT playback position.
-            # Recognition is slow; by the time we get here, playback is
-            # far ahead of `frame_num`.  Without rebasing, the BOX_TTL
-            # filter in playback_thread would discard every result as stale.
-            current_playback = video_state_dict["current_frame_num"]
-            for item in scaled:
-                item["detected_at_frame"] = current_playback
+            # Keep original recognition frame index. Rebasing to playback frame
+            # causes temporal drift where boxes are drawn on a different face.
+            reference_frame = frame_num
 
             # Merge with previous results so briefly missed faces do not blink out.
             with results_lock_obj:
@@ -987,7 +1000,7 @@ def recognition_thread(video_state_dict, video_analytics_dict, analytics_lock_ob
             merged = list(scaled)
             for old in previous:
                 old_seen = old.get("detected_at_frame", 0)
-                if current_playback - old_seen > BOX_TTL:
+                if reference_frame - old_seen > BOX_TTL:
                     continue
 
                 old_sid = old.get("student_id")
@@ -1011,7 +1024,7 @@ def recognition_thread(video_state_dict, video_analytics_dict, analytics_lock_ob
 
             if scaled:
                 print(f"📦 Recognition done: {len(scaled)} face(s) on recog-frame {frame_num}, "
-                      f"tagged at playback-frame {current_playback}")
+                      f"kept at recog-frame index")
 
         except Exception as e:
             print(f"❌ Recognition error: {e}")
