@@ -1,1 +1,12 @@
--r backend/requirements.txt
+fastapi
+uvicorn[standard]
+numpy
+opencv-python-headless==4.10.0.84
+pymongo
+python-dotenv
+python-multipart
+onnxruntime
+insightface==0.7.3
+pillow
+pandas
+openpyxl
