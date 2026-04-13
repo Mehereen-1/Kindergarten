@@ -10,7 +10,7 @@ export default function TeacherLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="teacher-theme flex h-screen bg-[#fff7d6]">
+    <div className="teacher-theme flex h-screen bg-[#f8f5ee]">
       {/* Desktop Sidebar */}
       <div className="hidden lg:block lg:w-80 shrink-0">
         <TeacherSidebar />
@@ -22,7 +22,7 @@ export default function TeacherLayout({
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 min-w-0 flex flex-col overflow-y-auto">
+      <div className="teacher-main-surface flex-1 min-w-0 flex flex-col overflow-y-auto bg-[#f8f5ee]">
         {/* <NotificationStatusIndicator /> */}
         {children}
       </div>

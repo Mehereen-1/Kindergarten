@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Attendance from '@/lib/models/Attendance';
 import Student from '@/lib/models/Student';
+import StudentClassHistory from '@/lib/models/StudentClassHistory';
+import AttendanceAuditLog from '@/lib/models/AttendanceAuditLog';
+import mongoose from 'mongoose';
 
 /**
  * Bulk Mark Attendance for Multiple Students
@@ -22,17 +25,29 @@ export async function POST(request: NextRequest) {
     await connectDB();
 
     const body = await request.json();
-    const { date, classId, attendance, teacherId } = body;
+    const { date, classId, attendance, teacherId, source } = body;
 
-    if (!date || !attendance || !Array.isArray(attendance)) {
+    if (!date || !classId || !attendance || !Array.isArray(attendance)) {
       return NextResponse.json(
-        { error: 'Date and attendance array are required' },
+        { error: 'Date, classId and attendance array are required' },
         { status: 400 }
       );
     }
 
-    const attendanceDate = new Date(date);
-    attendanceDate.setHours(0, 0, 0, 0);
+    if (!mongoose.Types.ObjectId.isValid(String(classId))) {
+      return NextResponse.json(
+        { error: 'Invalid classId' },
+        { status: 400 }
+      );
+    }
+
+    // Use explicit UTC midnight to avoid timezone drift across save/export flows.
+    const attendanceDate = new Date(`${date}T00:00:00.000Z`);
+    const normalizedSource: 'manual' | 'cctv' = source === 'cctv' ? 'cctv' : 'manual';
+    const canWriteAudit =
+      !!teacherId &&
+      mongoose.Types.ObjectId.isValid(String(teacherId));
+    const auditEntries: any[] = [];
 
     const results: {
       success: Array<{ studentId: any; status: any; _id: any }>;
@@ -69,6 +84,7 @@ export async function POST(request: NextRequest) {
         // Check if attendance already exists for this date
         const existingAttendance = await Attendance.findOne({
           studentId,
+          classId,
           date: {
             $gte: attendanceDate,
             $lt: new Date(attendanceDate.getTime() + 24 * 60 * 60 * 1000)
@@ -77,9 +93,23 @@ export async function POST(request: NextRequest) {
 
         if (existingAttendance) {
           // Update existing
+          const previousStatus = existingAttendance.status;
           existingAttendance.status = normalizedStatus as 'present' | 'absent' | 'late';
           if (teacherId) existingAttendance.markedBy = teacherId;
           await existingAttendance.save();
+
+          if (canWriteAudit && mongoose.Types.ObjectId.isValid(String(studentId))) {
+            auditEntries.push({
+              teacherId,
+              classId,
+              studentId,
+              date: attendanceDate,
+              source: normalizedSource,
+              action: 'update',
+              previousStatus,
+              newStatus: normalizedStatus,
+            });
+          }
           
           results.updated.push({
             studentId,
@@ -96,6 +126,19 @@ export async function POST(request: NextRequest) {
             markedBy: teacherId || undefined
           });
 
+          if (canWriteAudit && mongoose.Types.ObjectId.isValid(String(studentId))) {
+            auditEntries.push({
+              teacherId,
+              classId,
+              studentId,
+              date: attendanceDate,
+              source: normalizedSource,
+              action: 'create',
+              previousStatus: null,
+              newStatus: normalizedStatus,
+            });
+          }
+
           results.success.push({
             studentId,
             status,
@@ -110,8 +153,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (auditEntries.length > 0) {
+      try {
+        await AttendanceAuditLog.insertMany(auditEntries, { ordered: false });
+      } catch {
+        // Do not fail attendance save if audit logging partially fails.
+      }
+    }
+
     return NextResponse.json({
       message: `Marked ${results.success.length} new, updated ${results.updated.length}`,
+      auditLogged: auditEntries.length,
       results
     }, { status: 200 });
 
@@ -142,14 +194,42 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get all students in the class
-    const students = await Student.find({ classId }).select('name roll email grade');
+    if (!mongoose.Types.ObjectId.isValid(String(classId))) {
+      return NextResponse.json(
+        { error: 'Invalid classId' },
+        { status: 400 }
+      );
+    }
 
-    const attendanceDate = new Date(date);
-    attendanceDate.setHours(0, 0, 0, 0);
+    const classObjectId = new mongoose.Types.ObjectId(String(classId));
+
+    // Get class roster via StudentClassHistory (source of truth in this project).
+    const histories = await StudentClassHistory.find({
+      classId: classObjectId,
+      status: 'active',
+    })
+      .populate('studentId', 'name email')
+      .lean();
+
+    const students = histories
+      .map((history: any) => {
+        const student = history.studentId;
+        if (!student?._id) return null;
+        return {
+          _id: student._id,
+          name: student.name,
+          email: student.email,
+          roll: history.rollNo || '-',
+        };
+      })
+      .filter(Boolean) as Array<{ _id: any; name: string; email?: string; roll?: string }>;
+
+    // Keep reporting window in UTC to match stored attendance date semantics.
+    const attendanceDate = new Date(`${date}T00:00:00.000Z`);
 
     // Get attendance records for this date
     const attendanceRecords = await Attendance.find({
+      classId: classObjectId,
       studentId: { $in: students.map(s => s._id) },
       date: {
         $gte: attendanceDate,
@@ -167,7 +247,7 @@ export async function GET(request: NextRequest) {
         studentId: student._id,
         name: student.name,
         roll: student.roll,
-        grade: student.grade,
+        grade: '-',
         status: attendance ? attendance.status : 'Not Marked',
         attendanceId: attendance?._id
       };

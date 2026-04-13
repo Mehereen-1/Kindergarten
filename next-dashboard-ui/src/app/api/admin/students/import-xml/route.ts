@@ -6,6 +6,23 @@ import Class from "@/lib/models/Class";
 import StudentClassHistory from "@/lib/models/StudentClassHistory";
 import mongoose from "mongoose";
 
+const resolveNextRollNo = async (classObjectId: mongoose.Types.ObjectId, academicYear: string) => {
+  const histories = await StudentClassHistory.find({
+    classId: classObjectId,
+    academicYear,
+  })
+    .select("rollNo")
+    .lean();
+
+  const maxRoll = histories.reduce((max, item: any) => {
+    const parsed = Number.parseInt(String(item?.rollNo || ""), 10);
+    if (Number.isFinite(parsed) && parsed > max) return parsed;
+    return max;
+  }, 0);
+
+  return String(maxRoll + 1).padStart(3, '0');
+};
+
 export async function POST(request: NextRequest) {
   try {
     await connectDB();
@@ -71,31 +88,50 @@ export async function POST(request: NextRequest) {
           throw new Error(`Class not found for Class ID: ${classIdValue}`);
         }
 
-        // Create student profile only (no user account)
-        const student = new Student({
-          name: studentName,
-          parentId: parent._id,
-          email: row.email || undefined,
-          phone: row.phone || undefined,
-          address: row.address || undefined,
-          bloodGroup: row.bloodgroup || undefined,
-          birthday: row.birthday ? new Date(row.birthday) : undefined,
-          sex: row.sex || undefined,
+        const academicYearStr = String(academicYear);
+
+        // If student already exists, keep existing roll unchanged.
+        const existingStudent = row.email
+          ? await Student.findOne({ email: row.email })
+          : await Student.findOne({
+              name: studentName,
+              parentId: parent._id,
+            });
+
+        let student = existingStudent;
+
+        if (!student) {
+          student = new Student({
+            name: studentName,
+            parentId: parent._id,
+            email: row.email || undefined,
+            phone: row.phone || undefined,
+            address: row.address || undefined,
+            bloodGroup: row.bloodgroup || undefined,
+            birthday: row.birthday ? new Date(row.birthday) : undefined,
+            sex: row.sex || undefined,
+          });
+
+          await student.save();
+        }
+
+        const existingClassHistory = await StudentClassHistory.findOne({
+          studentId: student._id,
+          academicYear: academicYearStr,
         });
 
-        await student.save();
+        let assignedRoll = existingClassHistory?.rollNo;
 
-        await StudentClassHistory.findOneAndUpdate(
-          { studentId: student._id, academicYear: String(academicYear) },
-          {
+        if (!existingClassHistory) {
+          assignedRoll = await resolveNextRollNo(classDoc._id as mongoose.Types.ObjectId, academicYearStr);
+          await StudentClassHistory.create({
             studentId: student._id,
             classId: classDoc._id,
-            academicYear: String(academicYear),
-            rollNo: row.roll ? String(row.roll) : undefined,
-            status: 'active'
-          },
-          { upsert: true, new: true }
-        );
+            academicYear: academicYearStr,
+            rollNo: assignedRoll,
+            status: 'active',
+          });
+        }
 
         results.success.push({
           studentName,
@@ -103,8 +139,10 @@ export async function POST(request: NextRequest) {
           parentEmail,
           parentName: parent.name,
           classId: classDoc._id,
-          academicYear: String(academicYear),
-          roll: row.roll || 'N/A',
+          academicYear: academicYearStr,
+          roll: assignedRoll || 'N/A',
+          existingStudent: !!existingStudent,
+          rollUpdated: !existingClassHistory,
           studentId: student._id,
           parentId: parent._id,
         });

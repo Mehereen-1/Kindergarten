@@ -1,3 +1,5 @@
+"use client";
+
 import { role } from "@/lib/data";
 import Image from "next/image";
 import Link from "next/link";
@@ -120,6 +122,12 @@ const menuItems = [
         href: "/admin/security-alerts",
         visible: ["admin"],
       },
+      {
+        icon: "/attendance.png",
+        label: "Attendance Audit",
+        href: "/admin/attendance-audit",
+        visible: ["admin"],
+      },
     ],
   },
   {
@@ -159,7 +167,13 @@ const menuItems = [
   },
 ];
 
-const Menu = () => {
+const Menu = ({
+  compactOnMobile = true,
+  onNavigate,
+}: {
+  compactOnMobile?: boolean;
+  onNavigate?: () => void;
+}) => {
   return (
     <div className="mt-2 text-sm min-w-0">
       {menuItems.map((i) => (
@@ -172,13 +186,18 @@ const Menu = () => {
               return (
                 <Link
                   href={item.href}
+                  onClick={onNavigate}
                   key={`${item.label}-${item.href}`}
-                  className="w-full min-w-0 flex items-center justify-center lg:justify-start gap-3 text-[#525b3e] py-2.5 px-3 rounded-xl hover:bg-[#e8efd4] hover:text-[#3a3927] transition-colors"
+                  className={`w-full min-w-0 flex items-center gap-3 text-[#525b3e] py-2.5 px-3 rounded-xl hover:bg-[#e8efd4] hover:text-[#3a3927] transition-colors ${
+                    compactOnMobile ? "justify-center lg:justify-start" : "justify-start"
+                  }`}
                 >
-                  <span className="hidden lg:inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#f2eedc] border border-[#d8d3b3]">
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#f2eedc] border border-[#d8d3b3]">
                     <Image src={item.icon} alt="" width={16} height={16} />
                   </span>
-                  <span className="hidden lg:block font-semibold truncate">{item.label}</span>
+                  <span className={`${compactOnMobile ? "hidden lg:block" : "block"} font-semibold truncate`}>
+                    {item.label}
+                  </span>
                 </Link>
               );
             }

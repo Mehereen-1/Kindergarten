@@ -17,40 +17,126 @@
 /* Teacher Panel Theme */
 @layer base {
   :root {
-    --color-primary: #4f46e5;
-    --color-accent: #facc15;
-    --color-success: #22c55e;
-    --color-bg-light: #f8faff;
+    --color-primary: #5a685a;
+    --color-primary-dim: #4e5c4e;
+    --color-secondary: #6b644b;
+    --color-tertiary: #726246;
+    --color-background: #fefdf1;
+    --color-surface: #fefdf1;
+    --color-surface-low: #fafaeb;
+    --color-surface-container: #f4f5e4;
+    --color-surface-highest: #e8ead5;
+    --color-on-surface: #36392b;
+    --color-on-surface-variant: #636656;
+    --color-outline-variant: #b9bba8;
+    --color-primary-container: #d7e7d5;
   }
 
   body {
     @apply bg-slate-50 text-slate-900;
+    font-family: "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   }
 }
 
   @layer components {
-    .teacher-theme main,
+    .teacher-theme {
+      background-color: var(--color-background);
+      color: var(--color-on-surface);
+    }
+
+    .teacher-theme .teacher-main-surface,
+    .teacher-theme .teacher-main-surface > :is(div, main, section, article) {
+      background-color: var(--color-background) !important;
+    }
+
     .parent-theme main {
       background: #fff7d6;
     }
 
     .teacher-theme .bg-white,
     .parent-theme .bg-white {
-      background-color: #fefade !important;
+      background-color: var(--color-surface-low) !important;
     }
 
     .teacher-theme .bg-gray-50,
     .teacher-theme .bg-slate-50,
     .parent-theme .bg-gray-50,
     .parent-theme .bg-slate-50 {
-      background-color: #f8f1c7 !important;
+      background-color: var(--color-surface-container) !important;
+    }
+
+    .teacher-theme .bg-gray-100,
+    .teacher-theme .bg-slate-100 {
+      background-color: var(--color-surface-highest) !important;
+    }
+
+    .teacher-theme .bg-gray-200,
+    .teacher-theme .bg-slate-200 {
+      background-color: color-mix(in srgb, var(--color-outline-variant) 24%, white) !important;
+    }
+
+    .teacher-theme .bg-indigo-50,
+    .teacher-theme .bg-indigo-100,
+    .teacher-theme .bg-blue-50,
+    .teacher-theme .bg-blue-100 {
+      background-color: color-mix(in srgb, var(--color-primary-container) 52%, white) !important;
+    }
+
+    .teacher-theme .bg-indigo-600,
+    .teacher-theme .bg-blue-600,
+    .teacher-theme .bg-indigo-700,
+    .teacher-theme .bg-blue-700 {
+      background: linear-gradient(145deg, var(--color-primary), var(--color-primary-dim)) !important;
+      color: #ffffff !important;
+    }
+
+    .teacher-theme .hover\:bg-indigo-700:hover,
+    .teacher-theme .hover\:bg-indigo-800:hover,
+    .teacher-theme .hover\:bg-blue-700:hover,
+    .teacher-theme .hover\:bg-blue-800:hover {
+      background: var(--color-primary-dim) !important;
+      color: #ffffff !important;
+    }
+
+    .teacher-theme .text-indigo-600,
+    .teacher-theme .text-indigo-700,
+    .teacher-theme .text-blue-600,
+    .teacher-theme .text-blue-700 {
+      color: var(--color-primary-dim) !important;
+    }
+
+    .teacher-theme .text-slate-900,
+    .teacher-theme .text-slate-800,
+    .teacher-theme .text-gray-900,
+    .teacher-theme .text-gray-800 {
+      color: var(--color-on-surface) !important;
+    }
+
+    .teacher-theme .text-slate-700,
+    .teacher-theme .text-slate-600,
+    .teacher-theme .text-gray-700,
+    .teacher-theme .text-gray-600,
+    .teacher-theme .text-slate-500,
+    .teacher-theme .text-gray-500 {
+      color: var(--color-on-surface-variant) !important;
     }
 
     .teacher-theme .border-slate-200,
+    .teacher-theme .border-slate-300,
     .teacher-theme .border-gray-200,
+    .teacher-theme .border-gray-300,
+    .teacher-theme .border-indigo-200,
+    .teacher-theme .border-indigo-300,
+    .teacher-theme .border-blue-200,
+    .teacher-theme .border-blue-300,
     .parent-theme .border-slate-200,
     .parent-theme .border-gray-200 {
-      border-color: #d6d2b5 !important;
+      border-color: color-mix(in srgb, var(--color-outline-variant) 15%, transparent) !important;
+    }
+
+    .teacher-theme .border,
+    .teacher-theme [class*="border-"] {
+      border-color: color-mix(in srgb, var(--color-outline-variant) 15%, transparent) !important;
     }
 
     .teacher-theme input,
@@ -59,14 +145,36 @@
     .parent-theme input,
     .parent-theme select,
     .parent-theme textarea {
-      background-color: #fefcf5;
-      border-color: #d6d2b5;
-      color: #3a3927;
+      background-color: var(--color-surface-highest);
+      border-color: color-mix(in srgb, var(--color-outline-variant) 15%, transparent);
+      color: var(--color-on-surface);
     }
 
     .teacher-theme button,
     .parent-theme button {
       transition: all 180ms ease;
+    }
+
+    .teacher-theme .hover\:bg-slate-50:hover,
+    .teacher-theme .hover\:bg-slate-100:hover,
+    .teacher-theme .hover\:bg-gray-50:hover,
+    .teacher-theme .hover\:bg-gray-100:hover {
+      background-color: var(--color-surface-highest) !important;
+    }
+
+    .teacher-theme .rounded-xl,
+    .teacher-theme .rounded-2xl,
+    .teacher-theme .rounded-3xl,
+    .teacher-theme .rounded-lg {
+      border-radius: 0.9rem;
+    }
+
+    .teacher-theme .shadow-sm,
+    .teacher-theme .shadow-md,
+    .teacher-theme .shadow-lg,
+    .teacher-theme .shadow-xl,
+    .teacher-theme .shadow-2xl {
+      box-shadow: 0 10px 32px rgba(54, 57, 43, 0.06) !important;
     }
 
     .teacher-theme h1,
@@ -75,7 +183,65 @@
     .parent-theme h1,
     .parent-theme h2,
     .parent-theme h3 {
-      color: #352f00;
+      color: var(--color-on-surface);
+      letter-spacing: -0.02em;
+    }
+
+    .teacher-theme h4,
+    .teacher-theme h5,
+    .teacher-theme h6 {
+      color: var(--color-on-surface);
+    }
+
+    .teacher-theme .teacher-attendance {
+      background-color: var(--color-background) !important;
+      color: var(--color-on-surface);
+    }
+
+    .teacher-theme .teacher-attendance .bg-indigo-600,
+    .teacher-theme .teacher-attendance .hover\:bg-indigo-600:hover {
+      background-color: var(--color-primary) !important;
+    }
+
+    .teacher-theme .teacher-attendance .bg-indigo-700,
+    .teacher-theme .teacher-attendance .hover\:bg-indigo-700:hover,
+    .teacher-theme .teacher-attendance .hover\:bg-indigo-800:hover {
+      background-color: var(--color-primary-dim) !important;
+    }
+
+    .teacher-theme .teacher-attendance .text-indigo-700,
+    .teacher-theme .teacher-attendance .text-indigo-600 {
+      color: var(--color-primary-dim) !important;
+    }
+
+    .teacher-theme .teacher-attendance .text-indigo-100 {
+      color: color-mix(in srgb, white 72%, var(--color-primary) 28%) !important;
+    }
+
+    .teacher-theme .teacher-attendance .bg-slate-700,
+    .teacher-theme .teacher-attendance .hover\:bg-slate-800:hover,
+    .teacher-theme .teacher-attendance .bg-slate-600,
+    .teacher-theme .teacher-attendance .hover\:bg-slate-700:hover {
+      background-color: var(--color-secondary) !important;
+    }
+
+    .teacher-theme .teacher-attendance .border,
+    .teacher-theme .teacher-attendance [class*="border-"] {
+      border-color: color-mix(in srgb, var(--color-outline-variant) 15%, transparent) !important;
+    }
+
+    .teacher-theme .teacher-attendance .shadow-sm,
+    .teacher-theme .teacher-attendance .shadow-md,
+    .teacher-theme .teacher-attendance .shadow-lg,
+    .teacher-theme .teacher-attendance .shadow-xl,
+    .teacher-theme .teacher-attendance .shadow-2xl {
+      box-shadow: 0 8px 28px rgba(54, 57, 43, 0.06) !important;
+    }
+
+    .teacher-theme .teacher-attendance .font-semibold.uppercase,
+    .teacher-theme .teacher-attendance .tracking-wider,
+    .teacher-theme .teacher-attendance .tracking-widest {
+      letter-spacing: 0.05em;
     }
   }
 
