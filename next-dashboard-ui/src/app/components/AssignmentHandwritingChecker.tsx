@@ -16,6 +16,22 @@ type AssignmentItem = {
   assignmentType?: string;
   gradingMode?: 'auto_text' | 'manual_review';
   language?: 'bangla' | 'english' | 'mixed' | 'unknown';
+  studentLevel?: 'nursery' | 'kindergarten';
+  repeatCount?: number;
+  caseSensitive?: boolean;
+  worksheetTemplate?:
+    | 'tracing_sheet'
+    | 'match_sheet'
+    | 'circle_underline_sheet'
+    | 'coloring_sheet'
+    | 'picture_vocab_sheet'
+    | 'phonics_boxes_sheet'
+    | 'pattern_sheet'
+    | 'life_skill_sheet'
+    | 'alphabet_practice_sheet'
+    | 'sentence_repeat_sheet'
+    | 'spelling_repeat_sheet'
+    | 'number_practice_sheet';
 };
 
 type SubmissionItem = {
@@ -73,6 +89,29 @@ type AssignmentPreset = {
   prompt: string;
   expectedAnswer: string;
   gradingMode: 'auto_text' | 'manual_review';
+  recommendedTemplate:
+    | 'tracing_sheet'
+    | 'match_sheet'
+    | 'circle_underline_sheet'
+    | 'coloring_sheet'
+    | 'picture_vocab_sheet'
+    | 'phonics_boxes_sheet'
+    | 'pattern_sheet'
+    | 'life_skill_sheet'
+    | 'alphabet_practice_sheet'
+    | 'sentence_repeat_sheet'
+    | 'spelling_repeat_sheet'
+    | 'number_practice_sheet';
+  repeatCount: number;
+  caseSensitive: boolean;
+};
+
+type WorksheetTemplateProfile = {
+  label: string;
+  description: string;
+  nurseryNotes: string;
+  kindergartenNotes: string;
+  designRules: string[];
 };
 
 const ASSIGNMENT_PRESETS: Record<string, AssignmentPreset> = {
@@ -82,6 +121,9 @@ const ASSIGNMENT_PRESETS: Record<string, AssignmentPreset> = {
     prompt: 'Trace and write the given letters neatly.',
     expectedAnswer: 'Correct letter writing and neat tracing',
     gradingMode: 'manual_review',
+    recommendedTemplate: 'alphabet_practice_sheet',
+    repeatCount: 1,
+    caseSensitive: true,
   },
   number_tracing: {
     label: 'Number tracing and counting',
@@ -89,6 +131,9 @@ const ASSIGNMENT_PRESETS: Record<string, AssignmentPreset> = {
     prompt: 'Trace the numbers and write the total count.',
     expectedAnswer: 'Correct number sequence and count',
     gradingMode: 'auto_text',
+    recommendedTemplate: 'number_practice_sheet',
+    repeatCount: 1,
+    caseSensitive: false,
   },
   match_same: {
     label: 'Match the same',
@@ -96,6 +141,9 @@ const ASSIGNMENT_PRESETS: Record<string, AssignmentPreset> = {
     prompt: 'Match each item with the correct pair.',
     expectedAnswer: '',
     gradingMode: 'manual_review',
+    recommendedTemplate: 'match_sheet',
+    repeatCount: 1,
+    caseSensitive: false,
   },
   circle_underline: {
     label: 'Circle/underline correct picture',
@@ -103,6 +151,9 @@ const ASSIGNMENT_PRESETS: Record<string, AssignmentPreset> = {
     prompt: 'Circle or underline the correct picture.',
     expectedAnswer: '',
     gradingMode: 'manual_review',
+    recommendedTemplate: 'circle_underline_sheet',
+    repeatCount: 1,
+    caseSensitive: false,
   },
   color_instruction: {
     label: 'Color by instruction',
@@ -110,6 +161,9 @@ const ASSIGNMENT_PRESETS: Record<string, AssignmentPreset> = {
     prompt: 'Color objects according to instructions.',
     expectedAnswer: '',
     gradingMode: 'manual_review',
+    recommendedTemplate: 'coloring_sheet',
+    repeatCount: 1,
+    caseSensitive: false,
   },
   phonics: {
     label: 'Simple phonics task',
@@ -117,6 +171,9 @@ const ASSIGNMENT_PRESETS: Record<string, AssignmentPreset> = {
     prompt: 'Write the beginning sound for each picture.',
     expectedAnswer: 'Correct beginning sounds',
     gradingMode: 'auto_text',
+    recommendedTemplate: 'phonics_boxes_sheet',
+    repeatCount: 1,
+    caseSensitive: false,
   },
   picture_vocabulary: {
     label: 'Picture-based vocabulary',
@@ -124,6 +181,9 @@ const ASSIGNMENT_PRESETS: Record<string, AssignmentPreset> = {
     prompt: 'Write the names of the shown objects.',
     expectedAnswer: 'Correct object names',
     gradingMode: 'auto_text',
+    recommendedTemplate: 'picture_vocab_sheet',
+    repeatCount: 1,
+    caseSensitive: false,
   },
   oral_to_written: {
     label: 'Very short oral-to-written',
@@ -131,6 +191,9 @@ const ASSIGNMENT_PRESETS: Record<string, AssignmentPreset> = {
     prompt: 'Write the words spoken by teacher.',
     expectedAnswer: 'Correctly written target words',
     gradingMode: 'auto_text',
+    recommendedTemplate: 'sentence_repeat_sheet',
+    repeatCount: 10,
+    caseSensitive: true,
   },
   pattern_completion: {
     label: 'Pattern completion',
@@ -138,6 +201,9 @@ const ASSIGNMENT_PRESETS: Record<string, AssignmentPreset> = {
     prompt: 'Complete the pattern sequence correctly.',
     expectedAnswer: '',
     gradingMode: 'manual_review',
+    recommendedTemplate: 'pattern_sheet',
+    repeatCount: 1,
+    caseSensitive: false,
   },
   life_skill: {
     label: 'Life-skill worksheet',
@@ -145,19 +211,108 @@ const ASSIGNMENT_PRESETS: Record<string, AssignmentPreset> = {
     prompt: 'Complete worksheet on daily habits and safety.',
     expectedAnswer: 'Key life-skill words and understanding',
     gradingMode: 'auto_text',
+    recommendedTemplate: 'life_skill_sheet',
+    repeatCount: 1,
+    caseSensitive: false,
   },
 };
 
-function normalizeText(value: string) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[\p{P}\p{S}]/gu, ' ')
+const WORKSHEET_TEMPLATES: Record<string, WorksheetTemplateProfile> = {
+  tracing_sheet: {
+    label: 'Tracing practice sheet',
+    description: 'Large guided rows with dotted strokes and direction arrows.',
+    nurseryNotes: 'Use 1 task per page with thick lines and plenty of writing space.',
+    kindergartenNotes: 'Use 2 tasks max with ruled helper lines for cleaner writing.',
+    designRules: ['High-contrast guide lines', 'Big writing boxes', 'Minimal text instructions'],
+  },
+  match_sheet: {
+    label: 'Match-the-same sheet',
+    description: 'Left-right pairing layout with safe spacing for line drawing.',
+    nurseryNotes: 'Keep 3 to 4 pairs only with picture clues.',
+    kindergartenNotes: 'Use up to 6 pairs and optionally include word labels.',
+    designRules: ['Wide center connector zone', 'Picture-first items', 'No clutter background'],
+  },
+  circle_underline_sheet: {
+    label: 'Circle or underline sheet',
+    description: 'Choice cards where child marks the correct option.',
+    nurseryNotes: 'Use 2 to 3 choices with very clear image difference.',
+    kindergartenNotes: 'Use 3 to 5 choices and include short word prompts.',
+    designRules: ['Thick option borders', 'One prompt per row', 'Large marking area'],
+  },
+  coloring_sheet: {
+    label: 'Color-by-instruction sheet',
+    description: 'Outlined shapes with simple color instructions.',
+    nurseryNotes: 'Keep big shapes and one instruction at a time.',
+    kindergartenNotes: 'Use small multi-step coloring tasks.',
+    designRules: ['White fill region', 'Heavy outlines', 'Instruction banner on top'],
+  },
+  picture_vocab_sheet: {
+    label: 'Picture vocabulary sheet',
+    description: 'Image tiles with answer lines underneath each picture.',
+    nurseryNotes: 'Use simple familiar objects and single-word responses.',
+    kindergartenNotes: 'Add themed groups and 1 to 2-word responses.',
+    designRules: ['Large image cards', 'Single answer line', 'Clean spacing between cards'],
+  },
+  phonics_boxes_sheet: {
+    label: 'Phonics box sheet',
+    description: 'Letter boxes to write sounds or short words.',
+    nurseryNotes: 'Focus on first sound only with 2 to 3 letter boxes.',
+    kindergartenNotes: 'Allow CVC word boxes and short spoken-to-written tasks.',
+    designRules: ['Equal-size letter boxes', 'Audio cue icon', 'Short prompt text'],
+  },
+  pattern_sheet: {
+    label: 'Pattern completion sheet',
+    description: 'Visual sequence rows with blank continuation slots.',
+    nurseryNotes: 'Simple ABAB patterns using pictures/shapes.',
+    kindergartenNotes: 'Introduce AAB/ABC patterns and symbol variety.',
+    designRules: ['Fixed row rhythm', 'Blank continuation slots', 'Clear repeated motif'],
+  },
+  life_skill_sheet: {
+    label: 'Life-skill worksheet',
+    description: 'Daily habit and safety scenarios with guided response area.',
+    nurseryNotes: 'Use yes/no tick marks with simple visuals.',
+    kindergartenNotes: 'Allow short phrase answers with scenario cards.',
+    designRules: ['Scenario picture first', 'Simple checklist area', 'Friendly icons'],
+  },
+  alphabet_practice_sheet: {
+    label: 'Alphabet practice sheet',
+    description: 'Uppercase and lowercase box rows for case-sensitive alphabet checking.',
+    nurseryNotes: 'Use one large letter row at a time with thick writing boxes.',
+    kindergartenNotes: 'Use uppercase and lowercase rows with repeat counts printed clearly.',
+    designRules: ['Separate upper and lower rows', 'One letter per box', 'Fixed repetition count'],
+  },
+  sentence_repeat_sheet: {
+    label: 'Sentence repeat sheet',
+    description: 'One sentence or short phrase repeated across fixed lines.',
+    nurseryNotes: 'Use very short teacher-approved phrases and large line spacing.',
+    kindergartenNotes: 'Use one sentence repeated many times with clear writing lanes.',
+    designRules: ['Single sentence per line', 'Large line spacing', 'Visible repeat counter'],
+  },
+  spelling_repeat_sheet: {
+    label: 'Spelling repeat sheet',
+    description: 'A list of spellings that each must be written several times.',
+    nurseryNotes: 'Use 2 to 3 simple spellings only.',
+    kindergartenNotes: 'Use short spelling lists with a clear repeat count beside each word.',
+    designRules: ['One spelling per block', 'Repeat count marker', 'High whitespace'],
+  },
+  number_practice_sheet: {
+    label: 'Number practice sheet',
+    description: 'Number tracing and counting boxes with structured rows.',
+    nurseryNotes: 'Use big numbers and more room for tracing.',
+    kindergartenNotes: 'Use counting rows, number grids, and repetition markers.',
+    designRules: ['Big digit boxes', 'Consistent row spacing', 'Simple count cues'],
+  },
+};
+
+function normalizeText(value: string, preserveCase = false) {
+  const base = String(value || '').replace(/[\p{P}\p{S}]/gu, ' ');
+  return (preserveCase ? base : base.toLowerCase())
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-function tokenize(value: string) {
-  return normalizeText(value)
+function tokenize(value: string, preserveCase = false) {
+  return normalizeText(value, preserveCase)
     .split(' ')
     .map((token) => token.trim())
     .filter(Boolean);
@@ -174,9 +329,9 @@ function detectLanguage(value: string): GradingResult['language'] {
   return 'unknown';
 }
 
-function jaccardSimilarity(a: string, b: string) {
-  const tokensA = new Set(tokenize(a));
-  const tokensB = new Set(tokenize(b));
+function jaccardSimilarity(a: string, b: string, preserveCase = false) {
+  const tokensA = new Set(tokenize(a, preserveCase));
+  const tokensB = new Set(tokenize(b, preserveCase));
 
   if (!tokensA.size || !tokensB.size) return 0;
 
@@ -212,12 +367,111 @@ function buildFeedback(score: number, similarity: number, confidence: number) {
   return { badge: 'Try Again', feedback: 'You are on the right path, but the answer needs a clearer idea or more complete wording.' };
 }
 
-function extractMatchedWords(student: string, expected: string) {
-  const expectedTokens = tokenize(expected);
-  const studentTokens = new Set(tokenize(student));
+function levenshteinDistance(a: string, b: string, preserveCase = false) {
+  const s = normalizeText(a, preserveCase);
+  const t = normalizeText(b, preserveCase);
+  const m = s.length;
+  const n = t.length;
+
+  if (!m) return n;
+  if (!n) return m;
+
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i += 1) dp[i][0] = i;
+  for (let j = 0; j <= n; j += 1) dp[0][j] = j;
+
+  for (let i = 1; i <= m; i += 1) {
+    for (let j = 1; j <= n; j += 1) {
+      const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+    }
+  }
+
+  return dp[m][n];
+}
+
+function editSimilarity(a: string, b: string, preserveCase = false) {
+  const maxLen = Math.max(normalizeText(a, preserveCase).length, normalizeText(b, preserveCase).length);
+  if (!maxLen) return 0;
+  return Math.max(0, 1 - levenshteinDistance(a, b, preserveCase) / maxLen);
+}
+
+function extractMatchedWords(student: string, expected: string, preserveCase = false) {
+  const expectedTokens = tokenize(expected, preserveCase);
+  const studentTokens = new Set(tokenize(student, preserveCase));
   const matchedWords = expectedTokens.filter((token) => studentTokens.has(token));
   const missingWords = expectedTokens.filter((token) => !studentTokens.has(token));
   return { matchedWords: Array.from(new Set(matchedWords)), missingWords: Array.from(new Set(missingWords)) };
+}
+
+function splitMeaningfulLines(value: string, preserveCase = false) {
+  return String(value || '')
+    .split(/\r?\n+/)
+    .map((line) => normalizeText(line, preserveCase))
+    .filter(Boolean);
+}
+
+function countOccurrences(source: string, target: string, preserveCase = false) {
+  const haystack = normalizeText(source, preserveCase);
+  const needle = normalizeText(target, preserveCase);
+  if (!needle) return 0;
+
+  let count = 0;
+  let index = 0;
+  while (index <= haystack.length) {
+    const found = haystack.indexOf(needle, index);
+    if (found === -1) break;
+    count += 1;
+    index = found + needle.length;
+  }
+
+  return count;
+}
+
+function lineSimilarity(a: string, b: string, preserveCase = false) {
+  const exactA = normalizeText(a, preserveCase);
+  const exactB = normalizeText(b, preserveCase);
+  if (!exactA && !exactB) return 1;
+  if (!exactA || !exactB) return 0;
+
+  const tokenScore = jaccardSimilarity(a, b, preserveCase);
+  const editScore = editSimilarity(a, b, preserveCase);
+  return Math.max(0, Math.min(1, tokenScore * 0.35 + editScore * 0.65));
+}
+
+function evaluateRepeatedText(params: {
+  expectedAnswer: string;
+  studentText: string;
+  repeatCount: number;
+  preserveCase: boolean;
+}) {
+  const expectedUnits = splitMeaningfulLines(params.expectedAnswer, params.preserveCase);
+  const studentLines = splitMeaningfulLines(params.studentText, params.preserveCase);
+  const sequence = Array.from({ length: Math.max(1, params.repeatCount) }, () => expectedUnits).flat();
+  const perUnitCoverage = expectedUnits.map((unit) => Math.min(1, countOccurrences(params.studentText, unit, params.preserveCase) / Math.max(1, params.repeatCount)));
+
+  const coverageScore = perUnitCoverage.length ? perUnitCoverage.reduce((sum, value) => sum + value, 0) / perUnitCoverage.length : 0;
+
+  const alignedCount = Math.min(studentLines.length, sequence.length);
+  let orderSum = 0;
+  for (let index = 0; index < alignedCount; index += 1) {
+    orderSum += lineSimilarity(studentLines[index], sequence[index], params.preserveCase);
+  }
+  const orderScore = alignedCount ? orderSum / alignedCount : 0;
+
+  const lineMatches = studentLines.filter((line) => expectedUnits.some((unit) => normalizeText(line, params.preserveCase) === normalizeText(unit, params.preserveCase))).length;
+  const lineScore = sequence.length ? lineMatches / sequence.length : 0;
+
+  const weightedSimilarity = coverageScore * 0.45 + orderScore * 0.35 + lineScore * 0.2;
+
+  return {
+    similarity: Math.round(weightedSimilarity * 100),
+    coverageScore: Math.round(coverageScore * 100),
+    orderScore: Math.round(orderScore * 100),
+    lineScore: Math.round(lineScore * 100),
+    matchedWords: expectedUnits.filter((unit) => countOccurrences(params.studentText, unit, params.preserveCase) >= 1),
+    missingWords: expectedUnits.filter((unit) => countOccurrences(params.studentText, unit, params.preserveCase) < params.repeatCount),
+  };
 }
 
 export default function AssignmentHandwritingChecker() {
@@ -243,6 +497,23 @@ export default function AssignmentHandwritingChecker() {
   const [newDueDate, setNewDueDate] = useState('');
   const [assignmentType, setAssignmentType] = useState<string>('letter_tracing');
   const [gradingMode, setGradingMode] = useState<'auto_text' | 'manual_review'>('manual_review');
+  const [studentLevel, setStudentLevel] = useState<'nursery' | 'kindergarten'>('kindergarten');
+  const [repeatCount, setRepeatCount] = useState(1);
+  const [caseSensitive, setCaseSensitive] = useState(true);
+  const [worksheetTemplate, setWorksheetTemplate] = useState<
+    | 'tracing_sheet'
+    | 'match_sheet'
+    | 'circle_underline_sheet'
+    | 'coloring_sheet'
+    | 'picture_vocab_sheet'
+    | 'phonics_boxes_sheet'
+    | 'pattern_sheet'
+    | 'life_skill_sheet'
+    | 'alphabet_practice_sheet'
+    | 'sentence_repeat_sheet'
+    | 'spelling_repeat_sheet'
+    | 'number_practice_sheet'
+  >('tracing_sheet');
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -275,6 +546,13 @@ export default function AssignmentHandwritingChecker() {
   );
 
   const isAutoTextAssignment = currentGradingMode === 'auto_text';
+
+  const activeTemplateProfile = useMemo(() => {
+    const key = selectedAssignment?.worksheetTemplate || worksheetTemplate;
+    return WORKSHEET_TEMPLATES[key] || WORKSHEET_TEMPLATES.tracing_sheet;
+  }, [selectedAssignment?.worksheetTemplate, worksheetTemplate]);
+
+  const activeStudentLevel = (selectedAssignment?.studentLevel || studentLevel) as 'nursery' | 'kindergarten';
 
   const isTeacherOrAdmin = viewerRole === 'teacher' || viewerRole === 'admin';
 
@@ -366,6 +644,24 @@ export default function AssignmentHandwritingChecker() {
     if (!selectedAssignment) return;
     setExpectedAnswer(selectedAssignment.expectedAnswer || '');
     setStudentHint(selectedAssignment.prompt || '');
+    setStudentLevel((selectedAssignment.studentLevel || 'kindergarten') as 'nursery' | 'kindergarten');
+    setRepeatCount(Math.max(1, Number(selectedAssignment.repeatCount || 1)));
+    setCaseSensitive(Boolean(selectedAssignment.caseSensitive ?? true));
+    setWorksheetTemplate(
+      (selectedAssignment.worksheetTemplate || 'tracing_sheet') as
+        | 'tracing_sheet'
+        | 'match_sheet'
+        | 'circle_underline_sheet'
+        | 'coloring_sheet'
+        | 'picture_vocab_sheet'
+        | 'phonics_boxes_sheet'
+        | 'pattern_sheet'
+        | 'life_skill_sheet'
+        | 'alphabet_practice_sheet'
+        | 'sentence_repeat_sheet'
+        | 'spelling_repeat_sheet'
+        | 'number_practice_sheet'
+    );
     fetchSubmissions(selectedAssignment._id);
   }, [selectedAssignment, fetchSubmissions]);
 
@@ -454,6 +750,10 @@ export default function AssignmentHandwritingChecker() {
         assignmentType,
         gradingMode,
         language: detectLanguage(expectedAnswer + ' ' + studentHint),
+        studentLevel,
+        repeatCount,
+        caseSensitive,
+        worksheetTemplate,
       };
 
       const response = await fetch('/api/assignments', {
@@ -486,26 +786,54 @@ export default function AssignmentHandwritingChecker() {
       return;
     }
 
-    const studentAnswer = normalizeText(editableText || ocrText);
-    const modelAnswer = normalizeText(expectedAnswer);
+    const studentAnswer = String(editableText || ocrText || '');
+    const modelAnswer = String(expectedAnswer || '');
+    const templateName = selectedAssignment?.worksheetTemplate || worksheetTemplate;
+    const repeatTotal = Math.max(1, Number(selectedAssignment?.repeatCount || repeatCount || 1));
+    const preserveCase = Boolean(selectedAssignment?.caseSensitive ?? caseSensitive);
+    const repeatedTemplate =
+      repeatTotal > 1 ||
+      ['alphabet_practice_sheet', 'sentence_repeat_sheet', 'spelling_repeat_sheet', 'number_practice_sheet'].includes(templateName) ||
+      modelAnswer.includes('\n');
 
-    if (!studentAnswer) {
+    if (!normalizeText(studentAnswer, true)) {
       setError('Please run OCR or type the detected answer first.');
       return;
     }
 
-    if (!modelAnswer) {
+    if (!normalizeText(modelAnswer, true)) {
       setError('Please enter the expected answer for checking.');
       return;
     }
 
     setError('');
 
-    const similarity = jaccardSimilarity(studentAnswer, modelAnswer);
-    const blendedScore = Math.round(similarity * 70 + Math.min(confidence, 100) * 0.3);
-    const cappedScore = Math.max(0, Math.min(100, blendedScore));
-    const feedbackPack = buildFeedback(cappedScore, similarity, confidence);
-    const words = extractMatchedWords(studentAnswer, modelAnswer);
+    let similarity = 0;
+    let cappedScore = 0;
+    let matchedWords: string[] = [];
+    let missingWords: string[] = [];
+
+    if (repeatedTemplate) {
+      const repeatEvaluation = evaluateRepeatedText({
+        expectedAnswer: modelAnswer,
+        studentText: studentAnswer,
+        repeatCount: repeatTotal,
+        preserveCase,
+      });
+
+      similarity = repeatEvaluation.similarity / 100;
+      cappedScore = Math.max(0, Math.min(100, Math.round(repeatEvaluation.similarity * 0.8 + confidence * 0.2)));
+      matchedWords = repeatEvaluation.matchedWords;
+      missingWords = repeatEvaluation.missingWords;
+    } else {
+      similarity = jaccardSimilarity(studentAnswer, modelAnswer, preserveCase);
+      cappedScore = Math.max(0, Math.min(100, Math.round(similarity * 70 + Math.min(confidence, 100) * 0.3)));
+      const words = extractMatchedWords(studentAnswer, modelAnswer, preserveCase);
+      matchedWords = words.matchedWords;
+      missingWords = words.missingWords;
+    }
+
+    const feedbackPack = buildFeedback(cappedScore, similarity * 100, confidence);
 
     setResult({
       score: cappedScore,
@@ -514,8 +842,8 @@ export default function AssignmentHandwritingChecker() {
       language: detectedLanguage,
       feedback: feedbackPack.feedback,
       badge: feedbackPack.badge,
-      matchedWords: words.matchedWords,
-      missingWords: words.missingWords,
+      matchedWords,
+      missingWords,
     });
   };
 
@@ -731,7 +1059,7 @@ export default function AssignmentHandwritingChecker() {
                   <option value="">Choose assignment</option>
                   {assignments.map((item) => (
                     <option key={item._id} value={item._id}>
-                      {item.title} • {item.className} • {item.subject}
+                      {item.title} • {item.className} • {item.subject} • {item.studentLevel || 'kindergarten'}
                     </option>
                   ))}
                 </select>
@@ -753,6 +1081,12 @@ export default function AssignmentHandwritingChecker() {
                   />
                 </label>
               )}
+            </div>
+
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
+              <p className="font-semibold">Active worksheet style: {activeTemplateProfile.label}</p>
+              <p className="mt-1">Level: {activeStudentLevel === 'nursery' ? 'Nursery' : 'Kindergarten'}</p>
+              <p className="mt-1 text-xs">{activeTemplateProfile.description}</p>
             </div>
 
             {isTeacherOrAdmin ? (
@@ -799,6 +1133,9 @@ export default function AssignmentHandwritingChecker() {
                         setStudentHint((current) => current || preset.prompt);
                         setExpectedAnswer((current) => current || preset.expectedAnswer);
                         setGradingMode(preset.gradingMode);
+                        setRepeatCount(preset.repeatCount);
+                        setCaseSensitive(preset.caseSensitive);
+                        setWorksheetTemplate(preset.recommendedTemplate);
                       }
                     }}
                     className="rounded-xl border border-gray-300 p-3"
@@ -822,6 +1159,82 @@ export default function AssignmentHandwritingChecker() {
                       ? 'Auto text mode: OCR + expected answer comparison.'
                       : 'Manual review mode: visual worksheet evaluated by teacher.'}
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <select
+                    value={studentLevel}
+                    onChange={(e) => setStudentLevel(e.target.value as 'nursery' | 'kindergarten')}
+                    className="rounded-xl border border-gray-300 p-3"
+                  >
+                    <option value="nursery">Nursery worksheet style</option>
+                    <option value="kindergarten">Kindergarten worksheet style</option>
+                  </select>
+
+                  <select
+                    value={worksheetTemplate}
+                    onChange={(e) =>
+                      setWorksheetTemplate(
+                        e.target.value as
+                          | 'tracing_sheet'
+                          | 'match_sheet'
+                          | 'circle_underline_sheet'
+                          | 'coloring_sheet'
+                          | 'picture_vocab_sheet'
+                          | 'phonics_boxes_sheet'
+                          | 'pattern_sheet'
+                          | 'life_skill_sheet'
+                          | 'alphabet_practice_sheet'
+                          | 'sentence_repeat_sheet'
+                          | 'spelling_repeat_sheet'
+                          | 'number_practice_sheet'
+                      )
+                    }
+                    className="rounded-xl border border-gray-300 p-3"
+                  >
+                    {Object.entries(WORKSHEET_TEMPLATES).map(([value, template]) => (
+                      <option key={value} value={value}>{template.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="text-sm font-semibold text-gray-700 mb-2 block">Repeat count</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={repeatCount}
+                      onChange={(e) => setRepeatCount(Math.max(1, Number(e.target.value || 1)))}
+                      className="w-full rounded-xl border border-gray-300 p-3"
+                    />
+                  </label>
+
+                  <label className="flex items-center gap-3 rounded-xl border border-gray-300 p-3 bg-white">
+                    <input
+                      type="checkbox"
+                      checked={caseSensitive}
+                      onChange={(e) => setCaseSensitive(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    <span className="text-sm text-gray-700">Case sensitive checking</span>
+                  </label>
+                </div>
+
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
+                  <p className="font-semibold">Worksheet template preview: {activeTemplateProfile.label}</p>
+                  <p>{activeTemplateProfile.description}</p>
+                  <p>Repeat count: {repeatCount}</p>
+                  <p>Case sensitive: {caseSensitive ? 'Yes' : 'No'}</p>
+                  <p>
+                    {activeStudentLevel === 'nursery'
+                      ? `Nursery guide: ${activeTemplateProfile.nurseryNotes}`
+                      : `Kindergarten guide: ${activeTemplateProfile.kindergartenNotes}`}
+                  </p>
+                  <p className="text-xs">
+                    Layout rules: {activeTemplateProfile.designRules.join(' • ')}
+                  </p>
                 </div>
 
                 <div>

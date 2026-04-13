@@ -6,24 +6,23 @@ import ClassModel from '@/lib/models/Class';
 import StudentClassHistory from '@/lib/models/StudentClassHistory';
 import { extractSessionUser } from '@/lib/auth';
 
-function normalizeText(value: string) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[\p{P}\p{S}]/gu, ' ')
+function normalizeText(value: string, preserveCase = false) {
+  const base = String(value || '').replace(/[\p{P}\p{S}]/gu, ' ');
+  return (preserveCase ? base : base.toLowerCase())
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-function tokenize(value: string) {
-  return normalizeText(value)
+function tokenize(value: string, preserveCase = false) {
+  return normalizeText(value, preserveCase)
     .split(' ')
     .map((token) => token.trim())
     .filter(Boolean);
 }
 
-function jaccardSimilarity(a: string, b: string) {
-  const tokensA = new Set(tokenize(a));
-  const tokensB = new Set(tokenize(b));
+function jaccardSimilarity(a: string, b: string, preserveCase = false) {
+  const tokensA = new Set(tokenize(a, preserveCase));
+  const tokensB = new Set(tokenize(b, preserveCase));
 
   if (!tokensA.size || !tokensB.size) return 0;
 
@@ -36,9 +35,9 @@ function jaccardSimilarity(a: string, b: string) {
   return union === 0 ? 0 : intersection / union;
 }
 
-function tokenF1Similarity(a: string, b: string) {
-  const tokensA = tokenize(a);
-  const tokensB = tokenize(b);
+function tokenF1Similarity(a: string, b: string, preserveCase = false) {
+  const tokensA = tokenize(a, preserveCase);
+  const tokensB = tokenize(b, preserveCase);
   if (!tokensA.length || !tokensB.length) return 0;
 
   const freqA = new Map<string, number>();
@@ -65,9 +64,9 @@ function tokenF1Similarity(a: string, b: string) {
   return (2 * precision * recall) / (precision + recall);
 }
 
-function levenshteinDistance(a: string, b: string) {
-  const s = normalizeText(a);
-  const t = normalizeText(b);
+function levenshteinDistance(a: string, b: string, preserveCase = false) {
+  const s = normalizeText(a, preserveCase);
+  const t = normalizeText(b, preserveCase);
   const m = s.length;
   const n = t.length;
 
@@ -93,10 +92,10 @@ function levenshteinDistance(a: string, b: string) {
   return dp[m][n];
 }
 
-function editSimilarity(a: string, b: string) {
-  const maxLen = Math.max(normalizeText(a).length, normalizeText(b).length);
+function editSimilarity(a: string, b: string, preserveCase = false) {
+  const maxLen = Math.max(normalizeText(a, preserveCase).length, normalizeText(b, preserveCase).length);
   if (!maxLen) return 0;
-  const distance = levenshteinDistance(a, b);
+  const distance = levenshteinDistance(a, b, preserveCase);
   return Math.max(0, 1 - distance / maxLen);
 }
 
@@ -123,12 +122,91 @@ function buildFeedback(score: number, confidence: number) {
   return { badge: 'Try Again', feedback: 'You are on the right path, but the answer needs a clearer idea or more complete wording.' };
 }
 
-function extractMatchedWords(student: string, expected: string) {
-  const expectedTokens = tokenize(expected);
-  const studentTokens = new Set(tokenize(student));
+function extractMatchedWords(student: string, expected: string, preserveCase = false) {
+  const expectedTokens = tokenize(expected, preserveCase);
+  const studentTokens = new Set(tokenize(student, preserveCase));
   const matchedWords = expectedTokens.filter((token) => studentTokens.has(token));
   const missingWords = expectedTokens.filter((token) => !studentTokens.has(token));
   return { matchedWords: Array.from(new Set(matchedWords)), missingWords: Array.from(new Set(missingWords)) };
+}
+
+function splitMeaningfulLines(value: string, preserveCase = false) {
+  return String(value || '')
+    .split(/\r?\n+/)
+    .map((line) => normalizeText(line, preserveCase))
+    .filter(Boolean);
+}
+
+function countOccurrences(source: string, target: string, preserveCase = false) {
+  const haystack = normalizeText(source, preserveCase);
+  const needle = normalizeText(target, preserveCase);
+  if (!needle) return 0;
+
+  let count = 0;
+  let index = 0;
+  while (index <= haystack.length) {
+    const found = haystack.indexOf(needle, index);
+    if (found === -1) break;
+    count += 1;
+    index = found + needle.length;
+  }
+  return count;
+}
+
+function lineSimilarity(a: string, b: string, preserveCase = false) {
+  const exactA = normalizeText(a, preserveCase);
+  const exactB = normalizeText(b, preserveCase);
+  if (!exactA && !exactB) return 1;
+  if (!exactA || !exactB) return 0;
+
+  const tokenScore = jaccardSimilarity(a, b, preserveCase);
+  const f1Score = tokenF1Similarity(a, b, preserveCase);
+  const editScore = editSimilarity(a, b, preserveCase);
+  return Math.max(0, Math.min(1, tokenScore * 0.2 + f1Score * 0.35 + editScore * 0.45));
+}
+
+function evaluateRepeatedText(params: {
+  expectedAnswer: string;
+  studentText: string;
+  repeatCount: number;
+  preserveCase: boolean;
+}) {
+  const expectedUnits = splitMeaningfulLines(params.expectedAnswer, params.preserveCase);
+  const studentLines = splitMeaningfulLines(params.studentText, params.preserveCase);
+  const expectedSequence = Array.from({ length: Math.max(1, params.repeatCount) }, () => expectedUnits).flat();
+  const totalExpected = Math.max(1, expectedSequence.length);
+
+  const perUnitCoverage = expectedUnits.map((unit) => {
+    const occurrences = countOccurrences(params.studentText, unit, params.preserveCase);
+    return Math.min(1, occurrences / Math.max(1, params.repeatCount));
+  });
+
+  const coverageScore = perUnitCoverage.length
+    ? perUnitCoverage.reduce((sum, value) => sum + value, 0) / perUnitCoverage.length
+    : 0;
+
+  const alignedCount = Math.min(studentLines.length, expectedSequence.length);
+  let orderSum = 0;
+  for (let index = 0; index < alignedCount; index += 1) {
+    orderSum += lineSimilarity(studentLines[index], expectedSequence[index], params.preserveCase);
+  }
+  const orderScore = alignedCount ? orderSum / alignedCount : 0;
+
+  const exactMatches = studentLines.filter((line) => expectedUnits.some((unit) => normalizeText(line, params.preserveCase) === normalizeText(unit, params.preserveCase))).length;
+  const lineScore = expectedSequence.length ? exactMatches / totalExpected : 0;
+
+  const weightedSimilarity = coverageScore * 0.45 + orderScore * 0.35 + lineScore * 0.2;
+  const matchedWords = expectedUnits.filter((unit) => countOccurrences(params.studentText, unit, params.preserveCase) >= 1);
+  const missingWords = expectedUnits.filter((unit) => countOccurrences(params.studentText, unit, params.preserveCase) < params.repeatCount);
+
+  return {
+    similarity: Math.round(weightedSimilarity * 100),
+    coverageScore: Math.round(coverageScore * 100),
+    orderScore: Math.round(orderScore * 100),
+    lineScore: Math.round(lineScore * 100),
+    matchedWords,
+    missingWords,
+  };
 }
 
 function defaultManualFeedback(assignmentType: string) {
@@ -285,6 +363,10 @@ export async function POST(
     const ocrConfidence = Math.max(0, Math.min(100, Number(body?.ocrConfidence || 0)));
     const gradingMode = String((assignment as any).gradingMode || 'auto_text');
     const assignmentType = String((assignment as any).assignmentType || 'letter_tracing');
+    const worksheetTemplate = String((assignment as any).worksheetTemplate || 'tracing_sheet');
+    const repeatCount = Math.max(1, Number((assignment as any).repeatCount || 1));
+    const caseSensitive = Boolean((assignment as any).caseSensitive);
+    const studentText = String(finalText || ocrText || '');
 
     let similarity = 0;
     let autoScore = 0;
@@ -301,26 +383,54 @@ export async function POST(
 
     if (gradingMode === 'auto_text') {
       const expectedAnswer = String(assignment.expectedAnswer || '');
-      const jaccardRaw = jaccardSimilarity(finalText, expectedAnswer);
-      const f1Raw = tokenF1Similarity(finalText, expectedAnswer);
-      const editRaw = editSimilarity(finalText, expectedAnswer);
-      const weightedSimilarityRaw = jaccardRaw * 0.2 + f1Raw * 0.45 + editRaw * 0.35;
+      const isRepeatedTemplate =
+        repeatCount > 1 ||
+        ['alphabet_practice_sheet', 'sentence_repeat_sheet', 'spelling_repeat_sheet', 'number_practice_sheet'].includes(worksheetTemplate) ||
+        expectedAnswer.includes('\n');
 
-      similarity = Math.round(weightedSimilarityRaw * 100);
-      autoScore = Math.max(0, Math.min(100, Math.round(weightedSimilarityRaw * 80 + ocrConfidence * 0.2)));
-      const feedbackPack = buildFeedback(autoScore, ocrConfidence);
-      const words = extractMatchedWords(finalText, expectedAnswer);
-      autoFeedback = feedbackPack.feedback;
-      badge = feedbackPack.badge;
-      matchedWords = words.matchedWords;
-      missingWords = words.missingWords;
+      if (isRepeatedTemplate) {
+        const repeatEvaluation = evaluateRepeatedText({
+          expectedAnswer,
+          studentText,
+          repeatCount,
+          preserveCase: caseSensitive,
+        });
 
-      evaluationBreakdown = {
-        jaccard: Math.round(jaccardRaw * 100),
-        f1: Math.round(f1Raw * 100),
-        editSimilarity: Math.round(editRaw * 100),
-        weightedSimilarity: Math.round(weightedSimilarityRaw * 100),
-      };
+        similarity = repeatEvaluation.similarity;
+        autoScore = Math.max(0, Math.min(100, Math.round(repeatEvaluation.similarity * 0.8 + ocrConfidence * 0.2)));
+        const feedbackPack = buildFeedback(autoScore, ocrConfidence);
+        autoFeedback = feedbackPack.feedback;
+        badge = feedbackPack.badge;
+        matchedWords = repeatEvaluation.matchedWords;
+        missingWords = repeatEvaluation.missingWords;
+        evaluationBreakdown = {
+          jaccard: repeatEvaluation.coverageScore,
+          f1: repeatEvaluation.orderScore,
+          editSimilarity: repeatEvaluation.lineScore,
+          weightedSimilarity: repeatEvaluation.similarity,
+        };
+      } else {
+        const jaccardRaw = jaccardSimilarity(studentText, expectedAnswer, caseSensitive);
+        const f1Raw = tokenF1Similarity(studentText, expectedAnswer, caseSensitive);
+        const editRaw = editSimilarity(studentText, expectedAnswer, caseSensitive);
+        const weightedSimilarityRaw = jaccardRaw * 0.2 + f1Raw * 0.45 + editRaw * 0.35;
+
+        similarity = Math.round(weightedSimilarityRaw * 100);
+        autoScore = Math.max(0, Math.min(100, Math.round(weightedSimilarityRaw * 80 + ocrConfidence * 0.2)));
+        const feedbackPack = buildFeedback(autoScore, ocrConfidence);
+        const words = extractMatchedWords(studentText, expectedAnswer, caseSensitive);
+        autoFeedback = feedbackPack.feedback;
+        badge = feedbackPack.badge;
+        matchedWords = words.matchedWords;
+        missingWords = words.missingWords;
+
+        evaluationBreakdown = {
+          jaccard: Math.round(jaccardRaw * 100),
+          f1: Math.round(f1Raw * 100),
+          editSimilarity: Math.round(editRaw * 100),
+          weightedSimilarity: Math.round(weightedSimilarityRaw * 100),
+        };
+      }
     }
 
     const submissionPayload = {

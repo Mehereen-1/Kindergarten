@@ -63,7 +63,27 @@ export async function POST(request: NextRequest) {
     const expectedAnswer = String(body?.expectedAnswer || '').trim();
     const assignmentType = String(body?.assignmentType || 'letter_tracing');
     const gradingMode = String(body?.gradingMode || 'auto_text');
+    const studentLevel = String(body?.studentLevel || 'kindergarten');
+    const repeatCount = Math.max(1, Number(body?.repeatCount || 1));
+    const caseSensitive = Boolean(body?.caseSensitive);
+    const worksheetTemplate = String(body?.worksheetTemplate || 'tracing_sheet');
     const academicYear = String(body?.academicYear || new Date().getFullYear());
+
+    const allowedStudentLevels = ['nursery', 'kindergarten'];
+    const allowedTemplates = [
+      'tracing_sheet',
+      'match_sheet',
+      'circle_underline_sheet',
+      'coloring_sheet',
+      'picture_vocab_sheet',
+      'phonics_boxes_sheet',
+      'pattern_sheet',
+      'life_skill_sheet',
+      'alphabet_practice_sheet',
+      'sentence_repeat_sheet',
+      'spelling_repeat_sheet',
+      'number_practice_sheet',
+    ];
 
     if (!title || !subject || !className) {
       return NextResponse.json(
@@ -75,6 +95,27 @@ export async function POST(request: NextRequest) {
     if (gradingMode === 'auto_text' && !expectedAnswer) {
       return NextResponse.json(
         { success: false, error: 'expectedAnswer is required for auto_text assignments' },
+        { status: 400 }
+      );
+    }
+
+    if (!allowedStudentLevels.includes(studentLevel)) {
+      return NextResponse.json(
+        { success: false, error: 'studentLevel must be nursery or kindergarten' },
+        { status: 400 }
+      );
+    }
+
+    if (!allowedTemplates.includes(worksheetTemplate)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid worksheetTemplate value' },
+        { status: 400 }
+      );
+    }
+
+    if (!Number.isFinite(repeatCount) || repeatCount < 1 || repeatCount > 50) {
+      return NextResponse.json(
+        { success: false, error: 'repeatCount must be between 1 and 50' },
         { status: 400 }
       );
     }
@@ -140,6 +181,10 @@ export async function POST(request: NextRequest) {
       assignmentType,
       gradingMode,
       language: body?.language || 'unknown',
+      studentLevel,
+      repeatCount,
+      caseSensitive,
+      worksheetTemplate,
       createdBy: sessionUser.id,
       isPublished: body?.isPublished !== false,
     });

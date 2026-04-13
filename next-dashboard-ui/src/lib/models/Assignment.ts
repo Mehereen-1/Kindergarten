@@ -21,6 +21,22 @@ export interface IAssignment extends Document {
     | 'life_skill';
   gradingMode: 'auto_text' | 'manual_review';
   language: 'bangla' | 'english' | 'mixed' | 'unknown';
+  studentLevel: 'nursery' | 'kindergarten';
+  repeatCount: number;
+  caseSensitive: boolean;
+  worksheetTemplate:
+    | 'tracing_sheet'
+    | 'match_sheet'
+    | 'circle_underline_sheet'
+    | 'coloring_sheet'
+    | 'picture_vocab_sheet'
+    | 'phonics_boxes_sheet'
+    | 'pattern_sheet'
+    | 'life_skill_sheet'
+    | 'alphabet_practice_sheet'
+    | 'sentence_repeat_sheet'
+    | 'spelling_repeat_sheet'
+    | 'number_practice_sheet';
   createdBy: mongoose.Types.ObjectId;
   isPublished: boolean;
   createdAt: Date;
@@ -61,6 +77,39 @@ const AssignmentSchema: Schema = new Schema(
       type: String,
       enum: ['bangla', 'english', 'mixed', 'unknown'],
       default: 'unknown',
+    },
+    studentLevel: {
+      type: String,
+      enum: ['nursery', 'kindergarten'],
+      default: 'kindergarten',
+      index: true,
+    },
+    repeatCount: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+    caseSensitive: {
+      type: Boolean,
+      default: false,
+    },
+    worksheetTemplate: {
+      type: String,
+      enum: [
+        'tracing_sheet',
+        'match_sheet',
+        'circle_underline_sheet',
+        'coloring_sheet',
+        'picture_vocab_sheet',
+        'phonics_boxes_sheet',
+        'pattern_sheet',
+        'life_skill_sheet',
+        'alphabet_practice_sheet',
+        'sentence_repeat_sheet',
+        'spelling_repeat_sheet',
+        'number_practice_sheet',
+      ],
+      default: 'tracing_sheet',
     },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     isPublished: { type: Boolean, default: true },

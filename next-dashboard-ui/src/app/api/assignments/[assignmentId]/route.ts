@@ -36,6 +36,10 @@ export async function PATCH(
     if (body?.assignmentType !== undefined) assignment.assignmentType = String(body.assignmentType || 'letter_tracing') as any;
     if (body?.gradingMode !== undefined) assignment.gradingMode = String(body.gradingMode || 'auto_text') as any;
     if (body?.language !== undefined) assignment.language = body.language;
+    if (body?.studentLevel !== undefined) assignment.studentLevel = String(body.studentLevel || 'kindergarten') as any;
+    if (body?.repeatCount !== undefined) assignment.repeatCount = Math.max(1, Number(body.repeatCount || 1));
+    if (body?.caseSensitive !== undefined) assignment.caseSensitive = Boolean(body.caseSensitive);
+    if (body?.worksheetTemplate !== undefined) assignment.worksheetTemplate = String(body.worksheetTemplate || 'tracing_sheet') as any;
     if (body?.isPublished !== undefined) assignment.isPublished = Boolean(body.isPublished);
     if (body?.dueDate !== undefined) assignment.dueDate = body.dueDate ? new Date(body.dueDate) : undefined;
 
