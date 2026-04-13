@@ -294,6 +294,44 @@ function AttendancePageContent() {
     }));
   };
 
+  const applyDetectionSnapshot = (rawDetections: any[]) => {
+    const detectionsArray = Array.isArray(rawDetections)
+      ? rawDetections
+      : Array.isArray((rawDetections as any)?.detections)
+      ? (rawDetections as any).detections
+      : [];
+
+    setDetections(detectionsArray);
+    setAtd(detectionsArray as AttendanceRecord[]);
+
+    const names: Record<string, string> = {};
+    const counts: Record<string, number> = {};
+
+    detectionsArray.forEach((detection: any) => {
+      const sid = String(detection?.student_id || "");
+      const label = String(detection?.student_name || detection?.name || "").trim();
+      if (sid) {
+        counts[sid] = (counts[sid] || 0) + 1;
+        if (label && label !== "Unknown" && label !== "Spoof") {
+          names[sid] = label;
+        }
+      }
+    });
+
+    if (Object.keys(names).length > 0) {
+      setDetectedNamesById((prev) => ({ ...prev, ...names }));
+    }
+
+    setStudentRecognitionCount(counts);
+    setPresentStudents(
+      new Set(
+        Object.entries(counts)
+          .filter(([, count]) => count >= 3)
+          .map(([sid]) => sid)
+      )
+    );
+  };
+
   const openStudentDetails = async (studentId: string) => {
     setStudentDetailsId(studentId);
     setStudentDetailsLoading(true);
@@ -451,37 +489,18 @@ function AttendancePageContent() {
     if (cameraActive && cctvMode === "live") {
       interval = setInterval(async () => {
         try {
-          const res = await fetch(`${CCTV_BACKEND_URL}/video-detections`);
-          const detData = await res.json();
-          const data = Array.isArray(detData) ? detData : (detData.detections || []);
-          
-          if (Array.isArray(data)) {
-            setAtd(data);
+          const [detRes, facesRes] = await Promise.all([
+            fetch(`${CCTV_BACKEND_URL}/video-detections`, { method: "GET" }),
+            fetch(`${CCTV_BACKEND_URL}/extracted-faces`, { method: "GET" }),
+          ]);
 
-            const liveNames: Record<string, string> = {};
-            data.forEach((record: AttendanceRecord) => {
-              if (record.student_id && record.name && record.name !== "Unknown" && record.name !== "Spoof") {
-                liveNames[record.student_id] = record.name;
-              }
-            });
-            setDetectedNamesById((prev) => ({ ...prev, ...liveNames }));
+          const detData = await detRes.json();
+          const facesData = await facesRes.json();
 
-            // Recompute from current backend detections so UI always matches backend truth.
-            const counts: Record<string, number> = {};
-            data.forEach((record: AttendanceRecord) => {
-              const sid = record.student_id;
-              if (!sid) return;
-              counts[sid] = (counts[sid] || 0) + 1;
-            });
+          applyDetectionSnapshot(detData);
 
-            setStudentRecognitionCount(counts);
-            setPresentStudents(
-              new Set(
-                Object.entries(counts)
-                  .filter(([, count]) => count >= 3)
-                  .map(([sid]) => sid)
-              )
-            );
+          if (Array.isArray(facesData?.faces)) {
+            setExtractedFaces(facesData.faces);
           }
         } catch (err) {
           console.error("Error fetching live detections:", err);
@@ -1095,6 +1114,48 @@ function AttendancePageContent() {
     }
   };
 
+  useEffect(() => {
+    const loadManualAttendanceForDay = async () => {
+      if (!selectedClassId || students.length === 0) return;
+
+      try {
+        const response = await fetch(
+          `/api/teacher/attendance/bulk?classId=${encodeURIComponent(selectedClassId)}&date=${encodeURIComponent(selectedDate)}`,
+          { cache: "no-store" }
+        );
+
+        if (!response.ok) return;
+
+        const result = await response.json();
+        const rows = Array.isArray(result?.students) ? result.students : [];
+
+        const statusByStudentId = new Map<string, AttendanceStatus>();
+        rows.forEach((row: any) => {
+          const sid = String(row?.studentId || "");
+          const rawStatus = String(row?.status || "").toLowerCase();
+          if (!sid) return;
+
+          if (rawStatus === "present") statusByStudentId.set(sid, "present");
+          else if (rawStatus === "absent") statusByStudentId.set(sid, "absent");
+          else if (rawStatus === "late") statusByStudentId.set(sid, "late");
+        });
+
+        setAttendance((prev) => {
+          const next: Record<string, AttendanceStatus> = {};
+          students.forEach((student) => {
+            const sid = String(student._id);
+            next[sid] = statusByStudentId.get(sid) || prev[sid] || "present";
+          });
+          return next;
+        });
+      } catch (error) {
+        console.error("Failed to load saved manual attendance:", error);
+      }
+    };
+
+    void loadManualAttendanceForDay();
+  }, [selectedClassId, selectedDate, students]);
+
   const submitAttendance = async () => {
     setLoading(true);
     setMessage("");
@@ -1112,6 +1173,7 @@ function AttendancePageContent() {
           date: selectedDate,
           classId: selectedClassId || undefined,
           teacherId: user?.id || undefined,
+          source: "manual",
           attendance: attendanceArray,
         }),
       });
@@ -1216,6 +1278,8 @@ interface CCTVTabProps {
   // Stop camera
   const stopCamera = async () => {
     setLoading(true);
+    // Turn off live polling immediately so local snapshot stays intact.
+    setCameraActive(false);
     try {
       await fetch(`${CCTV_BACKEND_URL}/stop-camera`, {
         method: "POST",
@@ -1224,7 +1288,6 @@ interface CCTVTabProps {
     } catch (error) {
       setMessage(`❌ Error: ${String(error)}`);
     } finally {
-      setCameraActive(false);
       seenAttendanceIds.current.clear();
       setLoading(false);
     }
@@ -1299,6 +1362,8 @@ interface CCTVTabProps {
 
   const stopBrowserCamera = async () => {
     setLoading(true);
+    // Turn off live polling immediately so local snapshot stays intact.
+    setCameraActive(false);
     try {
       stopBrowserCaptureLoop();
       stopBrowserPreviewStream();
@@ -1313,7 +1378,6 @@ interface CCTVTabProps {
     } catch (error) {
       setMessage(`âŒ Error: ${String(error)}`);
     } finally {
-      setCameraActive(false);
       seenAttendanceIds.current.clear();
       setLoading(false);
     }
@@ -1396,8 +1460,6 @@ interface CCTVTabProps {
         
         // Poll for detection results
         let lastDetectionCount = 0;
-        let recognitionCounts: Record<string, number> = {};
-        let presentSet = new Set<string>();
         
         const pollInterval = setInterval(async () => {
           try {
@@ -1417,28 +1479,15 @@ interface CCTVTabProps {
             // Update if we have new detections
             if (detectionsArray.length > lastDetectionCount || detectionsArray.length > 0) {
               lastDetectionCount = detectionsArray.length;
-              setDetections(detectionsArray);
-              
-              // Only calculate counts from detections that haven't been counted yet
+              applyDetectionSnapshot(detectionsArray);
+
+              const countsPreview: Record<string, number> = {};
               detectionsArray.forEach((detection: any) => {
-                const studentId = detection.student_id;
-                if (studentId) {
-                  if (!recognitionCounts[studentId]) {
-                    recognitionCounts[studentId] = 0;
-                  }
-                  recognitionCounts[studentId]++;
-                  
-                  // Mark as present after 3 recognitions
-                  if (recognitionCounts[studentId] >= 3 && !presentSet.has(studentId)) {
-                    presentSet.add(studentId);
-                  }
-                }
+                const sid = String(detection?.student_id || "");
+                if (sid) countsPreview[sid] = (countsPreview[sid] || 0) + 1;
               });
-              
-              setStudentRecognitionCount({...recognitionCounts});
-              setPresentStudents(new Set(presentSet));
-              
-              console.log(`📊 Detections: ${detectionsArray.length}, Present: ${presentSet.size}`);
+              const presentCount = Object.values(countsPreview).filter((count) => count >= 3).length;
+              console.log(`📊 Detections: ${detectionsArray.length}, Present: ${presentCount}`);
             }
           } catch (err) {
             console.error("Error fetching detections:", err);
@@ -1568,6 +1617,7 @@ interface CCTVTabProps {
           date: selectedDate,
           classId: selectedClassId || undefined,
           teacherId: user?.id || undefined,
+          source: "cctv",
           attendance: attendanceArray,
         }),
       });
@@ -1607,7 +1657,7 @@ interface CCTVTabProps {
   const tabButtonClass = (tab: string) =>
     `px-6 py-2 rounded-lg font-semibold transition ${
       activeTab === tab
-        ? "bg-indigo-600 text-white shadow-lg"
+        ? "bg-[#5a685a] text-white shadow-lg"
         : "text-slate-700 hover:bg-slate-100 border border-slate-200"
     }`;
 
@@ -1639,7 +1689,7 @@ interface CCTVTabProps {
     <>
       <TeacherTopBar />
 
-      <main className="flex-1 overflow-y-auto bg-gray-50">
+      <main className="teacher-attendance flex-1 overflow-y-auto bg-gray-50">
         <div className="p-6 lg:p-10">
           {!selectedClassId ? (
             <div className="space-y-6">
@@ -2059,12 +2109,31 @@ interface CCTVTabProps {
                     </button>
 
                     <button
-                      onClick={saveAttendance}
-                      disabled={!cameraActive || loading}
+                      onClick={saveVideoAttendanceToDatabase}
+                      disabled={loading || students.length === 0}
                       className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 transition"
                     >
                       <Database size={18} />
-                      {loading ? "Saving..." : "💾 Save"}
+                      {loading ? "Saving..." : "💾 Save To Database"}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setStudentRecognitionCount({});
+                        setPresentStudents(new Set());
+                        setAttendanceOverrides({});
+                        setAcknowledgedOtherClassIds(new Set());
+                        setAtd([]);
+                        setDetections([]);
+                        setDetectedNamesById({});
+                        resetLiveConfirmationState();
+                        seenAttendanceIds.current.clear();
+                        setMessage("✅ Live recognition results cleared.");
+                      }}
+                      disabled={loading}
+                      className="px-4 py-2 bg-slate-700 text-white rounded-lg font-semibold hover:bg-slate-800 disabled:opacity-50 transition"
+                    >
+                      🧹 Clear Results
                     </button>
                   </div>
 
@@ -2072,11 +2141,11 @@ interface CCTVTabProps {
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-sm text-slate-700">
                       <strong>ℹ️ How it works:</strong> The camera analyzes faces and logs attendance automatically. A student is marked present after 3 recognitions.
+                      Results remain available after stopping the camera until you clear them.
                     </p>
                   </div>
 
                   {/* Recognition Status Panel */}
-                  {cameraActive && (
                     <div className="space-y-3">
                       <div className="bg-white rounded-lg border-2 border-indigo-200 p-4">
                         <div className="flex items-center justify-between mb-3">
@@ -2166,7 +2235,196 @@ interface CCTVTabProps {
                         )}
                       </div>
                     </div>
-                  )}
+
+                  <div className="space-y-4">
+                    <div className="bg-slate-50 border border-slate-300 rounded-lg p-4">
+                      <h5 className="font-bold text-slate-900 mb-3">🧩 Extracted Faces ({extractedFaces.length})</h5>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 max-h-64 overflow-y-auto">
+                        {extractedFaces.slice().reverse().map((face) => (
+                          <div
+                            key={face.id}
+                            className={`rounded-md border p-1 bg-white ${face.is_match ? "border-green-300" : "border-red-300"}`}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={`data:image/jpeg;base64,${face.image_b64}`}
+                              alt={face.name || "Face"}
+                              className="w-full aspect-square object-cover rounded"
+                            />
+                            <p className="text-[10px] font-semibold text-slate-900 mt-1 truncate">{face.name || "Unknown"}</p>
+                            <p className="text-[10px] text-slate-600 truncate">{face.student_id || "No ID"}</p>
+                          </div>
+                        ))}
+                        {extractedFaces.length === 0 && (
+                          <p className="text-xs text-slate-500 col-span-full text-center py-6">No extracted faces yet.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-blue-50 border border-blue-300 rounded-lg p-4">
+                        <h5 className="font-bold text-slate-900 mb-3">🎯 Detection Status ({detections.length})</h5>
+                        <div className="max-h-56 overflow-y-auto space-y-2">
+                          {detections.slice(-30).map((det, idx) => {
+                            const student = students.find((s) => s._id === det.student_id);
+                            const timeStr = det.timestamp ? new Date(det.timestamp).toLocaleTimeString() : "";
+                            const displayName = det.student_name || student?.name || det.name || "Unknown";
+                            return (
+                              <div
+                                key={`${det.student_id || "unknown"}-${idx}`}
+                                className="p-2 bg-white rounded border border-blue-200 text-sm"
+                              >
+                                <p className="font-semibold text-slate-900">
+                                  {displayName}{det.student_id ? ` (${det.student_id})` : ""}
+                                </p>
+                                <p className="text-xs text-slate-600">
+                                  {det.frame_num ? `Frame: ${det.frame_num}` : timeStr}
+                                </p>
+                              </div>
+                            );
+                          })}
+                          {detections.length === 0 && (
+                            <p className="text-xs text-slate-500 text-center py-4">Waiting for detections...</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="bg-amber-50 border border-amber-300 rounded-lg p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                          <h5 className="font-bold text-slate-900">🧭 Other Class Recognized</h5>
+                          <button
+                            onClick={() => setAcknowledgedOtherClassIds(new Set())}
+                            className="px-3 py-1.5 text-xs rounded-lg bg-amber-200 text-amber-900 font-semibold hover:bg-amber-300 transition"
+                          >
+                            Clear Hidden
+                          </button>
+                        </div>
+
+                        {otherClassRecognized.filter((entry) => !acknowledgedOtherClassIds.has(entry.studentId)).length > 0 ? (
+                          <div className="max-h-44 overflow-y-auto space-y-2">
+                            {otherClassRecognized
+                              .filter((entry) => !acknowledgedOtherClassIds.has(entry.studentId))
+                              .map((entry) => (
+                                <div
+                                  key={entry.studentId}
+                                  className="flex items-center justify-between gap-3 p-2 bg-white border border-amber-200 rounded-lg"
+                                >
+                                  <div>
+                                    <p className="text-sm font-semibold text-slate-900">{entry.name}</p>
+                                    <p className="text-xs text-slate-600">Student ID: {entry.studentId} • {entry.count} recognitions</p>
+                                  </div>
+                                  <button
+                                    onClick={() =>
+                                      setAcknowledgedOtherClassIds((prev) => {
+                                        const next = new Set(prev);
+                                        next.add(entry.studentId);
+                                        return next;
+                                      })
+                                    }
+                                    className="px-3 py-1.5 text-xs rounded-lg bg-slate-200 text-slate-800 font-semibold hover:bg-slate-300 transition"
+                                  >
+                                    Hide
+                                  </button>
+                                </div>
+                              ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-600">No out-of-class recognized students right now.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white border border-slate-300 rounded-lg p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                      <h5 className="font-bold text-slate-900">📅 Live Camera Attendance for {selectedDate}</h5>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="date"
+                          value={selectedDate}
+                          onChange={(e) => setSelectedDate(e.target.value)}
+                          className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
+                        />
+                        <button
+                          onClick={saveVideoAttendanceToDatabase}
+                          disabled={loading || students.length === 0}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        >
+                          {loading ? "Saving..." : "Save To Database"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-lg">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 sticky top-0">
+                          <tr>
+                            <th className="text-left px-3 py-2 font-semibold text-slate-600">Student</th>
+                            <th className="text-left px-3 py-2 font-semibold text-slate-600">Recognition Count</th>
+                            <th className="text-left px-3 py-2 font-semibold text-slate-600">Status</th>
+                            <th className="text-left px-3 py-2 font-semibold text-slate-600">Override</th>
+                            <th className="text-left px-3 py-2 font-semibold text-slate-600">Details</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {students.map((student) => {
+                            const sid = student._id;
+                            const count = studentRecognitionCount[sid] || 0;
+                            const status = getEffectiveAttendanceStatus(sid);
+                            const isManualOverride = attendanceOverrides[sid] !== undefined;
+                            return (
+                              <tr key={sid} className="border-t border-slate-100">
+                                <td className="px-3 py-2 font-medium text-slate-800">{student.name}</td>
+                                <td className="px-3 py-2 text-slate-600">{count}</td>
+                                <td className="px-3 py-2">
+                                  <span
+                                    className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${
+                                      status === "present"
+                                        ? "bg-green-100 text-green-800"
+                                        : status === "late"
+                                        ? "bg-yellow-100 text-yellow-800"
+                                        : "bg-red-100 text-red-700"
+                                    }`}
+                                  >
+                                    {status === "present" ? "Present" : status === "late" ? "Late" : "Absent"}
+                                  </span>
+                                  {isManualOverride && (
+                                    <span className="ml-2 inline-flex px-2 py-1 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700">
+                                      Manual
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2">
+                                  <select
+                                    value={status}
+                                    onChange={(event) => setAttendanceOverride(sid, event.target.value as AttendanceStatus)}
+                                    className="border border-slate-300 rounded-md px-2 py-1 bg-white text-xs font-semibold"
+                                  >
+                                    <option value="present">Present</option>
+                                    <option value="absent">Absent</option>
+                                    <option value="late">Late</option>
+                                  </select>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <button
+                                    onClick={() => openStudentDetails(sid)}
+                                    className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
+                                  >
+                                    View Details
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {students.length === 0 && (
+                            <tr>
+                              <td colSpan={5} className="px-3 py-6 text-center text-slate-500">No students available for this class.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
               )}
 

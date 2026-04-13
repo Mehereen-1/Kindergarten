@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   LayoutDashboard,
   Users,
@@ -49,34 +50,36 @@ const TeacherSidebar = () => {
   ];
 
   return (
-    <aside className="hidden lg:flex lg:flex-col w-80 bg-[#fefade] rounded-r-[3rem] sticky top-0 h-screen shadow-[12px_0_28px_-12px_rgba(58,57,39,0.08)]">
+    <aside className="hidden lg:flex lg:flex-col w-80 bg-[#fafaeb] rounded-r-[2.25rem] sticky top-0 h-screen shadow-[14px_0_30px_-16px_rgba(54,57,43,0.18)]">
       {/* Logo Section */}
-      <div className="px-8 pt-10 pb-6 text-center border-b border-[#d6d2b5]/40 relative overflow-hidden group">
-        <div className="absolute inset-0 bg-[#f8f5df] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-        
+      <div className="w-full px-4 pt-4 pb-4 relative overflow-hidden group">
+        <div className="absolute inset-0 bg-[#f4f5e4] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+
         <div className="relative z-10">
-          <div className="flex flex-col items-center gap-3 mb-3">
-            <div className="w-20 h-20 rounded-2xl bg-[#d9a777] flex items-center justify-center text-4xl shadow-md">
-              📚
-            </div>
-            <div>
-              <h2 className="text-2xl font-black font-headline text-[#845c32]">Kindergarten</h2>
-              <p className="text-xs text-[#676551] font-semibold mt-0.5">Teacher Panel</p>
+          <div className="flex items-center justify-center">
+            <div className="w-full flex items-center justify-center overflow-hidden">
+              <Image
+                src="/logo_system.png"
+                alt="School logo"
+                width={560}
+                height={180}
+                className="w-full h-auto object-contain"
+                priority
+              />
             </div>
           </div>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-8 px-5 py-8 overflow-y-auto">
+      <nav className="flex-1 space-y-8 px-5 py-7 overflow-y-auto">
         {menuGroups.map((group, idx) => (
           <div key={idx} className="animate-in fade-in slide-in-from-left-5 duration-500" style={{ animationDelay: `${idx * 100}ms` }}>
             {/* Group Title */}
-            <div className="mb-4 pb-3 border-b border-[#d6d2b5]/40">
-              <h3 className="text-xs font-black text-[#676551] uppercase tracking-wider">
+            <div className="mb-4">
+              <h3 className="text-[10px] font-black text-[#636656] uppercase tracking-[0.09em]">
                 {group.title}
               </h3>
-              <div className="h-0.5 w-10 bg-[#d9a777] rounded-full mt-2"></div>
             </div>
 
             {/* Menu Items */}
@@ -84,11 +87,11 @@ const TeacherSidebar = () => {
               {group.items.map((item, itemIdx) => {
                 const Icon = item.icon;
                 const colors = [
-                  "text-[#845c32] bg-[#ede9c8]",
-                  "text-[#5f6843] bg-[#dde7b9]",
-                  "text-[#62674a] bg-[#f6fad5]",
-                  "text-[#845c32] bg-[#fefade]",
-                  "text-[#5f6843] bg-[#ede9c8]",
+                  "text-[#36392b] bg-[#eeefdd]",
+                  "text-[#36392b] bg-[#e8ead5]",
+                  "text-[#36392b] bg-[#f4f5e4]",
+                  "text-[#36392b] bg-[#eeefdd]",
+                  "text-[#36392b] bg-[#e8ead5]",
                 ];
                 const colorClass = colors[itemIdx % colors.length];
 
@@ -96,10 +99,10 @@ const TeacherSidebar = () => {
                   <li key={itemIdx}>
                     <Link
                       href={item.href}
-                      className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-[#3a3927] hover:${colorClass} transition-all duration-300 group relative overflow-hidden`}
+                      className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-[#636656] hover:${colorClass} transition-all duration-300 group relative overflow-hidden`}
                     >
                       {/* Subtle background on hover */}
-                      <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 bg-[#ede9c8]/50 rounded-xl`}></div>
+                      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 bg-[#eeefdd] rounded-xl"></div>
 
                       {/* Icon */}
                       <Icon className="w-5 h-5 group-hover:scale-110 transition-transform duration-300" />
@@ -110,7 +113,7 @@ const TeacherSidebar = () => {
                       </span>
 
                       {/* Right accent line on hover */}
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-[#d9a777] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-[#726246] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     </Link>
                   </li>
                 );
@@ -121,14 +124,14 @@ const TeacherSidebar = () => {
       </nav>
 
       {/* Footer Section */}
-      <div className="p-6 border-t border-[#d6d2b5]/30">
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-[#fefcf5] hover:bg-[#ede9c8] transition-all duration-300 cursor-pointer group shadow-sm">
-          <div className="w-10 h-10 rounded-full bg-[#d9a777] flex items-center justify-center text-[#271300] font-bold shadow-md group-hover:scale-110 transition-transform">
+      <div className="p-6">
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-[#eeefdd] hover:bg-[#e8ead5] transition-all duration-300 cursor-pointer group shadow-[0_8px_20px_rgba(54,57,43,0.06)]">
+          <div className="w-10 h-10 rounded-full bg-[#d7e7d5] flex items-center justify-center text-[#354336] font-bold shadow-sm group-hover:scale-110 transition-transform">
             T
           </div>
           <div>
-            <p className="text-sm font-bold text-[#3a3927]">Teacher</p>
-            <p className="text-xs text-[#676551]">Profile</p>
+            <p className="text-sm font-bold text-[#36392b]">Teacher</p>
+            <p className="text-xs text-[#636656]">Profile</p>
           </div>
         </div>
       </div>
