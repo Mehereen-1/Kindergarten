@@ -18,6 +18,7 @@
 # Standard library
 import builtins
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -25,10 +26,11 @@ import glob
 import uuid
 import base64
 from pathlib import Path
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime
 from typing import List, Optional
 from collections import deque
+from contextvars import ContextVar
 import re
 
 # Third-party
@@ -40,6 +42,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
 from dotenv import load_dotenv
 from bson import ObjectId
+
+os.environ.setdefault("PYTHONUTF8", "1")
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 try:
     from dns import resolver as dns_resolver
@@ -205,45 +215,139 @@ analytics_lock = threading.Lock()
 
 
 # ═══════════════════════════════════════════════════════
-# VIDEO STATE
+# SESSION REGISTRY
 # ═══════════════════════════════════════════════════════
 
-video_state = {
-    "is_running":        False,
-    "stop_event":        threading.Event(),
-    # Items: already-encoded JPEG bytes — stream just passes them through
-    "frame_queue":       deque(maxlen=180),
-    # Items: (frame_number, original_ndarray)
-    "recognition_queue": deque(maxlen=5),
-    # Items: {"bbox", "name", "detected_at_frame"}
-    "latest_results":    [],
-    "current_frame_num": 0,
-    "detections":        deque(maxlen=1000),
-    "video_path":        None,
-    "temp_video_path":   None,
-    "camera_source":     None,
-    "camera_backend":    None,
-    "last_error":        None,
-}
+SESSION_KEY_CONTEXT: ContextVar[str] = ContextVar("attendance_session_key", default="default")
+SESSION_REGISTRY: dict[str, "AttendanceSession"] = {}
+SESSION_REGISTRY_LOCK = threading.Lock()
 
 
-# ═══════════════════════════════════════════════════════
-# VIDEO ANALYTICS
-# ═══════════════════════════════════════════════════════
-
-video_analytics = {
-    "total_frames": 0, "processed_frames": 0,
-    "faces_detected": 0, "matched_faces": 0, "unknown_faces": 0,
-    "scores": [], "fps": 0, "video_duration": 0,
-    "start_time": None, "processing_time": 0,
-}
+def _normalize_session_key(session_key: Optional[str]) -> str:
+    key = str(session_key or "default").strip()
+    return key or "default"
 
 
-# ═══════════════════════════════════════════════════════
-# EXTRACTED FACES
-# ═══════════════════════════════════════════════════════
+@contextmanager
+def _session_scope(session_key: Optional[str]):
+    token = SESSION_KEY_CONTEXT.set(_normalize_session_key(session_key))
+    try:
+        yield
+    finally:
+        SESSION_KEY_CONTEXT.reset(token)
 
-extracted_faces = {"faces": [], "max_faces": 48}
+
+class AttendanceSession:
+    def __init__(self):
+        self.video_state = {
+            "is_running": False,
+            "stop_event": threading.Event(),
+            "frame_queue": deque(maxlen=180),
+            "recognition_queue": deque(maxlen=5),
+            "latest_results": [],
+            "current_frame_num": 0,
+            "detections": deque(maxlen=1000),
+            "video_path": None,
+            "temp_video_path": None,
+            "camera_source": None,
+            "camera_backend": None,
+            "last_error": None,
+        }
+        self.video_analytics = {
+            "total_frames": 0, "processed_frames": 0,
+            "faces_detected": 0, "matched_faces": 0, "unknown_faces": 0,
+            "scores": [], "fps": 0, "video_duration": 0,
+            "start_time": None, "processing_time": 0,
+        }
+        self.extracted_faces = {"faces": [], "max_faces": 48}
+        self.attendance_tracker = SlidingWindowTracker()
+        self.bbox_smoother = BoundingBoxSmoother()
+        self.browser_liveness_engine = LivenessEngine()
+
+
+def _get_session(session_key: Optional[str] = None) -> AttendanceSession:
+    key = _normalize_session_key(session_key or SESSION_KEY_CONTEXT.get())
+    with SESSION_REGISTRY_LOCK:
+        session = SESSION_REGISTRY.get(key)
+        if session is None:
+            session = AttendanceSession()
+            SESSION_REGISTRY[key] = session
+        return session
+
+
+class SessionDictProxy:
+    def __init__(self, attr_name: str):
+        self._attr_name = attr_name
+
+    def _target(self):
+        return getattr(_get_session(), self._attr_name)
+
+    def __getitem__(self, key):
+        return self._target()[key]
+
+    def __setitem__(self, key, value):
+        self._target()[key] = value
+
+    def __delitem__(self, key):
+        del self._target()[key]
+
+    def __contains__(self, key):
+        return key in self._target()
+
+    def __len__(self):
+        return len(self._target())
+
+    def __iter__(self):
+        return iter(self._target())
+
+    def get(self, key, default=None):
+        return self._target().get(key, default)
+
+    def update(self, *args, **kwargs):
+        return self._target().update(*args, **kwargs)
+
+    def clear(self):
+        return self._target().clear()
+
+    def setdefault(self, *args, **kwargs):
+        return self._target().setdefault(*args, **kwargs)
+
+    def keys(self):
+        return self._target().keys()
+
+    def values(self):
+        return self._target().values()
+
+    def items(self):
+        return self._target().items()
+
+
+class SessionObjectProxy:
+    def __init__(self, attr_name: str):
+        self._attr_name = attr_name
+
+    def _target(self):
+        return getattr(_get_session(), self._attr_name)
+
+    def __getattr__(self, item):
+        return getattr(self._target(), item)
+
+    def __setattr__(self, key, value):
+        if key.startswith("_"):
+            object.__setattr__(self, key, value)
+        else:
+            setattr(self._target(), key, value)
+
+
+video_state = SessionDictProxy("video_state")
+video_analytics = SessionDictProxy("video_analytics")
+extracted_faces = SessionDictProxy("extracted_faces")
+attendance_tracker = SessionObjectProxy("attendance_tracker")
+bbox_smoother = SessionObjectProxy("bbox_smoother")
+
+
+def _current_browser_liveness_engine():
+    return _get_session().browser_liveness_engine
 
 
 # ═══════════════════════════════════════════════════════
@@ -760,7 +864,7 @@ def camera_playback_thread(camera_source, draw_boxes_func, preferred_backend: Op
 # STREAM FRAMES
 # ═══════════════════════════════════════════════════════
 
-def stream_frames():
+def stream_frames(session_key: Optional[str] = None):
     """
     Yields JPEG frames at a steady pace.
 
@@ -775,6 +879,7 @@ def stream_frames():
     last_jpeg: bytes | None = None          # last real frame for hold-repeat
     idle_since: float | None = None         # when queue first went empty
 
+    token = SESSION_KEY_CONTEXT.set(_normalize_session_key(session_key or SESSION_KEY_CONTEXT.get()))
     try:
         while True:
             t0 = time.perf_counter()
@@ -817,6 +922,8 @@ def stream_frames():
 
     except GeneratorExit:
         pass
+    finally:
+        SESSION_KEY_CONTEXT.reset(token)
 
 
 # ═══════════════════════════════════════════════════════
@@ -1079,7 +1186,6 @@ except Exception as e:
 
 attendance_tracker = SlidingWindowTracker()
 bbox_smoother = BoundingBoxSmoother()
-browser_liveness_engine = LivenessEngine()
 
 
 # ═══════════════════════════════════════════════════════
@@ -1282,10 +1388,21 @@ def _draw_boxes_wrapper(frame, results, orig_w, orig_h, current_frame):
 
 
 def _start_processing_threads(playback_target, playback_args):
-    threading.Thread(target=playback_target, args=playback_args, daemon=True).start()
-    threading.Thread(target=recognition_thread, args=(
-        video_state, video_analytics, analytics_lock, results_lock,
-        engine, attendance_tracker, _save_attendance_wrapper, _extract_face_wrapper
+    session_key = _normalize_session_key(SESSION_KEY_CONTEXT.get())
+
+    def run_in_session(target, args):
+        token = SESSION_KEY_CONTEXT.set(session_key)
+        try:
+            target(*args)
+        finally:
+            SESSION_KEY_CONTEXT.reset(token)
+
+    threading.Thread(target=run_in_session, args=(playback_target, playback_args), daemon=True).start()
+    threading.Thread(target=run_in_session, args=(
+        recognition_thread, (
+            video_state, video_analytics, analytics_lock, results_lock,
+            engine, attendance_tracker, _save_attendance_wrapper, _extract_face_wrapper
+        )
     ), daemon=True).start()
 
 
@@ -1316,10 +1433,10 @@ def _stop_and_clear():
 
 
 def _prepare_browser_camera_session():
-    global browser_liveness_engine
+    session = _get_session()
 
     _stop_and_clear()
-    browser_liveness_engine = LivenessEngine()
+    session.browser_liveness_engine = LivenessEngine()
 
     video_state["stop_event"].clear()
     video_state["is_running"] = True
@@ -1335,6 +1452,8 @@ def _prepare_browser_camera_session():
 def _process_browser_frame(frame: np.ndarray, frame_num: int):
     if engine is None:
         raise RuntimeError("Face engine is not ready")
+
+    browser_liveness_engine = _current_browser_liveness_engine()
 
     orig_h, orig_w = frame.shape[:2]
     small = cv2.resize(frame, (RECOG_WIDTH, RECOG_HEIGHT))
@@ -1512,18 +1631,18 @@ def health_check():
 # ═══════════════════════════════════════════════════════
 
 @app.get("/video-stream-processed")
-def video_stream_processed():
+def video_stream_processed(sessionKey: str = Query("default", alias="sessionKey")):
     return StreamingResponse(
-        stream_frames(),
+        stream_frames(sessionKey),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
 
 
 @app.get("/video")
-def video_stream_live_alias():
+def video_stream_live_alias(sessionKey: str = Query("default", alias="sessionKey")):
     # Frontend live tab expects /video; keep it as an alias to the processed stream.
     return StreamingResponse(
-        stream_frames(),
+        stream_frames(sessionKey),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
 
@@ -1533,161 +1652,167 @@ def video_stream_live_alias():
 # ═══════════════════════════════════════════════════════
 
 @app.post("/process-video")
-async def process_video(video: UploadFile = File(...)):
-    if not _service_ready():
-        return _processing_not_ready_response()
+async def process_video(video: UploadFile = File(...), sessionKey: str = Query("default", alias="sessionKey")):
+    with _session_scope(sessionKey):
+        if not _service_ready():
+            return _processing_not_ready_response()
 
-    _stop_and_clear()
+        _stop_and_clear()
 
-    temp_file_kwargs = {
-        "delete": False,
-        "suffix": ".mp4",
-        "prefix": "attendance-upload-",
-    }
-    if TMP_UPLOAD_DIR:
-        temp_file_kwargs["dir"] = TMP_UPLOAD_DIR
+        temp_file_kwargs = {
+            "delete": False,
+            "suffix": ".mp4",
+            "prefix": "attendance-upload-",
+        }
+        if TMP_UPLOAD_DIR:
+            temp_file_kwargs["dir"] = TMP_UPLOAD_DIR
 
-    with tempfile.NamedTemporaryFile(**temp_file_kwargs) as tmp:
-        tmp.write(await video.read())
-        tmp_path = tmp.name
+        with tempfile.NamedTemporaryFile(**temp_file_kwargs) as tmp:
+            tmp.write(await video.read())
+            tmp_path = tmp.name
 
-    video_state["video_path"] = tmp_path
-    video_state["temp_video_path"] = tmp_path
-    video_state["stop_event"].clear()
-    video_state["is_running"] = True
-    _reset_video_analytics()
+        video_state["video_path"] = tmp_path
+        video_state["temp_video_path"] = tmp_path
+        video_state["stop_event"].clear()
+        video_state["is_running"] = True
+        _reset_video_analytics()
 
-    _start_processing_threads(playback_thread, (tmp_path, _draw_boxes_wrapper))
-    return {"success": True}
+        _start_processing_threads(playback_thread, (tmp_path, _draw_boxes_wrapper))
+        return {"success": True}
 
 
 @app.post("/start-camera")
-def start_camera(camera_index: Optional[int] = None, camera_source: Optional[str] = None):
-    if not CAMERA_ENABLED:
-        return JSONResponse(
-            {
-                "success": False,
-                "error": "Live camera mode is disabled for this deployment. Set ENABLE_CAMERA=true on the machine that should open the camera.",
-            },
-            status_code=400,
+def start_camera(camera_index: Optional[int] = None, camera_source: Optional[str] = None, sessionKey: str = Query("default", alias="sessionKey")):
+    with _session_scope(sessionKey):
+        if not CAMERA_ENABLED:
+            return JSONResponse(
+                {
+                    "success": False,
+                    "error": "Live camera mode is disabled for this deployment. Set ENABLE_CAMERA=true on the machine that should open the camera.",
+                },
+                status_code=400,
+            )
+
+        if not _service_ready():
+            return _processing_not_ready_response()
+
+        _stop_and_clear()
+
+        resolved_camera_source = _normalize_camera_source(
+            camera_index=camera_index,
+            camera_source=camera_source,
         )
+        source_label = _camera_source_label(resolved_camera_source)
 
-    if not _service_ready():
-        return _processing_not_ready_response()
+        test_cap, backend_name, open_error = _open_camera_capture(resolved_camera_source)
+        if test_cap is None:
+            video_state["camera_source"] = source_label
+            video_state["camera_backend"] = backend_name
+            video_state["last_error"] = open_error
+            return {
+                "success": False,
+                "error": f"Camera source {source_label} not accessible. {open_error}",
+            }
 
-    _stop_and_clear()
+        test_cap.release()
 
-    resolved_camera_source = _normalize_camera_source(
-        camera_index=camera_index,
-        camera_source=camera_source,
-    )
-    source_label = _camera_source_label(resolved_camera_source)
-
-    test_cap, backend_name, open_error = _open_camera_capture(resolved_camera_source)
-    if test_cap is None:
+        video_state["video_path"] = f"camera:{source_label}"
+        video_state["temp_video_path"] = None
+        video_state["stop_event"].clear()
+        video_state["is_running"] = True
         video_state["camera_source"] = source_label
         video_state["camera_backend"] = backend_name
-        video_state["last_error"] = open_error
+        video_state["last_error"] = None
+        _reset_video_analytics()
+
+        _start_processing_threads(
+            camera_playback_thread,
+            (resolved_camera_source, _draw_boxes_wrapper, backend_name),
+        )
         return {
-            "success": False,
-            "error": f"Camera source {source_label} not accessible. {open_error}",
+            "success": True,
+            "camera_source": source_label,
+            "camera_backend": backend_name,
         }
-
-    test_cap.release()
-
-    video_state["video_path"] = f"camera:{source_label}"
-    video_state["temp_video_path"] = None
-    video_state["stop_event"].clear()
-    video_state["is_running"] = True
-    video_state["camera_source"] = source_label
-    video_state["camera_backend"] = backend_name
-    video_state["last_error"] = None
-    _reset_video_analytics()
-
-    _start_processing_threads(
-        camera_playback_thread,
-        (resolved_camera_source, _draw_boxes_wrapper, backend_name),
-    )
-    return {
-        "success": True,
-        "camera_source": source_label,
-        "camera_backend": backend_name,
-    }
 
 
 @app.post("/start-browser-camera")
-def start_browser_camera():
-    if not _service_ready():
-        return _processing_not_ready_response()
+def start_browser_camera(sessionKey: str = Query("default", alias="sessionKey")):
+    with _session_scope(sessionKey):
+        if not _service_ready():
+            return _processing_not_ready_response()
 
-    _prepare_browser_camera_session()
-    return {
-        "success": True,
-        "camera_source": "browser",
-        "camera_backend": "browser",
-    }
+        _prepare_browser_camera_session()
+        return {
+            "success": True,
+            "camera_source": "browser",
+            "camera_backend": "browser",
+        }
 
 
 @app.post("/process-browser-frame")
-async def process_browser_frame(file: UploadFile = File(...)):
-    if not _service_ready():
-        return _processing_not_ready_response()
+async def process_browser_frame(file: UploadFile = File(...), sessionKey: str = Query("default", alias="sessionKey")):
+    with _session_scope(sessionKey):
+        if not _service_ready():
+            return _processing_not_ready_response()
 
-    if not video_state["is_running"] or video_state.get("camera_source") != "browser":
-        return JSONResponse(
-            {
-                "success": False,
-                "error": "Browser camera session is not active. Call /start-browser-camera first.",
-            },
-            status_code=400,
-        )
+        if not video_state["is_running"] or video_state.get("camera_source") != "browser":
+            return JSONResponse(
+                {
+                    "success": False,
+                    "error": "Browser camera session is not active. Call /start-browser-camera first.",
+                },
+                status_code=400,
+            )
 
-    image = decode_image(await file.read())
-    if image is None:
-        return JSONResponse(
-            {
-                "success": False,
-                "error": "Could not decode browser camera frame.",
-            },
-            status_code=400,
-        )
+        image = decode_image(await file.read())
+        if image is None:
+            return JSONResponse(
+                {
+                    "success": False,
+                    "error": "Could not decode browser camera frame.",
+                },
+                status_code=400,
+            )
 
-    frame_num = int(video_state.get("current_frame_num", 0)) + 1
-    video_state["current_frame_num"] = frame_num
+        frame_num = int(video_state.get("current_frame_num", 0)) + 1
+        video_state["current_frame_num"] = frame_num
 
-    try:
-        detections = _process_browser_frame(image, frame_num)
-    except Exception as exc:
-        video_state["last_error"] = str(exc)
-        return JSONResponse(
-            {
-                "success": False,
-                "error": f"Browser frame processing failed: {exc}",
-            },
-            status_code=500,
-        )
+        try:
+            detections = _process_browser_frame(image, frame_num)
+        except Exception as exc:
+            video_state["last_error"] = str(exc)
+            return JSONResponse(
+                {
+                    "success": False,
+                    "error": f"Browser frame processing failed: {exc}",
+                },
+                status_code=500,
+            )
 
-    return {
-        "success": True,
-        "frame_num": frame_num,
-        "frame_width": int(image.shape[1]),
-        "frame_height": int(image.shape[0]),
-        "detections": detections,
-        "confirmed": attendance_tracker.get_status()["confirmed"],
-    }
+        return {
+            "success": True,
+            "frame_num": frame_num,
+            "frame_width": int(image.shape[1]),
+            "frame_height": int(image.shape[0]),
+            "detections": detections,
+            "confirmed": attendance_tracker.get_status()["confirmed"],
+        }
 
 
 @app.post("/stop-camera")
-def stop_camera():
-    _stop_and_clear()
-    return {"success": True}
+def stop_camera(sessionKey: str = Query("default", alias="sessionKey")):
+    with _session_scope(sessionKey):
+        _stop_and_clear()
+        return {"success": True}
 
 
 @app.post("/stop-processing")
-def stop_processing():
-    _stop_and_clear()
-    return {"success": True, "detections": len(video_state["detections"]),
-            "confirmed": attendance_tracker.get_status()["confirmed"]}
+def stop_processing(sessionKey: str = Query("default", alias="sessionKey")):
+    with _session_scope(sessionKey):
+        _stop_and_clear()
+        return {"success": True, "detections": len(video_state["detections"]),
+                "confirmed": attendance_tracker.get_status()["confirmed"]}
 
 
 # ═══════════════════════════════════════════════════════
@@ -1705,9 +1830,10 @@ def clear_attendance():
 
 
 @app.get("/video-detections")
-def get_video_detections():
-    return {"detections": list(video_state["detections"]),
-            "is_processing": video_state["is_running"]}
+def get_video_detections(sessionKey: str = Query("default", alias="sessionKey")):
+    with _session_scope(sessionKey):
+        return {"detections": list(video_state["detections"]),
+                "is_processing": video_state["is_running"]}
 
 
 # ═══════════════════════════════════════════════════════
@@ -1846,91 +1972,97 @@ async def test_recognition(file: UploadFile = File(...)):
 # ═══════════════════════════════════════════════════════
 
 @app.get("/analytics")
-def get_analytics():
-    with analytics_lock:
-        a = {**video_analytics}
-    a["match_rate"] = (a["matched_faces"] / max(1, a["faces_detected"])) * 100
-    scores = a.get("scores", [])
-    a["score_stats"] = ({
-        "min": min(scores), "max": max(scores),
-        "avg": sum(scores) / len(scores), "count": len(scores),
-    } if scores else {"min": 0, "max": 0, "avg": 0, "count": 0})
-    a["current_frame"] = video_state["current_frame_num"]
-    a["is_processing"] = video_state["is_running"]
-    return a
+def get_analytics(sessionKey: str = Query("default", alias="sessionKey")):
+    with _session_scope(sessionKey):
+        with analytics_lock:
+            a = {**video_analytics}
+        a["match_rate"] = (a["matched_faces"] / max(1, a["faces_detected"])) * 100
+        scores = a.get("scores", [])
+        a["score_stats"] = ({
+            "min": min(scores), "max": max(scores),
+            "avg": sum(scores) / len(scores), "count": len(scores),
+        } if scores else {"min": 0, "max": 0, "avg": 0, "count": 0})
+        a["current_frame"] = video_state["current_frame_num"]
+        a["is_processing"] = video_state["is_running"]
+        return a
 
 
 @app.get("/extracted-faces")
-def get_extracted_faces():
-    with faces_lock:
-        return {
-            "faces": list(extracted_faces["faces"]),
-            "total": len(extracted_faces["faces"]),
-            "is_processing": video_state["is_running"],
-        }
+def get_extracted_faces(sessionKey: str = Query("default", alias="sessionKey")):
+    with _session_scope(sessionKey):
+        with faces_lock:
+            return {
+                "faces": list(extracted_faces["faces"]),
+                "total": len(extracted_faces["faces"]),
+                "is_processing": video_state["is_running"],
+            }
 
 
 @app.post("/clear-extracted-faces")
-def clear_extracted_faces_ep():
-    with faces_lock:
-        extracted_faces["faces"] = []
-    return {"success": True}
+def clear_extracted_faces_ep(sessionKey: str = Query("default", alias="sessionKey")):
+    with _session_scope(sessionKey):
+        with faces_lock:
+            extracted_faces["faces"] = []
+        return {"success": True}
 
 
 @app.get("/debug")
-def debug_status():
-    multiframe_config = {"window": SLIDING_WINDOW_SIZE, "min": MIN_CONFIRMATIONS}
-    return {
-        "ready": _service_ready(),
-        "mongodb_connected": db is not None,
-        "mongo_error": mongo_error,
-        "face_engine_ready": engine is not None and engine_error is None,
-        "face_engine_error": engine_error,
-        "embeddings_loaded": _embedding_count(),
-        "unique_students": _student_count(),
-        "student_names": _student_names(),
-        "is_processing": video_state["is_running"],
-        "frame_queue_size": len(video_state["frame_queue"]),
-        "recognition_queue_size": len(video_state["recognition_queue"]),
-        "model": FACE_MODEL_NAME,
-        "threshold": RECOG_THRESHOLD,
-        "camera_enabled": CAMERA_ENABLED,
-        "camera_default_source": _camera_source_label(_normalize_camera_source()),
-        "camera_backend_setting": CAMERA_BACKEND,
-        "camera_backend_active": video_state["camera_backend"],
-        "camera_source_active": video_state["camera_source"],
-        "camera_last_error": video_state["last_error"],
-        "camera_open_timeout_seconds": CAMERA_OPEN_TIMEOUT_SECONDS,
-        "camera_warmup_frames": CAMERA_WARMUP_FRAMES,
-        "azure_detected": IS_AZURE,
-        "multiframe": multiframe_config,
-        "multiframe_config": {
-            "window_size": SLIDING_WINDOW_SIZE,
-            "min_confirmations": MIN_CONFIRMATIONS,
-        },
-    }
+def debug_status(sessionKey: str = Query("default", alias="sessionKey")):
+    with _session_scope(sessionKey):
+        multiframe_config = {"window": SLIDING_WINDOW_SIZE, "min": MIN_CONFIRMATIONS}
+        return {
+            "ready": _service_ready(),
+            "mongodb_connected": db is not None,
+            "mongo_error": mongo_error,
+            "face_engine_ready": engine is not None and engine_error is None,
+            "face_engine_error": engine_error,
+            "embeddings_loaded": _embedding_count(),
+            "unique_students": _student_count(),
+            "student_names": _student_names(),
+            "is_processing": video_state["is_running"],
+            "frame_queue_size": len(video_state["frame_queue"]),
+            "recognition_queue_size": len(video_state["recognition_queue"]),
+            "model": FACE_MODEL_NAME,
+            "threshold": RECOG_THRESHOLD,
+            "camera_enabled": CAMERA_ENABLED,
+            "camera_default_source": _camera_source_label(_normalize_camera_source()),
+            "camera_backend_setting": CAMERA_BACKEND,
+            "camera_backend_active": video_state["camera_backend"],
+            "camera_source_active": video_state["camera_source"],
+            "camera_last_error": video_state["last_error"],
+            "camera_open_timeout_seconds": CAMERA_OPEN_TIMEOUT_SECONDS,
+            "camera_warmup_frames": CAMERA_WARMUP_FRAMES,
+            "azure_detected": IS_AZURE,
+            "multiframe": multiframe_config,
+            "multiframe_config": {
+                "window_size": SLIDING_WINDOW_SIZE,
+                "min_confirmations": MIN_CONFIRMATIONS,
+            },
+        }
 
 
 @app.get("/tracker-status")
-def tracker_status():
-    status = attendance_tracker.get_status()
-    return {
-        "is_processing": video_state["is_running"],
-        "confirmed_students": status["confirmed"],
-        "pending_students": status["pending"],
-        "config": {"window_size": SLIDING_WINDOW_SIZE,
-                   "min_confirmations": MIN_CONFIRMATIONS,
-                   "threshold": RECOG_THRESHOLD},
-    }
+def tracker_status(sessionKey: str = Query("default", alias="sessionKey")):
+    with _session_scope(sessionKey):
+        status = attendance_tracker.get_status()
+        return {
+            "is_processing": video_state["is_running"],
+            "confirmed_students": status["confirmed"],
+            "pending_students": status["pending"],
+            "config": {"window_size": SLIDING_WINDOW_SIZE,
+                       "min_confirmations": MIN_CONFIRMATIONS,
+                       "threshold": RECOG_THRESHOLD},
+        }
 
 
 @app.post("/reload-embeddings")
-def reload_embeddings():
-    if db is None or engine is None:
-        return _processing_not_ready_response()
-    engine.load_embeddings_from_db(db)
-    return {"success": True, "embeddings_loaded": _embedding_count(),
-            "unique_students": _student_count()}
+def reload_embeddings(sessionKey: str = Query("default", alias="sessionKey")):
+    with _session_scope(sessionKey):
+        if db is None or engine is None:
+            return _processing_not_ready_response()
+        engine.load_embeddings_from_db(db)
+        return {"success": True, "embeddings_loaded": _embedding_count(),
+                "unique_students": _student_count()}
 
 
 # ═══════════════════════════════════════════════════════

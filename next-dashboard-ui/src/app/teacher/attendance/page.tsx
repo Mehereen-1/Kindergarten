@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState, useEffect, useRef } from "react";
+import { Suspense, useMemo, useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import TeacherTopBar from "@/app/components/TeacherTopBar";
 import { Upload, Camera, Database, Send } from "lucide-react";
@@ -53,6 +53,30 @@ interface StudentDetailsData {
 }
 
 const CCTV_BACKEND_URL = getClientCctvBackendUrl();
+const ATTENDANCE_SESSION_STORAGE_KEY = "kindervision-attendance-session-key";
+
+function getAttendanceSessionKey() {
+  if (typeof window === "undefined") {
+    return "default";
+  }
+
+  const existing = window.sessionStorage.getItem(ATTENDANCE_SESSION_STORAGE_KEY);
+  if (existing) {
+    return existing;
+  }
+
+  const nextKey = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  window.sessionStorage.setItem(ATTENDANCE_SESSION_STORAGE_KEY, nextKey);
+  return nextKey;
+}
+
+function buildCctvUrl(path: string) {
+  const base = CCTV_BACKEND_URL.replace(/\/+$/, "");
+  const resolvedPath = path.startsWith("/") ? path : `/${path}`;
+  const url = new URL(`${base}${resolvedPath}`, typeof window !== "undefined" ? window.location.origin : "http://localhost:3000");
+  url.searchParams.set("sessionKey", getAttendanceSessionKey());
+  return url.toString();
+}
 
 function AttendancePageContent() {
   const { user, loading: authLoading } = useAuth();
@@ -172,18 +196,18 @@ function AttendancePageContent() {
     detectionsRef.current = detections;
   }, [detections]);
 
-  const clearLiveConfirmation = () => {
+  const clearLiveConfirmation = useCallback(() => {
     if (confirmationTimeoutRef.current !== null) {
       window.clearTimeout(confirmationTimeoutRef.current);
       confirmationTimeoutRef.current = null;
     }
     setLiveConfirmationMessage("");
-  };
+  }, []);
 
-  const resetLiveConfirmationState = () => {
+  const resetLiveConfirmationState = useCallback(() => {
     clearLiveConfirmation();
     confirmedPresenceIdsRef.current.clear();
-  };
+  }, [clearLiveConfirmation]);
 
   const playPresenceConfirmationTone = async () => {
     if (typeof window === "undefined") return;
@@ -294,7 +318,7 @@ function AttendancePageContent() {
     }));
   };
 
-  const applyDetectionSnapshot = (rawDetections: any[]) => {
+  const applyDetectionSnapshot = useCallback((rawDetections: any[]) => {
     const detectionsArray = Array.isArray(rawDetections)
       ? rawDetections
       : Array.isArray((rawDetections as any)?.detections)
@@ -330,7 +354,7 @@ function AttendancePageContent() {
           .map(([sid]) => sid)
       )
     );
-  };
+  }, []);
 
   const openStudentDetails = async (studentId: string) => {
     setStudentDetailsId(studentId);
@@ -404,7 +428,7 @@ function AttendancePageContent() {
         audioContextRef.current = null;
       }
     };
-  }, []);
+  }, [clearLiveConfirmation]);
 
   // Load classes assigned to current teacher
   useEffect(() => {
@@ -451,7 +475,7 @@ function AttendancePageContent() {
     };
 
     loadClasses();
-  }, [user?.id, authLoading, academicYear, preselectedClassId]);
+  }, [user?.id, authLoading, academicYear, preselectedClassId, selectedClassId]);
 
   // Load selected class students into attendance workspace
   useEffect(() => {
@@ -490,8 +514,8 @@ function AttendancePageContent() {
       interval = setInterval(async () => {
         try {
           const [detRes, facesRes] = await Promise.all([
-            fetch(`${CCTV_BACKEND_URL}/video-detections`, { method: "GET" }),
-            fetch(`${CCTV_BACKEND_URL}/extracted-faces`, { method: "GET" }),
+            fetch(buildCctvUrl("/video-detections"), { method: "GET" }),
+            fetch(buildCctvUrl("/extracted-faces"), { method: "GET" }),
           ]);
 
           const detData = await detRes.json();
@@ -511,13 +535,25 @@ function AttendancePageContent() {
     return () => {
       if (interval) clearInterval(interval as unknown as NodeJS.Timeout);
     };
-  }, [cameraActive, cctvMode]);
+  }, [cameraActive, cctvMode, applyDetectionSnapshot]);
 
   useEffect(() => {
     if (activeTab !== "cctv" && cameraActive) {
-      void stopBrowserCamera();
+      setLoading(true);
+      setCameraActive(false);
+      stopBrowserCaptureLoop();
+      stopBrowserPreviewStream();
+      fetch(buildCctvUrl("/stop-camera"), {
+        method: "POST",
+      }).catch((err) => console.error("Error stopping browser camera on tab switch:", err));
+      setLiveOverlayDetections([]);
+      setLiveFrameSize({ width: 0, height: 0 });
+      setAcknowledgedOtherClassIds(new Set());
+      resetLiveConfirmationState();
+      seenAttendanceIds.current.clear();
+      setLoading(false);
     }
-  }, [activeTab, cameraActive]);
+  }, [activeTab, cameraActive, resetLiveConfirmationState]);
 
   useEffect(() => {
     if (!cameraActive || cctvMode !== "live") return;
@@ -835,7 +871,7 @@ function AttendancePageContent() {
       const formData = new FormData();
       formData.append("file", blob, "browser-frame.jpg");
 
-      const response = await fetch(`${CCTV_BACKEND_URL}/process-browser-frame`, {
+      const response = await fetch(buildCctvUrl("/process-browser-frame"), {
         method: "POST",
         body: formData,
       });
@@ -878,7 +914,7 @@ function AttendancePageContent() {
       
       // Stop processing if still active
       if (isVideoProcessing) {
-        fetch(`${CCTV_BACKEND_URL}/stop-processing`, { method: "POST" }).catch(err => 
+        fetch(buildCctvUrl("/stop-processing"), { method: "POST" }).catch(err => 
           console.error("Error stopping processing on unmount:", err)
         );
       }
@@ -1033,7 +1069,7 @@ function AttendancePageContent() {
 
       // Reload embeddings
       try {
-        const reloadRes = await fetch(`${CCTV_BACKEND_URL}/reload-embeddings`, {
+        const reloadRes = await fetch(buildCctvUrl("/reload-embeddings"), {
           method: 'POST',
         });
         const reloadData = await reloadRes.json();
@@ -1096,7 +1132,7 @@ function AttendancePageContent() {
         // Reload embeddings from backend
         console.log("🔄 Reloading facial embeddings from backend...");
         try {
-          const reloadRes = await fetch(`${CCTV_BACKEND_URL}/reload-embeddings`, {
+          const reloadRes = await fetch(buildCctvUrl("/reload-embeddings"), {
             method: "POST",
           });
           const reloadData = await reloadRes.json();
@@ -1250,7 +1286,7 @@ interface CCTVTabProps {
     setLoading(true);
     setMessage("");
     try {
-      const res = await fetch(`${CCTV_BACKEND_URL}/start-camera`, {
+      const res = await fetch(buildCctvUrl("/start-camera"), {
         method: "POST",
       });
       const { data, looksLikeHtml } = await parseApiResponse(res);
@@ -1281,7 +1317,7 @@ interface CCTVTabProps {
     // Turn off live polling immediately so local snapshot stays intact.
     setCameraActive(false);
     try {
-      await fetch(`${CCTV_BACKEND_URL}/stop-camera`, {
+      await fetch(buildCctvUrl("/stop-camera"), {
         method: "POST",
       });
       setMessage("✅ Camera stopped");
@@ -1315,7 +1351,7 @@ interface CCTVTabProps {
         await liveVideoRef.current.play().catch(() => undefined);
       }
 
-      const response = await fetch(`${CCTV_BACKEND_URL}/start-browser-camera`, {
+      const response = await fetch(buildCctvUrl("/start-browser-camera"), {
         method: "POST",
       });
       const { data: result, looksLikeHtml } = await parseApiResponse(response);
@@ -1360,14 +1396,14 @@ interface CCTVTabProps {
     }
   };
 
-  const stopBrowserCamera = async () => {
+  async function stopBrowserCamera() {
     setLoading(true);
     // Turn off live polling immediately so local snapshot stays intact.
     setCameraActive(false);
     try {
       stopBrowserCaptureLoop();
       stopBrowserPreviewStream();
-      await fetch(`${CCTV_BACKEND_URL}/stop-camera`, {
+      await fetch(buildCctvUrl("/stop-camera"), {
         method: "POST",
       });
       setLiveOverlayDetections([]);
@@ -1381,7 +1417,7 @@ interface CCTVTabProps {
       seenAttendanceIds.current.clear();
       setLoading(false);
     }
-  };
+  }
 
   // Stop video processing
   const stopProcessing = async () => {
@@ -1396,7 +1432,7 @@ interface CCTVTabProps {
     }
     
     try {
-      await fetch(`${CCTV_BACKEND_URL}/stop-processing`, {
+      await fetch(buildCctvUrl("/stop-processing"), {
         method: "POST",
       });
       console.log("Processing stopped");
@@ -1426,7 +1462,7 @@ interface CCTVTabProps {
       const formData = new FormData();
       formData.append("video", file);
 
-      const response = await fetch(`${CCTV_BACKEND_URL}/process-video`, {
+      const response = await fetch(buildCctvUrl("/process-video"), {
         method: "POST",
         body: formData,
       });
@@ -1442,7 +1478,7 @@ interface CCTVTabProps {
       }
 
       if (response.ok) {
-        await fetch(`${CCTV_BACKEND_URL}/clear-extracted-faces`, {
+        await fetch(buildCctvUrl("/clear-extracted-faces"), {
           method: "POST",
         }).catch(() => undefined);
 
@@ -1456,7 +1492,7 @@ interface CCTVTabProps {
         setMessage(`✅ Video processing started. Displaying detections in real-time...`);
         
         // Point to the processed video stream from backend
-        setProcessedVideoUrl(`${CCTV_BACKEND_URL}/video-stream-processed`);
+        setProcessedVideoUrl(buildCctvUrl("/video-stream-processed"));
         
         // Poll for detection results
         let lastDetectionCount = 0;
@@ -1464,8 +1500,8 @@ interface CCTVTabProps {
         const pollInterval = setInterval(async () => {
           try {
             const [detRes, facesRes] = await Promise.all([
-              fetch(`${CCTV_BACKEND_URL}/video-detections`, { method: "GET" }),
-              fetch(`${CCTV_BACKEND_URL}/extracted-faces`, { method: "GET" }),
+              fetch(buildCctvUrl("/video-detections"), { method: "GET" }),
+              fetch(buildCctvUrl("/extracted-faces"), { method: "GET" }),
             ]);
             const detData = await detRes.json();
             const facesData = await facesRes.json();
@@ -1668,7 +1704,7 @@ interface CCTVTabProps {
       setMessage("❌ Please select a class before exporting reports.");
       return;
     }
-    const url = `${CCTV_BACKEND_URL}/export/daily?class=${encodeURIComponent(className)}&date=${encodeURIComponent(exportDate)}`;
+    const url = buildCctvUrl(`/export/daily?class=${encodeURIComponent(className)}&date=${encodeURIComponent(exportDate)}`);
     window.open(url, "_blank");
     setMessage(`✅ Daily report requested for ${className} on ${exportDate}`);
   };
@@ -1680,7 +1716,7 @@ interface CCTVTabProps {
       setMessage("❌ Please select a class before exporting reports.");
       return;
     }
-    const url = `${CCTV_BACKEND_URL}/export/monthly?class=${encodeURIComponent(className)}&month=${encodeURIComponent(exportMonth)}&year=${encodeURIComponent(exportYear)}`;
+    const url = buildCctvUrl(`/export/monthly?class=${encodeURIComponent(className)}&month=${encodeURIComponent(exportMonth)}&year=${encodeURIComponent(exportYear)}`);
     window.open(url, "_blank");
     setMessage(`✅ Monthly report requested for ${className} (${exportYear}-${exportMonth})`);
   };

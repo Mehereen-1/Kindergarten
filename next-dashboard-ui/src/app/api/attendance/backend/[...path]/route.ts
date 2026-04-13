@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerCctvBackendUrl } from '@/lib/serverConfig';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
   'keep-alive',

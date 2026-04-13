@@ -10,13 +10,24 @@ const backendCwd = path.join(rootDir, 'attendance_cctv', 'backend');
 const configuredPython = process.env.ATTENDANCE_BACKEND_PYTHON?.trim();
 const pythonCandidates = [
   configuredPython,
+  path.join(rootDir, 'attendance_cctv', '.venv', 'Scripts', 'python.exe'),
+  path.join(rootDir, 'attendance_cctv', 'backend', '.venv', 'Scripts', 'python.exe'),
   path.join(rootDir, 'attendance_cctv', '.venv', 'bin', 'python'),
+  path.join(rootDir, 'attendance_cctv', 'backend', '.venv', 'bin', 'python'),
   'python3',
   'python',
 ].filter(Boolean);
 
 const backendHost = process.env.ATTENDANCE_BACKEND_HOST || '0.0.0.0';
 const backendPort = process.env.ATTENDANCE_BACKEND_PORT || '8000';
+const backendBaseUrls = [
+  `http://127.0.0.1:${backendPort}`,
+  `http://localhost:${backendPort}`,
+];
+const nextBaseUrls = [
+  'http://127.0.0.1:3000',
+  'http://localhost:3000',
+];
 
 let nextProc;
 let backendProc;
@@ -48,10 +59,82 @@ function wireOutput(proc, prefix) {
   }
 }
 
-function startNext() {
+async function probeBackend(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1200);
+
+  try {
+    const response = await fetch(`${url}/debug`, {
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      return false;
+    }
+
+    const data = await response.json().catch(() => null);
+    return Boolean(
+      data &&
+      typeof data === 'object' &&
+      ('mongodb_connected' in data || 'embeddings_loaded' in data || 'student_names' in data)
+    );
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function isBackendAlreadyRunning() {
+  for (const url of backendBaseUrls) {
+    if (await probeBackend(url)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function probeNext(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1200);
+
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      return false;
+    }
+
+    const html = await response.text();
+    return html.includes('__NEXT_DATA__') || html.includes('/_next/');
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function isNextAlreadyRunning() {
+  for (const url of nextBaseUrls) {
+    if (await probeNext(url)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function startNext() {
+  if (await isNextAlreadyRunning()) {
+    console.log('[dev] Next.js already running at http://localhost:3000');
+    return;
+  }
+
   nextProc = spawn('npx', ['next', 'dev'], {
     cwd: rootDir,
     stdio: ['inherit', 'pipe', 'pipe'],
+    shell: true,
     env: process.env,
   });
 
@@ -69,9 +152,14 @@ function startNext() {
   });
 }
 
-function startAttendanceBackend() {
+async function startAttendanceBackend() {
   if (!fs.existsSync(backendCwd)) {
     console.warn(`[dev] attendance backend folder not found at ${backendCwd}`);
+    return;
+  }
+
+  if (await isBackendAlreadyRunning()) {
+    console.log(`[dev] Attendance backend already running at http://127.0.0.1:${backendPort}`);
     return;
   }
 
@@ -86,7 +174,11 @@ function startAttendanceBackend() {
   backendProc = spawn(pythonExec, args, {
     cwd: backendCwd,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: process.env,
+    env: {
+      ...process.env,
+      PYTHONUTF8: '1',
+      PYTHONIOENCODING: 'utf-8',
+    },
   });
 
   wireOutput(backendProc, '[attendance]');
@@ -142,5 +234,5 @@ process.on('uncaughtException', (err) => {
   shutdown(1);
 });
 
-startAttendanceBackend();
-startNext();
+void startAttendanceBackend();
+void startNext();
