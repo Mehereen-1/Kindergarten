@@ -6,6 +6,7 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import ResultCardAssessmentEditor from '@/app/components/results/ResultCardAssessmentEditor';
+import TeacherTopBar from '@/app/components/TeacherTopBar';
 
 function TeacherResultAssessmentsPageContent() {
   const searchParams = useSearchParams();
@@ -56,8 +57,11 @@ function TeacherResultAssessmentsPageContent() {
 
 export default function TeacherResultAssessmentsPage() {
   return (
-    <Suspense fallback={<div className="p-6 max-w-6xl mx-auto text-slate-500">Loading assessment editor...</div>}>
-      <TeacherResultAssessmentsPageContent />
-    </Suspense>
+    <div className="min-h-screen bg-gray-50">
+      <TeacherTopBar />
+      <Suspense fallback={<div className="p-6 max-w-6xl mx-auto text-slate-500">Loading assessment editor...</div>}>
+        <TeacherResultAssessmentsPageContent />
+      </Suspense>
+    </div>
   );
 }

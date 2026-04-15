@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import axios from 'axios';
+import TeacherTopBar from '@/app/components/TeacherTopBar';
 
 interface ComponentConfig {
   theory?: number;
@@ -470,19 +471,25 @@ export default function MarksEntryPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-400 text-lg">Loading marks sheet...</div>
+      <div className="min-h-screen bg-gray-50">
+        <TeacherTopBar />
+        <div className="flex items-center justify-center h-64">
+          <div className="text-gray-400 text-lg">Loading marks sheet...</div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-8">
-        <div className="bg-red-50 text-red-700 p-4 rounded">{error}</div>
-        <button onClick={() => router.back()} className="mt-4 text-blue-600 hover:underline">
-          Back
-        </button>
+      <div className="min-h-screen bg-gray-50">
+        <TeacherTopBar />
+        <div className="p-8">
+          <div className="bg-red-50 text-red-700 p-4 rounded">{error}</div>
+          <button onClick={() => router.back()} className="mt-4 text-blue-600 hover:underline">
+            Back
+          </button>
+        </div>
       </div>
     );
   }
@@ -490,7 +497,9 @@ export default function MarksEntryPage() {
   if (!setup) return null;
 
   return (
-    <div className="flex flex-col h-full bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
+      <TeacherTopBar />
+      <div className="flex flex-col h-full bg-gray-50">
       <div className="bg-white border-b border-gray-200 px-6 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10 shadow-sm">
         <div className="flex items-center gap-3">
           <button
@@ -963,6 +972,7 @@ export default function MarksEntryPage() {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

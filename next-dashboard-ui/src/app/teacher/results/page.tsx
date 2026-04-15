@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
+import TeacherTopBar from '@/app/components/TeacherTopBar';
 
 interface AssignedSetup {
   _id: string;
@@ -151,7 +152,10 @@ export default function TeacherResultsPage() {
     : 'N/A';
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="min-h-screen bg-gray-50">
+      <TeacherTopBar />
+
+      <div className="p-6 max-w-6xl mx-auto">
 
       {/* ====== SECTION 1: Marks Entry (Admin-Assigned) ====== */}
       <div className="mb-10">
@@ -306,6 +310,8 @@ export default function TeacherResultsPage() {
           ))}
         </div>
       )}
+
+      </div>
 
       {/* Batch Detail Modal */}
       {(selectedBatch || detailLoading) && (

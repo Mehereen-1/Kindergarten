@@ -6,6 +6,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import axios from 'axios';
 import ResultCardView from '@/app/components/results/ResultCardView';
+import TeacherTopBar from '@/app/components/TeacherTopBar';
 
 function TeacherReportCardPageContent() {
   const searchParams = useSearchParams();
@@ -68,8 +69,11 @@ function TeacherReportCardPageContent() {
 
 export default function TeacherReportCardPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-slate-500">Loading report card...</div>}>
-      <TeacherReportCardPageContent />
-    </Suspense>
+    <div className="min-h-screen bg-gray-50">
+      <TeacherTopBar />
+      <Suspense fallback={<div className="p-8 text-center text-slate-500">Loading report card...</div>}>
+        <TeacherReportCardPageContent />
+      </Suspense>
+    </div>
   );
 }

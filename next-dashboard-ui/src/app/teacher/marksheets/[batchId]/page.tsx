@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import axios from 'axios';
+import TeacherTopBar from '@/app/components/TeacherTopBar';
 
 interface Student {
   _id: string;
@@ -136,64 +137,80 @@ export default function MarksheetPage() {
     }
   }, [batchId]);
 
-  if (loading) return <div className="p-8">Loading marksheet...</div>;
-  if (!batch) return <div className="p-8">Batch not found</div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <TeacherTopBar />
+        <div className="p-8">Loading marksheet...</div>
+      </div>
+    );
+  }
+  if (!batch) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <TeacherTopBar />
+        <div className="p-8">Batch not found</div>
+      </div>
+    );
+  }
 
   const completionPercent = batch.totalStudents > 0 
     ? Math.round((batch.entriesCompleted / batch.totalStudents) * 100) 
     : 0;
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded text-red-800">
-          {error}
-        </div>
-      )}
+    <div className="min-h-screen bg-gray-50">
+      <TeacherTopBar />
+      <div className="p-8 max-w-7xl mx-auto">
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded text-red-800">
+            {error}
+          </div>
+        )}
 
-      {/* Header */}
-      <div className="mb-8 border-b pb-6">
-        <h1 className="text-3xl font-bold mb-2">Marksheet Entry</h1>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <div>
-            <p className="text-gray-600">Exam</p>
-            <p className="font-semibold">{batch.examCycleId?.examName}</p>
-          </div>
-          <div>
-            <p className="text-gray-600">Class</p>
-            <p className="font-semibold">{batch.classId?.name}</p>
-          </div>
-          <div>
-            <p className="text-gray-600">Subject</p>
-            <p className="font-semibold">{batch.subjectId?.name}</p>
-          </div>
-          <div>
-            <p className="text-gray-600">Status</p>
-            <p className="font-semibold text-blue-600 capitalize">{batch.status}</p>
+        {/* Header */}
+        <div className="mb-8 border-b pb-6">
+          <h1 className="text-3xl font-bold mb-2">Marksheet Entry</h1>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <p className="text-gray-600">Exam</p>
+              <p className="font-semibold">{batch.examCycleId?.examName}</p>
+            </div>
+            <div>
+              <p className="text-gray-600">Class</p>
+              <p className="font-semibold">{batch.classId?.name}</p>
+            </div>
+            <div>
+              <p className="text-gray-600">Subject</p>
+              <p className="font-semibold">{batch.subjectId?.name}</p>
+            </div>
+            <div>
+              <p className="text-gray-600">Status</p>
+              <p className="font-semibold text-blue-600 capitalize">{batch.status}</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Progress */}
-      <div className="mb-8">
-        <div className="flex justify-between items-center mb-2">
-          <p className="text-sm font-semibold">Progress</p>
-          <p className="text-sm text-gray-600">
-            {batch.entriesCompleted} of {batch.totalStudents} entries
-          </p>
+        {/* Progress */}
+        <div className="mb-8">
+          <div className="flex justify-between items-center mb-2">
+            <p className="text-sm font-semibold">Progress</p>
+            <p className="text-sm text-gray-600">
+              {batch.entriesCompleted} of {batch.totalStudents} entries
+            </p>
+          </div>
+          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-green-500 transition-all"
+              style={{ width: `${completionPercent}%` }}
+            ></div>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">{completionPercent}% complete</p>
         </div>
-        <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-green-500 transition-all"
-            style={{ width: `${completionPercent}%` }}
-          ></div>
-        </div>
-        <p className="text-xs text-gray-500 mt-1">{completionPercent}% complete</p>
-      </div>
 
-      {/* Marksheet Table */}
-      <div className="overflow-x-auto border rounded-lg">
-        <table className="w-full text-sm">
+        {/* Marksheet Table */}
+        <div className="overflow-x-auto border rounded-lg">
+          <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="px-4 py-3 text-left font-semibold">Roll No</th>
@@ -250,11 +267,11 @@ export default function MarksheetPage() {
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+          </table>
+        </div>
 
-      {/* Edit Modal */}
-      {editingStudentId && (
+        {/* Edit Modal */}
+        {editingStudentId && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-screen overflow-y-auto">
             <h2 className="text-2xl font-bold mb-6">
@@ -390,23 +407,24 @@ export default function MarksheetPage() {
             </div>
           </div>
         </div>
-      )}
+        )}
 
-      {/* Action Buttons */}
-      <div className="mt-8 flex justify-end gap-4">
-        <button
-          onClick={() => router.back()}
-          className="px-6 py-2 border rounded hover:bg-gray-100"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={submitBatch}
-          disabled={saving || batch.status !== 'draft' || batch.entriesCompleted === 0}
-          className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-        >
-          {saving ? 'Submitting...' : 'Submit Batch'}
-        </button>
+        {/* Action Buttons */}
+        <div className="mt-8 flex justify-end gap-4">
+          <button
+            onClick={() => router.back()}
+            className="px-6 py-2 border rounded hover:bg-gray-100"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submitBatch}
+            disabled={saving || batch.status !== 'draft' || batch.entriesCompleted === 0}
+            className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+          >
+            {saving ? 'Submitting...' : 'Submit Batch'}
+          </button>
+        </div>
       </div>
     </div>
   );

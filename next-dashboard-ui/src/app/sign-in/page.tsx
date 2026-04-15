@@ -198,6 +198,7 @@ export default function SignInPage() {
               </p>
             </div>
           </section>
+        </div>
       </div>
     </div>
   );

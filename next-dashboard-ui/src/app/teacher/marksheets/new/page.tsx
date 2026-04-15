@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
+import TeacherTopBar from '@/app/components/TeacherTopBar';
 
 interface ExamCycle {
   _id: string;
@@ -96,37 +97,46 @@ export default function NewMarksheetPage() {
     }
   };
 
-  if (loading) return <div className="p-8">Loading...</div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <TeacherTopBar />
+        <div className="p-8">Loading...</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-8 max-w-2xl mx-auto">
-      <h1 className="text-3xl font-bold mb-8">Create New Marksheet</h1>
+    <div className="min-h-screen bg-gray-50">
+      <TeacherTopBar />
+      <div className="p-8 max-w-2xl mx-auto">
+        <h1 className="text-3xl font-bold mb-8">Create New Marksheet</h1>
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded text-red-800">
-          {error}
-        </div>
-      )}
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded text-red-800">
+            {error}
+          </div>
+        )}
 
-      <form onSubmit={handleCreate} className="space-y-6">
-        {/* Exam Cycle Selection */}
-        <div>
-          <label className="block text-sm font-semibold mb-2">Exam Cycle *</label>
-          <select
-            value={selectedExamCycleId}
-            onChange={(e) => setSelectedExamCycleId(e.target.value)}
-            required
-            className="w-full border rounded px-4 py-2"
-          >
-            <option value="">Select an exam cycle</option>
-            {examCycles.map((cycle) => (
-              <option key={cycle._id} value={cycle._id}>
-                {cycle.examName} ({cycle.academicYear}) - {cycle.termName}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-gray-500 mt-1">Only open exam cycles are shown</p>
-        </div>
+        <form onSubmit={handleCreate} className="space-y-6">
+          {/* Exam Cycle Selection */}
+          <div>
+            <label className="block text-sm font-semibold mb-2">Exam Cycle *</label>
+            <select
+              value={selectedExamCycleId}
+              onChange={(e) => setSelectedExamCycleId(e.target.value)}
+              required
+              className="w-full border rounded px-4 py-2"
+            >
+              <option value="">Select an exam cycle</option>
+              {examCycles.map((cycle) => (
+                <option key={cycle._id} value={cycle._id}>
+                  {cycle.examName} ({cycle.academicYear}) - {cycle.termName}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">Only open exam cycles are shown</p>
+          </div>
 
         {/* Class Selection */}
         <div>
@@ -182,23 +192,24 @@ export default function NewMarksheetPage() {
         </div>
 
         {/* Buttons */}
-        <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="px-6 py-2 border rounded hover:bg-gray-100"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={creating || !selectedExamCycleId || !selectedClassId || !selectedSubjectId}
-            className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {creating ? 'Creating...' : 'Create & Start'}
-          </button>
-        </div>
-      </form>
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="px-6 py-2 border rounded hover:bg-gray-100"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={creating || !selectedExamCycleId || !selectedClassId || !selectedSubjectId}
+              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {creating ? 'Creating...' : 'Create & Start'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

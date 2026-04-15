@@ -23,7 +23,7 @@ const TeacherSidebar = () => {
         { icon: LayoutDashboard, label: "Dashboard", href: "/teacher" },
         { icon: Users, label: "My Classes", href: "/teacher/classes" },
         { icon: BookOpen, label: "Class Content", href: "/teacher/ildce" },
-        { icon: FileText, label: "Assignments", href: "/list/assignments" },
+        { icon: FileText, label: "Assignments", href: "/teacher/assignments" },
         { icon: ClipboardList, label: "Attendance", href: "/teacher/attendance" },
         { icon: BarChart3, label: "Results", href: "/teacher/results" },
         { icon: Trophy, label: "Activities", href: "/teacher/activities" },
