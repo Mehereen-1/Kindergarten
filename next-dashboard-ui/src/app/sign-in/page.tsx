@@ -1,8 +1,9 @@
 'use client';
 
+import Image from 'next/image';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
+import { Eye, EyeOff, LogIn, Mail, Lock } from 'lucide-react';
 
 export default function SignInPage() {
   const [email, setEmail] = useState('');
@@ -72,75 +73,121 @@ export default function SignInPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
-        <div className="text-center mb-8">
-          <User className="w-12 h-12 text-blue-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-800">Welcome Back</h1>
-          <p className="text-gray-600 mt-2">Sign in to your account</p>
-        </div>
+    <div className="min-h-screen bg-[#f8f5ee] text-[#36392b]">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-24 -left-24 h-72 w-72 rounded-full bg-[#d7e7d5]/45 blur-3xl" />
+        <div className="absolute top-20 right-0 h-80 w-80 rounded-full bg-[#eeefdd]/70 blur-3xl" />
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email Address
-            </label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter your email"
-                required
-              />
+      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl items-center px-4 py-8 sm:px-6 lg:px-8">
+        <div className="grid w-full gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-stretch">
+          <section className="flex flex-col justify-between rounded-[2rem] border border-[#b9bba8]/20 bg-[#fafaeb]/90 p-6 shadow-[0_18px_50px_rgba(54,57,43,0.08)] backdrop-blur sm:p-8 lg:p-10">
+            <div>
+              <div className="inline-flex rounded-2xl bg-white/70 p-3 shadow-[0_10px_24px_rgba(54,57,43,0.05)]">
+                <Image src="/logo_system.png" alt="KinderVision" width={220} height={72} className="h-12 w-auto object-contain sm:h-14" priority />
+              </div>
+
+              <div className="mt-8 max-w-xl">
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-[#636656]">
+                  Secure Portal
+                </p>
+                <h1 className="mt-3 text-4xl font-black tracking-[-0.03em] text-[#36392b] sm:text-5xl lg:text-6xl">
+                  Sign in with a clean, simple flow.
+                </h1>
+                <p className="mt-5 text-base leading-7 text-[#636656] sm:text-lg">
+                  Use your school account to reach the correct panel. Teachers, parents, and administrators all enter from the same focused screen.
+                </p>
+              </div>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Password
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter your password"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-              </button>
+            <div className="mt-8 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl bg-[#f4f5e4] p-4 shadow-[0_8px_20px_rgba(54,57,43,0.05)]">
+                <p className="text-sm font-semibold text-[#36392b]">Teacher panel</p>
+                <p className="mt-1 text-sm text-[#636656]">Attendance, classes, and reports.</p>
+              </div>
+              <div className="rounded-2xl bg-[#eeefdd] p-4 shadow-[0_8px_20px_rgba(54,57,43,0.05)]">
+                <p className="text-sm font-semibold text-[#36392b]">Parent access</p>
+                <p className="mt-1 text-sm text-[#636656]">Updates and communication.
+                </p>
+              </div>
+              <div className="rounded-2xl bg-[#d7e7d5] p-4 shadow-[0_8px_20px_rgba(54,57,43,0.05)]">
+                <p className="text-sm font-semibold text-[#36392b]">Admin access</p>
+                <p className="mt-1 text-sm text-[#636656]">Overview and management tools.</p>
+              </div>
             </div>
-          </div>
+          </section>
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-              {error}
+          <section className="flex items-center rounded-[2rem] border border-[#b9bba8]/20 bg-[#fafaeb]/90 p-6 shadow-[0_18px_50px_rgba(54,57,43,0.08)] backdrop-blur sm:p-8 lg:p-10">
+            <div className="w-full">
+              <div className="mb-8 flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#5a685a] text-white shadow-[0_10px_24px_rgba(90,104,90,0.2)]">
+                  <LogIn className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-[#636656]">Welcome back</p>
+                  <h2 className="text-2xl font-black tracking-[-0.02em] text-[#36392b]">Sign in to continue</h2>
+                </div>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-[#36392b]">Email Address</label>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#636656]" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full rounded-2xl border border-[#b9bba8]/30 bg-white/80 py-3.5 pl-11 pr-4 text-[#36392b] outline-none transition placeholder:text-[#8d907f] focus:border-[#5a685a] focus:bg-white"
+                      placeholder="Enter your email"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-[#36392b]">Password</label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#636656]" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full rounded-2xl border border-[#b9bba8]/30 bg-white/80 py-3.5 pl-11 pr-12 text-[#36392b] outline-none transition placeholder:text-[#8d907f] focus:border-[#5a685a] focus:bg-white"
+                      placeholder="Enter your password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-[#636656] transition hover:bg-[#f4f5e4] hover:text-[#36392b]"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="rounded-2xl border border-[#d9b2a8] bg-[#fff6f3] px-4 py-3 text-sm text-[#8a3d2d]">
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#5a685a] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(90,104,90,0.2)] transition hover:bg-[#4e5c4e] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading ? 'Signing In...' : 'Sign In'}
+                </button>
+              </form>
+
+              <p className="mt-6 rounded-2xl bg-[#f4f5e4] px-4 py-3 text-sm leading-6 text-[#636656]">
+                New teachers: use the auto-generated password from your welcome email.
+              </p>
             </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-500 text-white py-3 px-4 rounded-lg hover:bg-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
-          >
-            {loading ? 'Signing In...' : 'Sign In'}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center">
-          <p className="text-gray-600 text-sm">
-            New teachers: Use the auto-generated password from your welcome email
-          </p>
+          </section>
         </div>
       </div>
     </div>
