@@ -183,12 +183,21 @@ export default function SignInPage() {
                 </button>
               </form>
 
+              <div className="mt-4 text-right">
+                <button
+                  type="button"
+                  onClick={() => router.push('/forgot-password')}
+                  className="text-sm font-semibold text-[#5a685a] transition hover:text-[#4e5c4e]"
+                >
+                  Forgot teacher password?
+                </button>
+              </div>
+
               <p className="mt-6 rounded-2xl bg-[#f4f5e4] px-4 py-3 text-sm leading-6 text-[#636656]">
                 New teachers: use the auto-generated password from your welcome email.
               </p>
             </div>
           </section>
-        </div>
       </div>
     </div>
   );

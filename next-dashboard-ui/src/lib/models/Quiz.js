@@ -43,12 +43,25 @@ const QuizSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  is_published: {
+    type: Boolean,
+    default: false,
+  },
   total_questions: {
     type: Number,
     default: 10,
   },
   time_limit: {
     type: Number, // in minutes
+    default: null,
+  },
+  published_at: {
+    type: Date,
+    default: null,
+  },
+  published_by: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
     default: null,
   },
   created_at: {

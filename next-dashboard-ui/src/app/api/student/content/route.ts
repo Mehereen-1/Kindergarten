@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     const enrichedTopics = await Promise.all(
       topics.map(async (topic) => {
         // Get quiz for this topic
-        const quiz = await Quiz.findOne({ topicId: topic._id }).lean();
+        const quiz = await Quiz.findOne({ topicId: topic._id, is_published: true }).lean();
         
         // Get student's attempts for this topic
         const attempts = await StudentQuizAttempt.find({

@@ -10,7 +10,6 @@ export default function ILDCEDashboard() {
   const [classId, setClassId] = useState('');
   const [teacherId, setTeacherId] = useState('');
   const [loading, setLoading] = useState(true);
-  const [classLoaded, setClassLoaded] = useState(false);
 
   useEffect(() => {
     // Get from URL or cookies
@@ -50,14 +49,12 @@ export default function ILDCEDashboard() {
   useEffect(() => {
     const loadDefaultClass = async () => {
       if (!teacherId || classId) {
-        setClassLoaded(true);
         return;
       }
 
       try {
         const response = await fetch(`/api/teacher/classes?teacherId=${teacherId}`);
         if (!response.ok) {
-          setClassLoaded(true);
           return;
         }
 
@@ -68,23 +65,21 @@ export default function ILDCEDashboard() {
             setClassId(String(firstClassId));
           }
         }
-        setClassLoaded(true);
       } catch (error) {
         console.error('Error loading teacher classes:', error);
-        setClassLoaded(true);
       }
     };
 
-    if (!classLoaded) {
-      loadDefaultClass();
-    }
+    loadDefaultClass();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teacherId, classLoaded]);
+  }, [teacherId, classId]);
 
   const handleContentUploaded = (data: any) => {
+    const uploadedClassId = data?.topic?.classId;
+    if (uploadedClassId) {
+      setClassId(String(uploadedClassId));
+    }
     setActiveTab('overview');
-    // Refresh the overview
-    window.location.reload();
   };
 
   if (loading) {
@@ -165,6 +160,9 @@ export default function ILDCEDashboard() {
           <div className="space-y-8">
             <div>
               <h2 className="text-2xl font-bold text-gray-900 mb-4">📊 Class Content Overview</h2>
+              <p className="text-sm text-gray-600 mb-3">
+                Use the <span className="font-semibold">Generate &amp; Publish</span> button in each topic row to create and release quizzes to parents.
+              </p>
               <TopicOverviewDashboard classId={classId} teacherId={teacherId} />
             </div>
           </div>
@@ -179,7 +177,7 @@ export default function ILDCEDashboard() {
               </h2>
               <p className="text-blue-700">
                 Upload your content and let AI automatically create summaries, extract concepts,
-                and generate quiz questions.
+                and generate a quiz draft that you can publish to parents when ready.
               </p>
             </div>
             <ContentUploadForm

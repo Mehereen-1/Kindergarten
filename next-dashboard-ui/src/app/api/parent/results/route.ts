@@ -1,7 +1,9 @@
 import { connectDB } from '@/lib/mongodb';
 import ResultSummary from '@/lib/models/ResultSummary';
+import Student from '@/lib/models/Student';
 import '@/lib/models/ResultSummary';
 import { NextRequest, NextResponse } from 'next/server';
+import { extractSessionUser } from '@/lib/auth';
 
 /**
  * GET /api/parent/results
@@ -16,11 +18,34 @@ export async function GET(request: NextRequest) {
 
   try {
     await connectDB();
+
+    const sessionUser = extractSessionUser(request.cookies.get('user')?.value);
+    if (!sessionUser?.id) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     
     if (!studentId) {
       return NextResponse.json(
         { success: false, error: 'Student ID is required' },
         { status: 400 }
+      );
+    }
+
+    const student = await Student.findById(studentId).select('parentId').lean();
+    if (!student) {
+      return NextResponse.json(
+        { success: false, error: 'Student not found' },
+        { status: 404 }
+      );
+    }
+
+    if (String(student.parentId) !== sessionUser.id) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden' },
+        { status: 403 }
       );
     }
 

@@ -6,6 +6,7 @@ import ExamCycle from '@/lib/models/ExamCycle';
 import ExamSubjectSetup from '@/lib/models/ExamSubjectSetup';
 import User from '@/lib/models/User';
 import { connectDB } from '@/lib/mongodb';
+import { normalizeExamCycleDate } from '@/lib/examCycleWindow';
 import mongoose from 'mongoose';
 
 const BYPASS_ADMIN_AUTH = true;
@@ -103,9 +104,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate date order
-    const startDate = new Date(marksEntryStartDate);
-    const endDate = new Date(marksEntryEndDate);
-    const pubDate = new Date(publishDate);
+    const startDate = normalizeExamCycleDate(marksEntryStartDate, 'start');
+    const endDate = normalizeExamCycleDate(marksEntryEndDate, 'end');
+    const pubDate = normalizeExamCycleDate(publishDate, 'end');
+
+    if (!startDate || !endDate || !pubDate) {
+      return NextResponse.json(
+        { success: false, error: 'Please provide valid entry and publish dates' },
+        { status: 400 }
+      );
+    }
 
     if (startDate >= endDate) {
       return NextResponse.json(

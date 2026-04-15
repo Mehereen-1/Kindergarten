@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import ResultBatchManager from '@/app/components/results/ResultBatchManager';
+import ResultCardAssessmentEditor from '@/app/components/results/ResultCardAssessmentEditor';
+import ResultCardTemplateEditor from '@/app/components/results/ResultCardTemplateEditor';
 
 interface ExamCycle {
   _id: string;
@@ -554,7 +557,7 @@ export default function ExamConfigPage() {
       {/* Detail View */}
       {selectedCycle && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-screen overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-[96vw] xl:max-w-7xl 2xl:max-w-[1500px] max-h-[94vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-4">
               <h2 className="text-2xl font-bold">{selectedCycle.examName}</h2>
               <button
@@ -862,6 +865,20 @@ export default function ExamConfigPage() {
                   </div>
                 )}
               </div>
+
+              <ResultCardTemplateEditor
+                examCycleId={selectedCycle._id}
+                academicYear={selectedCycle.academicYear}
+                subjects={subjects}
+                subjectSetups={subjectSetups}
+              />
+
+              <ResultCardAssessmentEditor
+                examCycleId={selectedCycle._id}
+                subjectSetups={subjectSetups}
+              />
+
+              <ResultBatchManager examCycleId={selectedCycle._id} />
             </div>
 
             <div className="mt-6 flex justify-end gap-3">

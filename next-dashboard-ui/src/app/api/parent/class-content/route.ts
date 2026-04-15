@@ -148,7 +148,7 @@ export async function GET(request: NextRequest) {
 
     const topicIds = topics.map((t: any) => t._id);
     const quizzes = topicIds.length
-      ? await Quiz.find({ topicId: { $in: topicIds } }).select('_id topicId total_questions').lean()
+      ? await Quiz.find({ topicId: { $in: topicIds }, is_published: true }).select('_id topicId total_questions is_published').lean()
       : [];
 
     const quizByTopicId = new Map<string, any>();

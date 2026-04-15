@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Brain, Loader2, Send, FolderOpen, FileText, Sparkles, ExternalLink } from 'lucide-react';
+import { Brain, Loader2, Send, FolderOpen, FileText, Sparkles, ExternalLink, Download } from 'lucide-react';
 
 type ClassContent = {
   topicId: string;
@@ -28,7 +27,6 @@ type ClassFolder = {
 };
 
 export default function ParentAskAIPage() {
-  const router = useRouter();
   const [question, setQuestion] = useState('');
   const [parentId, setParentId] = useState('');
   const [classId, setClassId] = useState('');
@@ -104,6 +102,19 @@ export default function ParentAskAIPage() {
 
   const activeClass = classFolders.find((folder) => folder.classId === classId) || null;
   const activeTopics = activeClass?.contents || [];
+
+  const buildTopicHref = (item: ClassContent) => {
+    const firstChild = activeClass?.children?.[0];
+    const childId = firstChild?.childId || 'demo-student';
+    const childName = firstChild?.childName || 'Home Test';
+    const query = new URLSearchParams({
+      classId: activeClass?.classId || '',
+      childId,
+      childName,
+    });
+
+    return `/parent/ask-ai/topic/${encodeURIComponent(item.topicId)}?${query.toString()}`;
+  };
 
   const handleAsk = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,15 +224,7 @@ export default function ParentAskAIPage() {
                       {activeTopics.map((item) => (
                         <div
                           key={item.topicId}
-                          className="p-4 cursor-pointer hover:bg-indigo-50/40 transition"
-                          onClick={() => {
-                            const firstChild = activeClass.children[0];
-                            const childId = firstChild?.childId || 'demo-student';
-                            const childName = firstChild?.childName || 'Home Test';
-                            router.push(
-                              `/parent/ask-ai/topic/${item.topicId}?classId=${activeClass.classId}&childId=${childId}&childName=${encodeURIComponent(childName)}`
-                            );
-                          }}
+                          className="p-4 hover:bg-indigo-50/40 transition"
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1">
@@ -255,18 +258,45 @@ export default function ParentAskAIPage() {
                             </div>
 
                             <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.location.assign(buildTopicHref(item));
+                                }}
+                                className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 hover:text-indigo-900"
+                              >
+                                Open Topic
+                                <ExternalLink size={12} />
+                              </button>
+
                               {item.file?.url && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    window.open(item.file?.url, '_blank', 'noopener,noreferrer');
-                                  }}
-                                  className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-900"
-                                >
-                                  Open File
-                                  <ExternalLink size={12} />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      window.open(item.file?.url, '_blank', 'noopener,noreferrer');
+                                    }}
+                                    className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-900"
+                                  >
+                                    Open File
+                                    <ExternalLink size={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const fileUrl = item.file?.url || '';
+                                      const separator = fileUrl.includes('?') ? '&' : '?';
+                                      window.open(`${fileUrl}${separator}download=1`, '_blank', 'noopener,noreferrer');
+                                    }}
+                                    className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-900"
+                                  >
+                                    Download
+                                    <Download size={12} />
+                                  </button>
+                                </div>
                               )}
 
                               {item.quiz?.quizId && activeClass.children.length > 0 && (

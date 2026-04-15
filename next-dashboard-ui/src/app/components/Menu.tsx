@@ -76,6 +76,12 @@ const menuItems = [
       },
       {
         icon: "/result.png",
+        label: "Student Results",
+        href: "/admin/results",
+        visible: ["admin"],
+      },
+      {
+        icon: "/result.png",
         label: "Results",
         href: "/teacher/marksheets",
         visible: ["teacher"],

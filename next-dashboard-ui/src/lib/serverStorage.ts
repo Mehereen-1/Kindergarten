@@ -145,15 +145,41 @@ export function buildInlineAssetResponse(
   file: StoredAssetRecord,
   forceDownload = false
 ) {
+  const inferMimeTypeFromFilename = (name: string) => {
+    const lower = String(name || '').toLowerCase();
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    if (lower.endsWith('.txt')) return 'text/plain; charset=utf-8';
+    if (lower.endsWith('.md')) return 'text/markdown; charset=utf-8';
+    if (lower.endsWith('.csv')) return 'text/csv; charset=utf-8';
+    if (lower.endsWith('.json')) return 'application/json; charset=utf-8';
+    if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html; charset=utf-8';
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'application/octet-stream';
+  };
+
   const disposition = forceDownload ? 'attachment' : 'inline';
   const filename = file.filename || 'download.bin';
+  const storedContentType = String(file.contentType || 'application/octet-stream');
+  const effectiveContentType = storedContentType === 'application/octet-stream'
+    ? inferMimeTypeFromFilename(filename)
+    : storedContentType;
+  const asciiFilename = filename
+    .replace(/[\r\n"]/g, '')
+    .replace(/[^\x20-\x7E]/g, '_') || 'download.bin';
+  const encodedFilename = encodeURIComponent(filename.replace(/[\r\n]/g, '') || 'download.bin');
 
   return new Response(Readable.toWeb(Readable.from(buffer)) as ReadableStream, {
     headers: {
-      'Content-Type': file.contentType || 'application/octet-stream',
+      'Content-Type': effectiveContentType,
       'Content-Length': String(buffer.length),
-      'Cache-Control': 'public, max-age=31536000, immutable',
-      'Content-Disposition': `${disposition}; filename="${filename.replace(/"/g, '')}"`,
+      'Cache-Control': 'private, no-store, max-age=0, must-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Disposition': `${disposition}; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`,
     },
   });
 }

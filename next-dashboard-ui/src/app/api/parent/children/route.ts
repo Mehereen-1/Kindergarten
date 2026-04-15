@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Student from '@/lib/models/Student';
 import StudentClassHistory from '@/lib/models/StudentClassHistory';
+import { extractSessionUser } from '@/lib/auth';
 
 /**
  * GET /api/parent/children?parentId={id}
@@ -11,7 +12,8 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    const parentId = request.nextUrl.searchParams.get('parentId');
+    const sessionUser = extractSessionUser(request.cookies.get('user')?.value);
+    const parentId = sessionUser?.id || request.nextUrl.searchParams.get('parentId');
     const academicYear = request.nextUrl.searchParams.get('academicYear') || String(new Date().getFullYear());
 
     if (!parentId) {

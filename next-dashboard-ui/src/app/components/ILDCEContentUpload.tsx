@@ -160,7 +160,7 @@ export default function ContentUploadForm({ classId, teacherId, onSuccess }: any
       const studentCount = classes.find((c) => c._id === formData.selectedClassId)?.studentCount || 0;
       setSuccess(
         `✅ Topic "${data.topic.topic_name}" created successfully! ` +
-        `${studentCount} student${studentCount !== 1 ? 's' : ''} in ${selectedClassName} can now access this content and AI-generated quiz.`
+        `${studentCount} student${studentCount !== 1 ? 's' : ''} in ${selectedClassName} can access it after you publish the quiz draft.`
       );
       
       // Reset form
@@ -411,7 +411,7 @@ export default function ContentUploadForm({ classId, teacherId, onSuccess }: any
           ) : (
             <>
               <UploadCloud size={20} />
-              Upload Content & Generate Quiz
+              Upload Content & Create Quiz Draft
             </>
           )}
         </button>

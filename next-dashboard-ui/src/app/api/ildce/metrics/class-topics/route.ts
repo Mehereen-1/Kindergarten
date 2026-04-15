@@ -3,6 +3,7 @@ import TopicMetrics from '@/lib/models/TopicMetrics';
 import StudentMetrics from '@/lib/models/StudentMetrics';
 import StudentQuizAttempt from '@/lib/models/StudentQuizAttempt';
 import Topic from '@/lib/models/Topic';
+import Quiz from '@/lib/models/Quiz';
 import { connectDB } from '@/lib/mongodb';
 
 /**
@@ -24,8 +25,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get all topics for class
-    const topics = await Topic.find({ classId });
+    if (!teacherId) {
+      return NextResponse.json(
+        { error: 'Missing teacherId' },
+        { status: 400 }
+      );
+    }
+
+    // Show only topics uploaded by the active teacher in the selected class.
+    const topics = await Topic.find({ classId, teacherId });
 
     // Get metrics for each topic
     const topicMetricsData = await Promise.all(
@@ -34,6 +42,12 @@ export async function GET(request: NextRequest) {
           topicId: topic._id,
           classId,
         });
+
+        const quiz = await Quiz.findOne({
+          topicId: topic._id,
+        })
+          .select('_id total_questions is_published published_at')
+          .lean();
 
         const attempts = await StudentQuizAttempt.find({
           topicId: topic._id,
@@ -49,6 +63,14 @@ export async function GET(request: NextRequest) {
             difficulty_weight: topic.difficulty_weight,
             concepts: topic.concepts,
           },
+          quiz: quiz
+            ? {
+                quizId: quiz._id,
+                totalQuestions: quiz.total_questions || 0,
+                isPublished: Boolean(quiz.is_published),
+                publishedAt: quiz.published_at || null,
+              }
+            : null,
           metrics: metrics || null,
           attempt_count: attempts.length,
         };

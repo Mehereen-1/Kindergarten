@@ -6,17 +6,7 @@ import '@/lib/models/Class';
 import '@/lib/models/Subject';
 import '@/lib/models/Student';
 import { NextRequest, NextResponse } from 'next/server';
-
-function extractUserIdFromCookie(cookieValue: string | undefined): string | null {
-  if (!cookieValue) return null;
-  try {
-    const decoded = decodeURIComponent(cookieValue);
-    const parsed = JSON.parse(decoded);
-    return parsed.id || null;
-  } catch {
-    return cookieValue;
-  }
-}
+import { extractSessionUser } from '@/lib/auth';
 
 // GET /api/teacher/results
 // Returns published/approved marksheet batches for the logged-in teacher
@@ -25,8 +15,7 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    const rawCookie = request.cookies.get('user')?.value;
-    const teacherId = extractUserIdFromCookie(rawCookie);
+    const teacherId = extractSessionUser(request.cookies.get('user')?.value)?.id;
     if (!teacherId) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
@@ -43,6 +32,10 @@ export async function GET(request: NextRequest) {
 
       if (!batch) {
         return NextResponse.json({ success: false, error: 'Batch not found' }, { status: 404 });
+      }
+
+      if (String(batch.teacherId) !== teacherId) {
+        return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
       }
 
       const entries = await MarkEntry.find({ batchId })
