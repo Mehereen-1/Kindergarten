@@ -9,6 +9,7 @@ import {
   Users,
   ClipboardList,
   BarChart3,
+  Trophy,
   BookOpen,
   Calendar,
   MessageSquare,
@@ -40,6 +41,7 @@ const MobileTeacherSidebar = () => {
         { icon: FileText, label: "Assignments", href: "/teacher/assignments" },
         { icon: ClipboardList, label: "Attendance", href: "/teacher/attendance" },
         { icon: BarChart3, label: "Results", href: "/teacher/results" },
+        { icon: Trophy, label: "Activities", href: "/teacher/activities" },
       ],
     },
     {

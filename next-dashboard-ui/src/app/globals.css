@@ -30,11 +30,47 @@
     --color-on-surface-variant: #636656;
     --color-outline-variant: #b9bba8;
     --color-primary-container: #d7e7d5;
+    --parent-main-bg: #fff7d6;
+  }
+
+  :root[data-site-theme="ocean"] {
+    --color-primary: #1e5f74;
+    --color-primary-dim: #154a5c;
+    --color-secondary: #3a6f83;
+    --color-tertiary: #2f7b94;
+    --color-background: #f2fbff;
+    --color-surface: #f2fbff;
+    --color-surface-low: #e9f7fd;
+    --color-surface-container: #dff0f8;
+    --color-surface-highest: #d2e8f2;
+    --color-on-surface: #113443;
+    --color-on-surface-variant: #3f6675;
+    --color-outline-variant: #98b9c8;
+    --color-primary-container: #c9e6f1;
+    --parent-main-bg: #e8f7ff;
+  }
+
+  :root[data-site-theme="sunrise"] {
+    --color-primary: #9b4b2f;
+    --color-primary-dim: #7a3923;
+    --color-secondary: #a0643f;
+    --color-tertiary: #a85a39;
+    --color-background: #fff9f3;
+    --color-surface: #fff9f3;
+    --color-surface-low: #fff0e4;
+    --color-surface-container: #ffe5d1;
+    --color-surface-highest: #ffd9be;
+    --color-on-surface: #4a281d;
+    --color-on-surface-variant: #7c5547;
+    --color-outline-variant: #d7af97;
+    --color-primary-container: #ffd8bf;
+    --parent-main-bg: #fff1de;
   }
 
   body {
     @apply bg-slate-50 text-slate-900;
     font-family: "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    transition: background-color 220ms ease, color 220ms ease;
   }
 }
 
@@ -50,7 +86,7 @@
     }
 
     .parent-theme main {
-      background: #fff7d6;
+      background: var(--parent-main-bg);
     }
 
     .teacher-theme .bg-white,

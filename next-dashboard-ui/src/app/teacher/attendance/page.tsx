@@ -10,6 +10,14 @@ import { useSearchParams } from "next/navigation";
 
 type AttendanceStatus = "present" | "absent" | "late";
 
+type UploadPreview = {
+  file: File;
+  name: string;
+  url: string;
+  size: number;
+  lastModified: number;
+};
+
 interface ClassStudent {
   id: string;
   name: string;
@@ -99,6 +107,10 @@ function AttendancePageContent() {
   const [studentLoadError, setStudentLoadError] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedStudent, setSelectedStudent] = useState<string>("");
+  const [singleUploadFiles, setSingleUploadFiles] = useState<File[]>([]);
+  const [bulkUploadFiles, setBulkUploadFiles] = useState<File[]>([]);
+  const [singleUploadPreviews, setSingleUploadPreviews] = useState<UploadPreview[]>([]);
+  const [bulkUploadPreviews, setBulkUploadPreviews] = useState<UploadPreview[]>([]);
   const [studentImageCounts, setStudentImageCounts] = useState<Record<string, number>>({});
   const [cameraActive, setCameraActive] = useState(false);
   const [atd, setAtd] = useState<AttendanceRecord[]>([]);
@@ -160,10 +172,107 @@ function AttendancePageContent() {
   const confirmationTimeoutRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
+  const revokePreviewUrls = useCallback((previews: UploadPreview[]) => {
+    previews.forEach((preview) => URL.revokeObjectURL(preview.url));
+  }, []);
+
+  const buildPreviews = useCallback((files: File[], limit: number) => {
+    return files
+      .filter((file) => file.type.startsWith("image/"))
+      .slice(0, limit)
+      .map((file) => ({
+        file,
+        name: file.name,
+        url: URL.createObjectURL(file),
+        size: file.size,
+        lastModified: file.lastModified,
+      }));
+  }, []);
+
+  const updateSingleUploadPreviews = useCallback(
+    (files: File[]) => {
+      setSingleUploadPreviews((prev) => {
+        revokePreviewUrls(prev);
+        return buildPreviews(files, 16);
+      });
+    },
+    [buildPreviews, revokePreviewUrls]
+  );
+
+  const updateBulkUploadPreviews = useCallback(
+    (files: File[]) => {
+      setBulkUploadPreviews((prev) => {
+        revokePreviewUrls(prev);
+        return buildPreviews(files, 24);
+      });
+    },
+    [buildPreviews, revokePreviewUrls]
+  );
+
+  const removeSinglePreview = useCallback(
+    (preview: UploadPreview) => {
+      setSingleUploadFiles((prev) => {
+        const next = [...prev];
+        const index = next.findIndex(
+          (file) =>
+            file.name === preview.name &&
+            file.size === preview.size &&
+            file.lastModified === preview.lastModified
+        );
+        if (index >= 0) {
+          next.splice(index, 1);
+        }
+        updateSingleUploadPreviews(next);
+        return next;
+      });
+    },
+    [updateSingleUploadPreviews]
+  );
+
+  const removeBulkPreview = useCallback(
+    (preview: UploadPreview) => {
+      setBulkUploadFiles((prev) => {
+        const next = [...prev];
+        const index = next.findIndex(
+          (file) =>
+            file.name === preview.name &&
+            file.size === preview.size &&
+            file.lastModified === preview.lastModified
+        );
+        if (index >= 0) {
+          next.splice(index, 1);
+        }
+        updateBulkUploadPreviews(next);
+        return next;
+      });
+    },
+    [updateBulkUploadPreviews]
+  );
+
+  const clearSingleSelection = useCallback(() => {
+    setSingleUploadFiles([]);
+    setSingleUploadPreviews((prev) => {
+      revokePreviewUrls(prev);
+      return [];
+    });
+  }, [revokePreviewUrls]);
+
+  const clearBulkSelection = useCallback(() => {
+    setBulkUploadFiles([]);
+    setBulkUploadPreviews((prev) => {
+      revokePreviewUrls(prev);
+      return [];
+    });
+  }, [revokePreviewUrls]);
+
   useEffect(() => {
     if (!preselectedAcademicYear) return;
     setAcademicYear(preselectedAcademicYear);
   }, [preselectedAcademicYear]);
+
+  useEffect(() => {
+    clearSingleSelection();
+  }, [selectedStudent, clearSingleSelection]);
 
   useEffect(() => {
     const loadKnownStudents = async () => {
@@ -502,7 +611,7 @@ function AttendancePageContent() {
 
     const initialAttendance: Record<string, AttendanceStatus> = {};
     classStudents.forEach((student) => {
-      initialAttendance[student._id] = "present";
+      initialAttendance[student._id] = "absent";
     });
     setAttendance(initialAttendance);
   }, [selectedClassId, teacherClasses]);
@@ -903,6 +1012,8 @@ function AttendancePageContent() {
     return () => {
       stopBrowserCaptureLoop();
       stopBrowserPreviewStream();
+      revokePreviewUrls(singleUploadPreviews);
+      revokePreviewUrls(bulkUploadPreviews);
 
       // Clear any lingering intervals/timeouts
       if ((window as any).processingInterval) {
@@ -919,7 +1030,7 @@ function AttendancePageContent() {
         );
       }
     };
-  }, [isVideoProcessing]);
+  }, [bulkUploadPreviews, isVideoProcessing, revokePreviewUrls, singleUploadPreviews]);
 
   const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
     setAttendance((prev) => ({
@@ -928,7 +1039,7 @@ function AttendancePageContent() {
     }));
   };
 
-  const handleBulkFacialImport = async (files: FileList) => {
+  const handleBulkFacialImport = async (files: File[]) => {
     if (!files || files.length === 0) return;
 
     setLoading(true);
@@ -948,7 +1059,7 @@ function AttendancePageContent() {
           .trim();
 
       // Process all files
-      Array.from(files).forEach((file) => {
+      files.forEach((file) => {
         const rawPath = ((file as any).webkitRelativePath || file.name) as string;
         const filePath = rawPath.replace(/\\/g, "/");
 
@@ -1086,6 +1197,7 @@ function AttendancePageContent() {
       setMessage([`✅ Bulk import complete: ${successCount} successful, ${errorCount} failed (${uploadedCount} images)`,
         ...firstErrors.map((e) => `• ${e.studentName}: ${e.message}`)
       ].join("\n"));
+      clearBulkSelection();
 
       // Log results
       console.log('📊 Bulk Import Results:', results);
@@ -1100,7 +1212,7 @@ function AttendancePageContent() {
   };
 
 
-  const handleBulkImageUpload = async (studentId: string, files: FileList) => {
+  const handleBulkImageUpload = async (studentId: string, files: File[]) => {
     if (!files || files.length === 0) return;
 
     setLoading(true);
@@ -1110,9 +1222,9 @@ function AttendancePageContent() {
       const formData = new FormData();
       formData.append("studentId", studentId);
 
-      for (let i = 0; i < files.length; i++) {
-        formData.append("files", files[i]);
-      }
+      files.forEach((file) => {
+        formData.append("files", file);
+      });
 
       const response = await fetch("/api/attendance/facial-upload", {
         method: "POST",
@@ -1127,6 +1239,7 @@ function AttendancePageContent() {
           ...prev,
           [studentId]: result.embeddingsCreated || result.uploadedCount,
         }));
+        clearSingleSelection();
         setSelectedStudent("");
         
         // Reload embeddings from backend
@@ -1180,7 +1293,7 @@ function AttendancePageContent() {
           const next: Record<string, AttendanceStatus> = {};
           students.forEach((student) => {
             const sid = String(student._id);
-            next[sid] = statusByStudentId.get(sid) || prev[sid] || "present";
+            next[sid] = statusByStudentId.get(sid) || prev[sid] || "absent";
           });
           return next;
         });
@@ -3062,10 +3175,63 @@ interface CCTVTabProps {
                           setMessage("❌ Please select at least one image");
                           return;
                         }
-                        console.log("Uploading", e.target.files.length, "files for student", selectedStudent);
-                        handleBulkImageUpload(selectedStudent, e.target.files);
+                        const nextFiles = Array.from(e.target.files).filter((file) => file.type.startsWith("image/"));
+                        setSingleUploadFiles(nextFiles);
+                        updateSingleUploadPreviews(nextFiles);
+                        e.currentTarget.value = "";
                       }}
                     />
+
+                    {singleUploadPreviews.length > 0 && (
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between gap-3 mb-2">
+                          <p className="text-sm font-semibold text-slate-800">
+                            Selected image preview ({singleUploadFiles.length})
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={clearSingleSelection}
+                              className="px-2.5 py-1.5 rounded-md text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700"
+                            >
+                              Clear
+                            </button>
+                            <button
+                              type="button"
+                              disabled={loading || !selectedStudent || singleUploadFiles.length === 0}
+                              onClick={() => handleBulkImageUpload(selectedStudent, singleUploadFiles)}
+                              className="px-3 py-1.5 rounded-md text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {loading ? "Uploading..." : `Upload ${singleUploadFiles.length} Image${singleUploadFiles.length > 1 ? "s" : ""}`}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {singleUploadPreviews.map((preview) => (
+                            <div key={preview.url} className="relative rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => removeSinglePreview(preview)}
+                                className="absolute top-1 right-1 z-10 h-6 w-6 rounded-full bg-black/65 text-white text-xs font-bold hover:bg-black/80"
+                                aria-label={`Remove ${preview.name}`}
+                              >
+                                ×
+                              </button>
+                              <img
+                                src={preview.url}
+                                alt={preview.name}
+                                className="w-full h-28 object-cover"
+                              />
+                              <div className="px-2 py-1.5">
+                                <p className="text-[11px] font-medium text-slate-700 truncate" title={preview.name}>
+                                  {preview.name}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Info Section */}
                     <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3159,10 +3325,63 @@ interface CCTVTabProps {
                           setMessage("❌ Please select at least one image");
                           return;
                         }
-                        console.log("Bulk uploading", e.target.files.length, "files");
-                        handleBulkFacialImport(e.target.files);
+                        const nextFiles = Array.from(e.target.files).filter((file) => file.type.startsWith("image/"));
+                        setBulkUploadFiles(nextFiles);
+                        updateBulkUploadPreviews(nextFiles);
+                        e.currentTarget.value = "";
                       }}
                     />
+
+                    {bulkUploadPreviews.length > 0 && (
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between gap-3 mb-2">
+                          <p className="text-sm font-semibold text-slate-800">
+                            Selected image preview (showing {bulkUploadPreviews.length} of {bulkUploadFiles.length})
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={clearBulkSelection}
+                              className="px-2.5 py-1.5 rounded-md text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700"
+                            >
+                              Clear
+                            </button>
+                            <button
+                              type="button"
+                              disabled={loading || bulkUploadFiles.length === 0}
+                              onClick={() => handleBulkFacialImport(bulkUploadFiles)}
+                              className="px-3 py-1.5 rounded-md text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {loading ? "Importing..." : `Start Import (${bulkUploadFiles.length})`}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                          {bulkUploadPreviews.map((preview) => (
+                            <div key={preview.url} className="relative rounded-lg border border-slate-200 bg-white overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => removeBulkPreview(preview)}
+                                className="absolute top-1 right-1 z-10 h-6 w-6 rounded-full bg-black/65 text-white text-xs font-bold hover:bg-black/80"
+                                aria-label={`Remove ${preview.name}`}
+                              >
+                                ×
+                              </button>
+                              <img
+                                src={preview.url}
+                                alt={preview.name}
+                                className="w-full h-24 object-cover"
+                              />
+                              <div className="px-2 py-1">
+                                <p className="text-[10px] font-medium text-slate-700 truncate" title={preview.name}>
+                                  {preview.name}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Bulk Import Info Section */}
                     <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
