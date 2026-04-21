@@ -9,3 +9,18 @@ python -m venv .venv
 python -m pip install --upgrade pip setuptools wheel
 pip install -r backend\requirements.txt
 
+# Optional secure face-storage settings (add to backend\.env)
+# ATTENDANCE_STORAGE_BACKEND=azure
+# AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net
+# AZURE_ATTENDANCE_CONTAINER=attendance-private
+# ATTENDANCE_FACE_URL_TTL_SECONDS=600
+# ATTENDANCE_FACE_RETENTION_DAYS=90
+
+# Filesystem fallback (if ATTENDANCE_STORAGE_BACKEND=filesystem)
+# ATTENDANCE_FACE_STORAGE_DIR=backend\secure_facial_store
+# ATTENDANCE_FACE_SIGNING_KEY=change-this-to-a-long-random-secret
+# ATTENDANCE_FACE_PROXY_PREFIX=/api/attendance/backend
+
+# Optional maintenance API (prune expired samples)
+# POST /maintenance/prune-facial-data?retentionDays=90
+

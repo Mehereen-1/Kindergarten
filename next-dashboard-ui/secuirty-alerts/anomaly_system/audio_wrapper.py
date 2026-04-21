@@ -138,21 +138,50 @@ class AudioSecurityWrapper:
         return embeddings.numpy().astype(np.float32)
 
     def _predict_embeddings(self, embeddings: np.ndarray) -> np.ndarray:
-        probs = self.artifact.model.predict(embeddings, verbose=0).reshape(-1)  # type: ignore[union-attr]
-        return np.asarray(probs, dtype=np.float32)
+        raw = self.artifact.model.predict(embeddings, verbose=0)  # type: ignore[union-attr]
+        probs = np.asarray(raw, dtype=np.float32)
+        if probs.ndim == 1:
+            probs = probs.reshape(-1, 1)
+        elif probs.ndim > 2:
+            probs = probs.reshape(probs.shape[0], -1)
+        return probs
 
     def _to_results(self, frame_probs: np.ndarray, *, source_type: str) -> List[ModelResult]:
         if frame_probs.size == 0:
             return []
 
-        clip_prob = float(np.mean(frame_probs))
-        max_prob = float(np.max(frame_probs))
-        positive_count = int(np.sum(frame_probs >= self.config.sustain_threshold))
+        if frame_probs.ndim == 1:
+            frame_probs = frame_probs.reshape(-1, 1)
+
+        if frame_probs.shape[1] <= 1:
+            event_type = "security_audio"
+            event_label = "emergency"
+            per_frame_event_probs = frame_probs.reshape(-1)
+        else:
+            label_map = self.config.label_map or {}
+            normal_class_ids = {
+                class_id
+                for class_id, label in label_map.items()
+                if str(label).strip().lower() == "normal"
+            }
+            candidate_ids = [idx for idx in range(frame_probs.shape[1]) if idx not in normal_class_ids]
+            if not candidate_ids:
+                candidate_ids = list(range(frame_probs.shape[1]))
+
+            class_means = frame_probs.mean(axis=0)
+            best_class_id = max(candidate_ids, key=lambda idx: float(class_means[idx]))
+            event_label = str(label_map.get(best_class_id, "security_audio"))
+            event_type = self._normalize_audio_event_type(event_label)
+            per_frame_event_probs = frame_probs[:, best_class_id]
+
+        clip_prob = float(np.mean(per_frame_event_probs))
+        max_prob = float(np.max(per_frame_event_probs))
+        positive_count = int(np.sum(per_frame_event_probs >= self.config.sustain_threshold))
         alert = False
         reason = "none"
         alert_at_sec: Optional[float] = None
 
-        for index, prob in enumerate(frame_probs):
+        for index, prob in enumerate(per_frame_event_probs):
             if prob >= self.config.instant_threshold:
                 alert = True
                 reason = "instant_high_confidence"
@@ -161,7 +190,7 @@ class AudioSecurityWrapper:
 
         if not alert:
             consecutive = 0
-            for index, prob in enumerate(frame_probs):
+            for index, prob in enumerate(per_frame_event_probs):
                 if prob >= self.config.sustain_threshold:
                     consecutive += 1
                     if consecutive >= self.config.sustain_consecutive_needed:
@@ -173,7 +202,7 @@ class AudioSecurityWrapper:
                     consecutive = 0
 
         if not alert:
-            flags = (frame_probs >= self.config.sustain_threshold).astype(np.int32)
+            flags = (per_frame_event_probs >= self.config.sustain_threshold).astype(np.int32)
             for index in range(len(flags)):
                 left = max(0, index - self.config.sustain_window_size + 1)
                 count = int(np.sum(flags[left : index + 1]))
@@ -186,7 +215,7 @@ class AudioSecurityWrapper:
         if not alert and clip_prob >= self.config.threshold:
             alert = True
             reason = "clip_level_emergency"
-            alert_at_sec = round(float(np.argmax(frame_probs)) * self.frame_time_sec, 2)
+            alert_at_sec = round(float(np.argmax(per_frame_event_probs)) * self.frame_time_sec, 2)
 
         if not alert:
             return []
@@ -196,8 +225,8 @@ class AudioSecurityWrapper:
         return [
             ModelResult(
                 model_name=self.name,
-                event_type="security_audio",
-                label="emergency",
+                event_type=event_type,
+                label=event_label,
                 confidence=confidence,
                 detected=True,
                 frame_index=int(round(timestamp / max(self.frame_time_sec, 1e-6))),
@@ -208,9 +237,23 @@ class AudioSecurityWrapper:
                     "clip_prob": clip_prob,
                     "max_frame_prob": max_prob,
                     "mean_frame_prob": clip_prob,
-                    "num_frames": int(len(frame_probs)),
+                    "num_frames": int(len(per_frame_event_probs)),
                     "positive_frames_over_threshold": positive_count,
-                    "frame_probs": frame_probs.tolist(),
+                    "frame_probs": per_frame_event_probs.tolist(),
                 },
             )
         ]
+
+    def _normalize_audio_event_type(self, label: str) -> str:
+        text = label.strip().lower().replace("-", "_").replace(" ", "_")
+        if "alarm" in text or "siren" in text:
+            return "alarm"
+        if "scream" in text or "distress" in text or "cry" in text:
+            return "distress_scream"
+        if "glass" in text and "break" in text:
+            return "glass_break"
+        if "impact" in text or "crash" in text or "bang" in text:
+            return "crash_impact"
+        if text in {"normal", "none", "background"}:
+            return "normal"
+        return "security_audio"

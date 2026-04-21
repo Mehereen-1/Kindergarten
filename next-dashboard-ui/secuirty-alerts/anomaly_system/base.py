@@ -156,6 +156,9 @@ class BaseAnomalyWrapper(ABC):
 
     def _classify(self, raw_output: Any) -> Tuple[str, float, bool, Dict[str, Any]]:
         scores, metadata = self._extract_scores(raw_output)
+        if bool(self.config.adapter_kwargs.get("invert_binary_scores", False)) and scores.size == 2:
+            scores = scores[::-1].copy()
+            metadata["scores_inverted"] = True
         class_index = int(np.argmax(scores)) if scores.size else 0
         label = self.config.label_map.get(class_index, self.config.positive_label or self.event_type)
         positive_index = self.config.positive_class_id if self.config.positive_class_id is not None else class_index

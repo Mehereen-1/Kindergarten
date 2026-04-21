@@ -209,6 +209,82 @@ function evaluateRepeatedText(params: {
   };
 }
 
+function extractNumbers(value: string) {
+  return (String(value || '').match(/\d{1,3}/g) || [])
+    .map((token) => Number(token))
+    .filter((num) => Number.isFinite(num));
+}
+
+function inferNumberPracticeTarget(expectedAnswer: string, prompt: string, repeatCount: number) {
+  const fromText = extractNumbers(`${expectedAnswer} ${prompt}`).filter((value) => value > 0 && value <= 200);
+  if (fromText.length > 0) {
+    return Math.max(...fromText);
+  }
+  return Math.max(20, Math.min(80, repeatCount * 10));
+}
+
+function evaluateNumberPracticeText(params: {
+  studentText: string;
+  expectedAnswer: string;
+  prompt: string;
+  repeatCount: number;
+}) {
+  const targetCount = inferNumberPracticeTarget(params.expectedAnswer, params.prompt, params.repeatCount);
+  const lines = String(params.studentText || '')
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  let detectedTotal: number | null = null;
+  for (const line of lines) {
+    const match = line.match(/total\s*count\s*[:\-]?\s*(\d{1,3})/i);
+    if (match) {
+      detectedTotal = Number(match[1]);
+      break;
+    }
+  }
+
+  const sequenceLine = lines.find((line) => !/total\s*count/i.test(line)) || lines[0] || '';
+  let sequenceNumbers = extractNumbers(sequenceLine).filter((value) => value >= 1 && value <= targetCount);
+
+  if (sequenceNumbers.length === 0) {
+    sequenceNumbers = extractNumbers(params.studentText).filter((value) => value >= 1 && value <= targetCount);
+  }
+
+  if (detectedTotal === null) {
+    const allNumbers = extractNumbers(params.studentText);
+    if (allNumbers.length > 0) {
+      detectedTotal = allNumbers[allNumbers.length - 1];
+    }
+  }
+
+  const seen = new Set<number>();
+  for (const value of sequenceNumbers) {
+    seen.add(value);
+  }
+
+  const expectedNumbers = Array.from({ length: targetCount }, (_, index) => index + 1);
+  const correctNumbers = expectedNumbers.filter((value) => seen.has(value));
+  const missingNumbers = expectedNumbers.filter((value) => !seen.has(value));
+
+  const sequenceCoverage = correctNumbers.length / Math.max(1, targetCount);
+  const totalScore =
+    detectedTotal === null
+      ? 0
+      : Math.max(0, 1 - Math.min(1, Math.abs(detectedTotal - targetCount) / Math.max(1, targetCount)));
+  const weightedSimilarity = sequenceCoverage * 0.8 + totalScore * 0.2;
+
+  return {
+    similarity: Math.round(weightedSimilarity * 100),
+    sequenceCoverage: Math.round(sequenceCoverage * 100),
+    totalScore: Math.round(totalScore * 100),
+    targetCount,
+    detectedTotal,
+    correctNumbers,
+    missingNumbers,
+  };
+}
+
 function defaultManualFeedback(assignmentType: string) {
   switch (assignmentType) {
     case 'match_same':
@@ -383,6 +459,33 @@ export async function POST(
 
     if (gradingMode === 'auto_text') {
       const expectedAnswer = String(assignment.expectedAnswer || '');
+      const prompt = String((assignment as any).prompt || '');
+
+      if (worksheetTemplate === 'number_practice_sheet') {
+        const numberEvaluation = evaluateNumberPracticeText({
+          studentText,
+          expectedAnswer,
+          prompt,
+          repeatCount,
+        });
+
+        similarity = numberEvaluation.similarity;
+        autoScore = Math.max(0, Math.min(100, Math.round(numberEvaluation.similarity * 0.85 + ocrConfidence * 0.15)));
+        const feedbackPack = buildFeedback(autoScore, ocrConfidence);
+        const detectedTotalText = numberEvaluation.detectedTotal === null ? 'not clear' : String(numberEvaluation.detectedTotal);
+        const totalStatus = numberEvaluation.detectedTotal === numberEvaluation.targetCount ? 'correct' : 'incorrect';
+
+        autoFeedback = `Child wrote ${numberEvaluation.correctNumbers.length} out of ${numberEvaluation.targetCount} numbers correctly. Detected total count: ${detectedTotalText} (${totalStatus}). ${feedbackPack.feedback}`;
+        badge = feedbackPack.badge;
+        matchedWords = numberEvaluation.correctNumbers.map((value) => String(value));
+        missingWords = numberEvaluation.missingNumbers.map((value) => String(value));
+        evaluationBreakdown = {
+          jaccard: numberEvaluation.sequenceCoverage,
+          f1: numberEvaluation.totalScore,
+          editSimilarity: numberEvaluation.totalScore,
+          weightedSimilarity: numberEvaluation.similarity,
+        };
+      } else {
       const isRepeatedTemplate =
         repeatCount > 1 ||
         ['alphabet_practice_sheet', 'sentence_repeat_sheet', 'spelling_repeat_sheet', 'number_practice_sheet'].includes(worksheetTemplate) ||
@@ -430,6 +533,7 @@ export async function POST(
           editSimilarity: Math.round(editRaw * 100),
           weightedSimilarity: Math.round(weightedSimilarityRaw * 100),
         };
+      }
       }
     }
 

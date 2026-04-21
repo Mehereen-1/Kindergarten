@@ -146,6 +146,10 @@ class AnomalyInferenceService:
         if not capture.isOpened():
             raise RuntimeError(f"Could not open stream source: {stream_url}")
 
+        # Keep stream latency low by minimizing internal buffering when supported.
+        if hasattr(cv2, "CAP_PROP_BUFFERSIZE"):
+            capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
         frame_limit = max_frames or self.settings.default_stream_frames
         audio_results: List[ModelResult] = []
         audio_errors: List[str] = []
@@ -190,6 +194,13 @@ class AnomalyInferenceService:
         buffer = RollingFrameBuffer(self.settings.buffer_max_frames)
         self.registry.reset_stream_state()
 
+        current_stride = max(1, self.settings.processing_frame_stride)
+        max_stride = max(current_stride, self.settings.realtime_max_frame_stride)
+        auto_stride_enabled = bool(self.settings.realtime_auto_stride and source == "stream")
+        target_processing_fps = max(1.0, float(self.settings.realtime_target_processing_fps))
+        stride_window_started = time.perf_counter()
+        stride_window_samples = 0
+
         started = time.perf_counter()
         frame_index = 0
         sampled_frames = 0
@@ -211,10 +222,11 @@ class AnomalyInferenceService:
             last_timestamp = timestamp
             buffer.append(frame_index, timestamp, frame)
 
-            if frame_index % max(1, self.settings.processing_frame_stride) != 0:
+            if frame_index % current_stride != 0:
                 continue
 
             sampled_frames += 1
+            stride_window_samples += 1
             height, width = frame.shape[:2]
             context = FrameContext(
                 source=source,
@@ -234,14 +246,24 @@ class AnomalyInferenceService:
                 continue
 
             for result in results:
-                if result.detected:
-                    self._merge_best_result(best_results, result)
+                self._merge_best_result(best_results, result)
+
+            if auto_stride_enabled and stride_window_samples >= 24:
+                elapsed = max(1e-6, time.perf_counter() - stride_window_started)
+                observed_fps = float(stride_window_samples / elapsed)
+                if observed_fps < (target_processing_fps * 0.85) and current_stride < max_stride:
+                    current_stride += 1
+                    self.logger.info("Realtime auto-stride increased to %s (observed_fps=%.2f)", current_stride, observed_fps)
+                elif observed_fps > (target_processing_fps * 1.25) and current_stride > 1:
+                    current_stride -= 1
+                    self.logger.info("Realtime auto-stride decreased to %s (observed_fps=%.2f)", current_stride, observed_fps)
+                stride_window_started = time.perf_counter()
+                stride_window_samples = 0
 
         capture.release()
 
         for result in audio_results or []:
-            if result.detected:
-                self._merge_best_result(best_results, result)
+            self._merge_best_result(best_results, result)
 
         metrics = SystemMetrics(
             fps=float(sampled_frames / max(1e-6, time.perf_counter() - started)),
@@ -294,6 +316,13 @@ class AnomalyInferenceService:
         buffer = RollingFrameBuffer(self.settings.buffer_max_frames)
         self.registry.reset_stream_state()
 
+        current_stride = max(1, self.settings.processing_frame_stride)
+        max_stride = max(current_stride, self.settings.realtime_max_frame_stride)
+        auto_stride_enabled = bool(self.settings.realtime_auto_stride and source == "stream")
+        target_processing_fps = max(1.0, float(self.settings.realtime_target_processing_fps))
+        stride_window_started = time.perf_counter()
+        stride_window_samples = 0
+
         started = time.perf_counter()
         frame_index = 0
         sampled_frames = 0
@@ -323,10 +352,11 @@ class AnomalyInferenceService:
             last_timestamp = timestamp
             buffer.append(frame_index, timestamp, frame)
 
-            if frame_index % max(1, self.settings.processing_frame_stride) != 0:
+            if frame_index % current_stride != 0:
                 continue
 
             sampled_frames += 1
+            stride_window_samples += 1
             height, width = frame.shape[:2]
             context = FrameContext(
                 source=source,
@@ -347,12 +377,20 @@ class AnomalyInferenceService:
                 results = []
 
             for result in results:
-                if result.detected:
-                    before = len(best_results)
-                    self._merge_best_result(best_results, result)
-                    new_detection = new_detection or len(best_results) > before or best_results.get(
-                        f"{result.model_name}:{result.event_type}:{result.label}"
-                    ) == result
+                self._merge_best_result(best_results, result)
+                new_detection = new_detection or result.detected
+
+            if auto_stride_enabled and stride_window_samples >= 24:
+                elapsed = max(1e-6, time.perf_counter() - stride_window_started)
+                observed_fps = float(stride_window_samples / elapsed)
+                if observed_fps < (target_processing_fps * 0.85) and current_stride < max_stride:
+                    current_stride += 1
+                    self.logger.info("Realtime auto-stride increased to %s (observed_fps=%.2f)", current_stride, observed_fps)
+                elif observed_fps > (target_processing_fps * 1.25) and current_stride > 1:
+                    current_stride -= 1
+                    self.logger.info("Realtime auto-stride decreased to %s (observed_fps=%.2f)", current_stride, observed_fps)
+                stride_window_started = time.perf_counter()
+                stride_window_samples = 0
 
             should_emit = False
             if new_detection:
@@ -373,6 +411,7 @@ class AnomalyInferenceService:
                     "progress_percent": round(progress_percent, 1),
                     "processed_frames": frame_index,
                     "total_frames": total_frames,
+                    "current_stride": current_stride,
                     "timestamp": round(timestamp, 2),
                     "message": f"Processed frame {frame_index}" + (f" / {total_frames}" if total_frames else ""),
                     "alerts": [alert.dict() for alert in self.fusion.fuse(partial_results)],
@@ -481,9 +520,17 @@ class AnomalyInferenceService:
         return response
 
     def _merge_best_result(self, best_results: Dict[str, ModelResult], result: ModelResult) -> None:
-        key = f"{result.model_name}:{result.event_type}:{result.label}"
+        key = f"{result.model_name}:{result.event_type}"
         existing = best_results.get(key)
-        if existing is None or result.confidence > existing.confidence:
+        if existing is None:
+            best_results[key] = result
+            return
+
+        if result.detected and not existing.detected:
+            best_results[key] = result
+            return
+
+        if result.detected == existing.detected and result.confidence > existing.confidence:
             best_results[key] = result
 
 

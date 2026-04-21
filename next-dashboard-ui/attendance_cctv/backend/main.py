@@ -22,7 +22,6 @@ import sys
 import tempfile
 import threading
 import time
-import glob
 import uuid
 import base64
 from pathlib import Path
@@ -68,6 +67,7 @@ load_dotenv(dotenv_path=PROJECT_ROOT / ".env.local", override=True)
 from face_engine import FaceEngine
 from liveness_engine import LivenessEngine
 from attendance_export import export_daily_attendance, export_monthly_attendance, EXPORT_DIR
+from storage_backend import AttendanceStorage
 
 
 def print(*args, **kwargs):
@@ -139,6 +139,22 @@ def parse_csv(value: Optional[str]) -> List[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+# Uploaded-video stability tuning
+RECOGNITION_QUEUE_MAXLEN = max(8, parse_int(os.getenv("RECOGNITION_QUEUE_MAXLEN"), default=24))
+UPLOAD_SYNC_BACKLOG_TARGET = max(
+    1,
+    min(
+        RECOGNITION_QUEUE_MAXLEN - 1,
+        parse_int(os.getenv("UPLOAD_SYNC_BACKLOG_TARGET"), default=2),
+    ),
+)
+UPLOAD_SYNC_WAIT_MAX = max(0.25, parse_float(os.getenv("UPLOAD_SYNC_WAIT_MAX"), default=1.0))
+FACE_RETENTION_DAYS = max(
+    0,
+    parse_int(os.getenv("ATTENDANCE_FACE_RETENTION_DAYS"), default=0),
+)
+
+
 IS_AZURE = any(os.getenv(key) for key in ("WEBSITE_INSTANCE_ID", "WEBSITE_SITE_NAME"))
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT") or os.getenv("WEBSITES_PORT") or "8000")
@@ -180,6 +196,21 @@ if dns_resolver and DNS_SERVERS:
         print(f"Using custom DNS servers: {', '.join(DNS_SERVERS)}")
     except Exception as exc:
         print(f"Failed to apply custom DNS servers: {exc}")
+
+
+# ═══════════════════════════════════════════════════════
+# STORAGE BACKEND
+# ═══════════════════════════════════════════════════════
+
+storage_error = None
+try:
+    storage = AttendanceStorage()
+except Exception as exc:
+    # Safe fallback for local/dev if cloud config is incomplete.
+    storage_error = str(exc)
+    print(f"⚠️ Storage backend init failed ({exc}); falling back to filesystem backend.")
+    os.environ["ATTENDANCE_STORAGE_BACKEND"] = "filesystem"
+    storage = AttendanceStorage()
 
 
 # ═══════════════════════════════════════════════════════
@@ -243,12 +274,13 @@ class AttendanceSession:
             "is_running": False,
             "stop_event": threading.Event(),
             "frame_queue": deque(maxlen=180),
-            "recognition_queue": deque(maxlen=5),
+            "recognition_queue": deque(maxlen=RECOGNITION_QUEUE_MAXLEN),
             "latest_results": [],
             "current_frame_num": 0,
             "detections": deque(maxlen=1000),
             "video_path": None,
             "temp_video_path": None,
+            "source_mode": "idle",
             "camera_source": None,
             "camera_backend": None,
             "last_error": None,
@@ -536,6 +568,20 @@ def decode_image(file_bytes: bytes):
     return cv2.imdecode(np.frombuffer(file_bytes, np.uint8), cv2.IMREAD_COLOR)
 
 
+def _persist_face_sample(student_id: str, filename: str, image_bytes: bytes, embedding: np.ndarray):
+    return storage.save_sample(student_id, filename, image_bytes, embedding)
+
+
+def _build_signed_face_url(image_ref: Optional[str]):
+    return storage.build_image_url_from_ref(image_ref)
+
+
+def _remove_face_file_if_exists(ref_value: Optional[str]):
+    if not ref_value:
+        return
+    storage.delete_ref(ref_value)
+
+
 # ═══════════════════════════════════════════════════════
 # DRAW BOXES
 # ═══════════════════════════════════════════════════════
@@ -709,10 +755,10 @@ def playback_thread(video_path: str, draw_boxes_func):
         if frame_number % PROCESS_EVERY_N == 0:
             video_state["recognition_queue"].append((frame_number, frame.copy()))
 
-        # Keep moderate sync for uploaded videos without making playback feel slow.
-        # We only wait when backlog grows and we cap wait time aggressively.
-        upload_sync_backlog = max(2, SYNC_BACKLOG_HIGH)
-        upload_sync_wait_max = min(max(SYNC_WAIT_MAX, 0.12), 0.2)
+        # Uploaded videos prioritize accuracy/stability over raw playback speed.
+        # Hold playback when recognition lags so sampled frames are not dropped.
+        upload_sync_backlog = UPLOAD_SYNC_BACKLOG_TARGET
+        upload_sync_wait_max = UPLOAD_SYNC_WAIT_MAX
         backlog_waited = 0.0
         while (len(video_state["recognition_queue"]) >= upload_sync_backlog
                and not video_state["stop_event"].is_set()
@@ -943,9 +989,12 @@ def recognition_thread(video_state_dict, video_analytics_dict, analytics_lock_ob
     while not video_state_dict["stop_event"].is_set():
         frame_data = None
         try:
-            # Drain stale frames — always process the most recent
-            while len(video_state_dict["recognition_queue"]) > 1:
-                video_state_dict["recognition_queue"].popleft()
+            source_mode = video_state_dict.get("source_mode", "idle")
+            # For live streams, process the freshest frame to keep latency low.
+            # For uploaded videos, keep FIFO order for stable multi-frame confirmation.
+            if source_mode != "upload":
+                while len(video_state_dict["recognition_queue"]) > 1:
+                    video_state_dict["recognition_queue"].popleft()
             if video_state_dict["recognition_queue"]:
                 frame_data = video_state_dict["recognition_queue"].popleft()
         except IndexError:
@@ -1234,6 +1283,59 @@ def _processing_not_ready_response():
     )
 
 
+def _cleanup_expired_face_samples(retention_days: int):
+    if retention_days <= 0 or db is None:
+        return {"checked": 0, "deleted": 0, "records_updated": 0}
+
+    cutoff = datetime.utcnow().timestamp() - (retention_days * 86400)
+    records = list(db["facial_database"].find({}, {"embeddings": 1, "student_id": 1}))
+    checked = 0
+    deleted = 0
+    records_updated = 0
+
+    for record in records:
+        embeddings = record.get("embeddings", []) or []
+        kept = []
+        removed_any = False
+
+        for item in embeddings:
+            checked += 1
+            uploaded_at = item.get("uploaded_at")
+            if isinstance(uploaded_at, datetime):
+                ts = uploaded_at.timestamp()
+            else:
+                ts = datetime.utcnow().timestamp()
+
+            if ts < cutoff:
+                _remove_face_file_if_exists(item.get("embedding_file"))
+                _remove_face_file_if_exists(item.get("image_file"))
+                deleted += 1
+                removed_any = True
+            else:
+                kept.append(item)
+
+        if removed_any:
+            records_updated += 1
+            preview_path = record.get("preview_image_path")
+            if preview_path and not any(x.get("image_file") == preview_path for x in kept):
+                preview_path = kept[0].get("image_file") if kept else None
+
+            db["facial_database"].update_one(
+                {"_id": record["_id"]},
+                {
+                    "$set": {
+                        "embeddings": kept,
+                        "number_of_samples": len(kept),
+                        "preview_image_path": preview_path,
+                        "preview_image_url": _build_signed_face_url(preview_path) if preview_path else None,
+                        "last_updated": datetime.now(),
+                    }
+                },
+            )
+
+    return {"checked": checked, "deleted": deleted, "records_updated": records_updated}
+
+
 def _reset_video_analytics():
     with analytics_lock:
         video_analytics.update({
@@ -1424,6 +1526,7 @@ def _stop_and_clear():
     if temp_video_path and not was_running:
         _cleanup_temp_video(temp_video_path)
         video_state["temp_video_path"] = None
+    video_state["source_mode"] = "idle"
     if not was_running:
         video_state["video_path"] = None
         video_state["camera_source"] = None
@@ -1442,6 +1545,7 @@ def _prepare_browser_camera_session():
     video_state["is_running"] = True
     video_state["video_path"] = "browser-camera"
     video_state["temp_video_path"] = None
+    video_state["source_mode"] = "browser"
     video_state["camera_source"] = "browser"
     video_state["camera_backend"] = "browser"
     video_state["current_frame_num"] = 0
@@ -1673,6 +1777,7 @@ async def process_video(video: UploadFile = File(...), sessionKey: str = Query("
 
         video_state["video_path"] = tmp_path
         video_state["temp_video_path"] = tmp_path
+        video_state["source_mode"] = "upload"
         video_state["stop_event"].clear()
         video_state["is_running"] = True
         _reset_video_analytics()
@@ -1718,6 +1823,7 @@ def start_camera(camera_index: Optional[int] = None, camera_source: Optional[str
 
         video_state["video_path"] = f"camera:{source_label}"
         video_state["temp_video_path"] = None
+        video_state["source_mode"] = "camera"
         video_state["stop_event"].clear()
         video_state["is_running"] = True
         video_state["camera_source"] = source_label
@@ -1851,10 +1957,12 @@ async def upload_student_images(
     embeddings_created = 0
     files_processed = 0
     errors = []
+    image_urls = []
 
     for file in files:
         try:
-            img = decode_image(await file.read())
+            file_bytes = await file.read()
+            img = decode_image(file_bytes)
             if img is None:
                 errors.append(f"Cannot decode {file.filename}"); continue
             files_processed += 1
@@ -1862,18 +1970,32 @@ async def upload_student_images(
             if not faces:
                 errors.append(f"No face in {file.filename}"); continue
             face = max(faces, key=lambda f: (f.bbox[2]-f.bbox[0]) * (f.bbox[3]-f.bbox[1]))
+            persisted = _persist_face_sample(
+                student_id=student_id,
+                filename=file.filename or "sample.jpg",
+                image_bytes=file_bytes,
+                embedding=face.embedding,
+            )
+            signed_url = persisted["image_url"]
             db["facial_database"].update_one(
                 {"student_id": student_id},
                 {"$push": {"embeddings": {
-                    "embedding": face.embedding.tolist(),
                     "filename": file.filename,
-                    "image_url": f"/facial-data/{student_id}_{file.filename}",
+                    "image_url": signed_url,
+                    "image_file": persisted["image_ref"],
+                    "embedding_file": persisted["embedding_ref"],
+                    "image_sha256": persisted["image_sha256"],
                     "uploaded_at": datetime.now(),
                 }},
-                 "$set": {"last_updated": datetime.now()},
+                 "$set": {
+                    "last_updated": datetime.now(),
+                    "preview_image_url": signed_url,
+                    "preview_image_path": persisted["image_ref"],
+                 },
                  "$inc": {"number_of_samples": 1}},
                 upsert=True,
             )
+            image_urls.append(signed_url)
             embeddings_created += 1
         except Exception as e:
             errors.append(f"Error on {file.filename}: {e}")
@@ -1884,6 +2006,7 @@ async def upload_student_images(
     return {"success": True, "files_processed": files_processed,
             "embeddings_created": embeddings_created,
             "total_embeddings_in_memory": _embedding_count(),
+            "image_urls": image_urls,
             "errors": errors or None}
 
 
@@ -1901,8 +2024,6 @@ def get_student_facial_samples(student_id: str):
 def get_known_faces():
     if db is None:
         return {"faces": [], "total": 0}
-    FACIAL_DATA_DIR = os.path.join(
-        os.path.dirname(__file__), "..", "public", "facial-data")
     faces = []
     try:
         records = list(db["facial_database"].find())
@@ -1915,10 +2036,13 @@ def get_known_faces():
                 (item.get("image_url") for item in embeddings if item.get("image_url")),
                 None,
             )
-            if os.path.exists(FACIAL_DATA_DIR):
-                matches = glob.glob(os.path.join(FACIAL_DATA_DIR, f"{student_id}_*.jpg"))
-                if matches:
-                    image_url = f"/facial-data/{os.path.basename(matches[0])}"
+            if not image_url:
+                preview_path = record.get("preview_image_path") or next(
+                    (item.get("image_file") for item in embeddings if item.get("image_file")),
+                    None,
+                )
+                if preview_path:
+                    image_url = _build_signed_face_url(preview_path)
             student_name = str(student_id)
             if students_coll:
                 try:
@@ -1933,6 +2057,22 @@ def get_known_faces():
     except Exception as e:
         print(f"[known-faces] Error: {e}")
     return {"faces": faces, "total": len(faces)}
+
+
+@app.get("/secure-face-image")
+def get_secure_face_image(path: str, exp: int, sig: str):
+    if not storage.verify_local_signature(path, int(exp), str(sig)):
+        return JSONResponse({"error": "Invalid signature"}, status_code=403)
+
+    try:
+        abs_path = storage.resolve_local_file(path)
+    except Exception:
+        return JSONResponse({"error": "Invalid path"}, status_code=400)
+
+    if not abs_path.exists() or not abs_path.is_file():
+        return JSONResponse({"error": "File not found"}, status_code=404)
+
+    return FileResponse(str(abs_path))
 
 
 @app.post("/test-recognition")
@@ -2014,6 +2154,8 @@ def debug_status(sessionKey: str = Query("default", alias="sessionKey")):
             "ready": _service_ready(),
             "mongodb_connected": db is not None,
             "mongo_error": mongo_error,
+            "storage_backend": storage.cfg.backend,
+            "storage_error": storage_error,
             "face_engine_ready": engine is not None and engine_error is None,
             "face_engine_error": engine_error,
             "embeddings_loaded": _embedding_count(),
@@ -2063,6 +2205,25 @@ def reload_embeddings(sessionKey: str = Query("default", alias="sessionKey")):
         engine.load_embeddings_from_db(db)
         return {"success": True, "embeddings_loaded": _embedding_count(),
                 "unique_students": _student_count()}
+
+
+@app.post("/maintenance/prune-facial-data")
+def prune_facial_data(retentionDays: Optional[int] = Query(None, alias="retentionDays")):
+    if db is None:
+        return _processing_not_ready_response()
+
+    days = FACE_RETENTION_DAYS if retentionDays is None else max(0, int(retentionDays))
+    summary = _cleanup_expired_face_samples(days)
+
+    if engine is not None:
+        engine.load_embeddings_from_db(db)
+
+    return {
+        "success": True,
+        "retention_days": days,
+        **summary,
+        "embeddings_loaded": _embedding_count(),
+    }
 
 
 # ═══════════════════════════════════════════════════════

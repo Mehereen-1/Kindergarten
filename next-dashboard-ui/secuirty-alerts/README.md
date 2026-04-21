@@ -48,6 +48,30 @@ cd next-dashboard-ui/secuirty-alerts
 python main.py --serve --port 8010
 ```
 
+## NPU / iGPU realtime profile (Windows)
+
+For low-power laptops without a dedicated GPU, use:
+
+```powershell
+cd next-dashboard-ui/secuirty-alerts
+./start-realtime-npu.ps1
+```
+
+This enables:
+
+- adaptive realtime stride for stream processing
+- lower-latency stream buffering
+- tuned fight/fall/fire/audio thresholds for classroom recall
+- ONNX DirectML preference with automatic CPU fallback
+
+Optional acceleration package (Windows):
+
+```powershell
+pip install onnxruntime-directml
+```
+
+If `onnxruntime-directml` is not installed, the service keeps working on CPU.
+
 ## Test the API
 
 Health:

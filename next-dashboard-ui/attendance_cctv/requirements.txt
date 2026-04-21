@@ -10,3 +10,4 @@ insightface==0.7.3
 pillow
 pandas
 openpyxl
+azure-storage-blob
