@@ -1,4 +1,5 @@
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
+import { existsSync } from 'fs';
 import path from 'path';
 
 import {
@@ -28,6 +29,7 @@ type ServiceStatus = {
 };
 
 const globalKey = '__kindergartenSecurityAlertServiceState__';
+type PythonCandidate = { command: string; prefixArgs: string[] };
 
 function getState(): ServiceState {
   const globalStore = globalThis as typeof globalThis & Record<string, ServiceState | undefined>;
@@ -48,6 +50,104 @@ function appendLog(line: string) {
   if (state.logs.length > 200) {
     state.logs = state.logs.slice(-200);
   }
+}
+
+function addPythonCandidate(
+  candidates: PythonCandidate[],
+  command: string,
+  prefixArgs: string[] = []
+) {
+  const trimmedCommand = command.trim();
+  if (!trimmedCommand) {
+    return;
+  }
+
+  for (const candidate of candidates) {
+    if (
+      candidate.command === trimmedCommand &&
+      candidate.prefixArgs.length === prefixArgs.length &&
+      candidate.prefixArgs.every((item, index) => item === prefixArgs[index])
+    ) {
+      return;
+    }
+  }
+
+  candidates.push({ command: trimmedCommand, prefixArgs });
+}
+
+function getVenvPythonPath(baseDir: string) {
+  return process.platform === 'win32'
+    ? path.resolve(baseDir, '.venv', 'Scripts', 'python.exe')
+    : path.resolve(baseDir, '.venv', 'bin', 'python');
+}
+
+function getWindowsPython310Candidates() {
+  if (process.platform !== 'win32') {
+    return [];
+  }
+
+  const candidates: string[] = [];
+  const localAppData = process.env.LOCALAPPDATA?.trim();
+  if (localAppData) {
+    candidates.push(path.join(localAppData, 'Python', 'pythoncore-3.10-64', 'python.exe'));
+  }
+
+  const programFiles = [
+    process.env['ProgramFiles']?.trim(),
+    process.env['ProgramW6432']?.trim(),
+    process.env['ProgramFiles(x86)']?.trim(),
+  ];
+  for (const baseDir of programFiles) {
+    if (!baseDir) {
+      continue;
+    }
+    candidates.push(path.join(baseDir, 'Python310', 'python.exe'));
+    candidates.push(path.join(baseDir, 'Python 3.10', 'python.exe'));
+  }
+
+  return candidates;
+}
+
+function isReadyVenv(baseDir: string) {
+  return existsSync(path.resolve(baseDir, '.venv', '.ready'));
+}
+
+export function getSecurityAlertPythonCandidates(): PythonCandidate[] {
+  const candidates: PythonCandidate[] = [];
+
+  const explicit = process.env.ANOMALY_SERVICE_PYTHON?.trim();
+  if (explicit) {
+    addPythonCandidate(candidates, explicit);
+  }
+
+  const cwd = process.cwd();
+  const venvCandidates = [
+    getVenvPythonPath(path.resolve(cwd, 'secuirty-alerts')),
+    getVenvPythonPath(cwd),
+    getVenvPythonPath(path.resolve(cwd, '..')),
+  ];
+  const readyFlags = [
+    path.resolve(cwd, 'secuirty-alerts'),
+    cwd,
+    path.resolve(cwd, '..'),
+  ];
+  for (const [index, candidatePath] of venvCandidates.entries()) {
+    if (existsSync(candidatePath) && (index > 0 || isReadyVenv(readyFlags[index]))) {
+      addPythonCandidate(candidates, candidatePath);
+    }
+  }
+
+  for (const candidatePath of getWindowsPython310Candidates()) {
+    if (existsSync(candidatePath)) {
+      addPythonCandidate(candidates, candidatePath);
+    }
+  }
+
+  addPythonCandidate(candidates, 'python');
+  addPythonCandidate(candidates, 'py', ['-3']);
+  addPythonCandidate(candidates, 'py');
+
+  return candidates;
 }
 
 export function getServiceUrl() {
@@ -79,6 +179,17 @@ async function fetchHealth() {
 
 function hasHealthyResponse(status: ServiceStatus) {
   return Boolean(status.health && typeof status.health === 'object');
+}
+
+function getServiceModels(status: ServiceStatus): any[] {
+  const models = (status.health as any)?.models;
+  return Array.isArray(models) ? models : [];
+}
+
+function hasLoadedAudioSecurityModel(status: ServiceStatus) {
+  return getServiceModels(status).some(
+    (item: any) => String(item?.name || '') === 'audio_security_model' && Boolean(item?.loaded)
+  );
 }
 
 async function waitForHealthyService(timeoutMs: number): Promise<ServiceStatus | null> {
@@ -150,6 +261,40 @@ export async function ensureSecurityAlertServiceReady(timeoutMs = 60000): Promis
   );
 }
 
+export async function ensureSecurityAlertAudioServiceReady(timeoutMs = 60000): Promise<ServiceStatus> {
+  let status = await getSecurityAlertServiceStatus();
+  if (hasHealthyResponse(status) && hasLoadedAudioSecurityModel(status)) {
+    return status;
+  }
+
+  if (!shouldAutoStartSecurityAlertService()) {
+    throw new Error(
+      `Security alert service is not available at ${getServiceUrl()}. Set ANOMALY_SERVICE_URL to the deployed Python service, or enable ANOMALY_SERVICE_AUTO_START for local development.`
+    );
+  }
+
+  if (isChildAlive(getState().child)) {
+    await stopSecurityAlertService();
+  }
+
+  const startResult = await startSecurityAlertService();
+  status = startResult.status;
+  if (hasHealthyResponse(status) && hasLoadedAudioSecurityModel(status)) {
+    return status;
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    status = await getSecurityAlertServiceStatus();
+    if (hasHealthyResponse(status) && hasLoadedAudioSecurityModel(status)) {
+      return status;
+    }
+  }
+
+  return status;
+}
+
 export async function startSecurityAlertService() {
   const state = getState();
   if (state.startupPromise) {
@@ -186,15 +331,7 @@ export async function startSecurityAlertService() {
     const port = process.env.ANOMALY_SERVICE_PORT || '8010';
     const serviceDir = path.join(process.cwd(), 'secuirty-alerts');
     const mainPath = path.join(serviceDir, 'main.py');
-    const candidates: Array<{ command: string; prefixArgs: string[] }> = [];
-    if (process.env.ANOMALY_SERVICE_PYTHON) {
-      candidates.push({ command: process.env.ANOMALY_SERVICE_PYTHON, prefixArgs: [] });
-    }
-    candidates.push(
-      { command: 'python', prefixArgs: [] },
-      { command: 'py', prefixArgs: ['-3'] },
-      { command: 'py', prefixArgs: [] }
-    );
+    const candidates = getSecurityAlertPythonCandidates();
 
     let lastFailure = 'Unable to start anomaly service';
 

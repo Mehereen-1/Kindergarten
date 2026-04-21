@@ -28,9 +28,16 @@ $env:ANOMALY_FALL_OFF_MARGIN = "0.06"
 $env:ANOMALY_FALL_MIN_ON_FRAMES = "4"
 $env:ANOMALY_FALL_MIN_OFF_FRAMES = "4"
 
-$env:ANOMALY_AUDIO_THRESHOLD = "0.35"
-$env:ANOMALY_AUDIO_INSTANT_THRESHOLD = "0.55"
-$env:ANOMALY_AUDIO_SUSTAIN_THRESHOLD = "0.35"
+$env:ANOMALY_AUDIO_THRESHOLD = "0.65"
+$env:ANOMALY_AUDIO_WINDOW_SECONDS = "0.48"
+$env:ANOMALY_AUDIO_INSTANT_THRESHOLD = "0.65"
+$env:ANOMALY_AUDIO_SUSTAIN_THRESHOLD = "0.65"
+$env:ANOMALY_AUDIO_INSTANT_WINDOW_SIZE = "4"
+$env:ANOMALY_AUDIO_INSTANT_MIN_COUNT = "3"
+$env:ANOMALY_AUDIO_WINDOW_SIZE = "5"
+$env:ANOMALY_AUDIO_MIN_COUNT = "3"
+$env:ANOMALY_AUDIO_CONSECUTIVE_NEEDED = "3"
+$env:ANOMALY_AUDIO_HOP_SECONDS = "0.48"
 
 $env:ANOMALY_FUSION_MEDIUM_CONF = "0.72"
 $env:ANOMALY_FUSION_HIGH_CONF = "0.88"
@@ -48,4 +55,22 @@ if ([string]::IsNullOrWhiteSpace($port)) {
 	$port = "8011"
 }
 
-python main.py --serve --host 0.0.0.0 --port $port
+$explicitPython = $env:ANOMALY_SERVICE_PYTHON
+$windowsPython310 = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Python\pythoncore-3.10-64\python.exe' } else { '' }
+$localPython = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
+$localVenvReady = Test-Path (Join-Path $PSScriptRoot '.venv\.ready')
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
+$repoPython = Join-Path $repoRoot '.venv\Scripts\python.exe'
+$pythonExe = if (-not [string]::IsNullOrWhiteSpace($explicitPython) -and (Test-Path $explicitPython)) {
+	$explicitPython
+} elseif (-not [string]::IsNullOrWhiteSpace($windowsPython310) -and (Test-Path $windowsPython310)) {
+	$windowsPython310
+} elseif ($localVenvReady -and (Test-Path $localPython)) {
+	(Resolve-Path $localPython).Path
+} elseif (Test-Path $repoPython) {
+	(Resolve-Path $repoPython).Path
+} else {
+	'python'
+}
+
+& $pythonExe main.py --serve --host 0.0.0.0 --port $port

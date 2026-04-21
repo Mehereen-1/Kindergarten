@@ -8,6 +8,23 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from anomaly_system.config_loader import (
+    AUDIO_CONFIG_FILENAME,
+    AUDIO_MODEL_FILENAME,
+    DEFAULT_AUDIO_CONSECUTIVE_NEEDED,
+    DEFAULT_AUDIO_FRAME_TIME_SEC,
+    DEFAULT_AUDIO_INSTANT_MIN_COUNT,
+    DEFAULT_AUDIO_INSTANT_THRESHOLD,
+    DEFAULT_AUDIO_INSTANT_WINDOW_SIZE,
+    DEFAULT_AUDIO_LABEL_MAP,
+    DEFAULT_AUDIO_MIN_COUNT_IN_WINDOW,
+    DEFAULT_AUDIO_SAMPLE_RATE,
+    DEFAULT_AUDIO_SUSTAIN_THRESHOLD,
+    DEFAULT_AUDIO_THRESHOLD,
+    DEFAULT_AUDIO_WINDOW_SIZE,
+    normalize_audio_label_map,
+)
+
 
 def _env_flag(name: str, default: bool) -> bool:
     value = os.getenv(name)
@@ -134,16 +151,18 @@ class AudioModelConfig:
     checkpoint_path: Path
     config_path: Path
     enabled: bool = True
-    threshold: float = 0.4
-    sample_rate: int = 16000
+    threshold: float = DEFAULT_AUDIO_THRESHOLD
+    sample_rate: int = DEFAULT_AUDIO_SAMPLE_RATE
     embedding_size: int = 1024
-    window_seconds: float = 0.48
-    hop_seconds: float = 0.24
-    instant_threshold: float = 0.6
-    sustain_threshold: float = 0.4
-    sustain_window_size: int = 5
-    sustain_min_count: int = 3
-    sustain_consecutive_needed: int = 2
+    window_seconds: float = DEFAULT_AUDIO_FRAME_TIME_SEC
+    hop_seconds: float = DEFAULT_AUDIO_FRAME_TIME_SEC
+    instant_threshold: float = DEFAULT_AUDIO_INSTANT_THRESHOLD
+    sustain_threshold: float = DEFAULT_AUDIO_SUSTAIN_THRESHOLD
+    instant_window_size: int = DEFAULT_AUDIO_INSTANT_WINDOW_SIZE
+    instant_min_count: int = DEFAULT_AUDIO_INSTANT_MIN_COUNT
+    sustain_window_size: int = DEFAULT_AUDIO_WINDOW_SIZE
+    sustain_min_count: int = DEFAULT_AUDIO_MIN_COUNT_IN_WINDOW
+    sustain_consecutive_needed: int = DEFAULT_AUDIO_CONSECUTIVE_NEEDED
     label_map: Dict[int, str] = field(default_factory=dict)
     positive_labels: Tuple[str, ...] = tuple()
     adapter_kwargs: Dict[str, Any] = field(default_factory=dict)
@@ -316,7 +335,7 @@ def get_settings() -> ServiceConfig:
         adapter_kwargs={"output_name": _env_optional("ANOMALY_FIRE_OUTPUT")},
     )
 
-    audio_config_path = models_dir / "final_audio_config_extratune.json"
+    audio_config_path = models_dir / AUDIO_CONFIG_FILENAME
     raw_audio_config: Dict[str, Any] = {}
     if audio_config_path.exists():
         try:
@@ -327,40 +346,39 @@ def get_settings() -> ServiceConfig:
             raw_audio_config = {}
 
     raw_label_map = raw_audio_config.get("label_map", {}) if isinstance(raw_audio_config, dict) else {}
-    inverted_label_map: Dict[int, str] = {}
-    if isinstance(raw_label_map, dict):
-        for label, index in raw_label_map.items():
-            try:
-                inverted_label_map[int(index)] = str(label)
-            except (TypeError, ValueError):
-                continue
+    inverted_label_map = normalize_audio_label_map(raw_label_map)
 
     realtime_rules = raw_audio_config.get("realtime_rules", {}) if isinstance(raw_audio_config, dict) else {}
     audio = AudioModelConfig(
         name="audio_security_model",
-        checkpoint_path=models_dir / "final_audio_model_extratune.keras",
+        checkpoint_path=models_dir / AUDIO_MODEL_FILENAME,
         config_path=audio_config_path,
         enabled=_env_flag("ANOMALY_ENABLE_AUDIO", _python_supports_audio_stack()),
-        threshold=_env_float("ANOMALY_AUDIO_THRESHOLD", float(raw_audio_config.get("threshold", 0.35) or 0.35)),
-        sample_rate=_env_int("ANOMALY_AUDIO_SR", int(raw_audio_config.get("sr", 16000) or 16000)),
+        threshold=_env_float("ANOMALY_AUDIO_THRESHOLD", float(raw_audio_config.get("threshold", DEFAULT_AUDIO_THRESHOLD) or DEFAULT_AUDIO_THRESHOLD)),
+        sample_rate=_env_int("ANOMALY_AUDIO_SR", int(raw_audio_config.get("sr", DEFAULT_AUDIO_SAMPLE_RATE) or DEFAULT_AUDIO_SAMPLE_RATE)),
         embedding_size=_env_int("ANOMALY_AUDIO_EMBEDDING_SIZE", 1024),
-        window_seconds=_env_float("ANOMALY_AUDIO_WINDOW_SECONDS", float(realtime_rules.get("frame_time_sec", 0.48) or 0.48)),
-        hop_seconds=_env_float(
-            "ANOMALY_AUDIO_HOP_SECONDS",
-            float((realtime_rules.get("frame_time_sec", 0.48) or 0.48) / 2.0),
+        window_seconds=_env_float("ANOMALY_AUDIO_WINDOW_SECONDS", float(realtime_rules.get("frame_time_sec", DEFAULT_AUDIO_FRAME_TIME_SEC) or DEFAULT_AUDIO_FRAME_TIME_SEC)),
+        hop_seconds=_env_float("ANOMALY_AUDIO_HOP_SECONDS", float(realtime_rules.get("frame_time_sec", DEFAULT_AUDIO_FRAME_TIME_SEC) or DEFAULT_AUDIO_FRAME_TIME_SEC)),
+        instant_threshold=_env_float("ANOMALY_AUDIO_INSTANT_THRESHOLD", float(realtime_rules.get("instant_threshold", DEFAULT_AUDIO_INSTANT_THRESHOLD) or DEFAULT_AUDIO_INSTANT_THRESHOLD)),
+        sustain_threshold=_env_float("ANOMALY_AUDIO_SUSTAIN_THRESHOLD", float(realtime_rules.get("sustain_threshold", DEFAULT_AUDIO_SUSTAIN_THRESHOLD) or DEFAULT_AUDIO_SUSTAIN_THRESHOLD)),
+        instant_window_size=_env_int(
+            "ANOMALY_AUDIO_INSTANT_WINDOW_SIZE",
+            int(realtime_rules.get("instant_window_size", DEFAULT_AUDIO_INSTANT_WINDOW_SIZE) or DEFAULT_AUDIO_INSTANT_WINDOW_SIZE),
         ),
-        instant_threshold=_env_float("ANOMALY_AUDIO_INSTANT_THRESHOLD", float(realtime_rules.get("instant_threshold", 0.55) or 0.55)),
-        sustain_threshold=_env_float("ANOMALY_AUDIO_SUSTAIN_THRESHOLD", float(realtime_rules.get("sustain_threshold", 0.35) or 0.35)),
-        sustain_window_size=_env_int("ANOMALY_AUDIO_WINDOW_SIZE", int(realtime_rules.get("window_size", 5) or 5)),
-        sustain_min_count=_env_int("ANOMALY_AUDIO_MIN_COUNT", int(realtime_rules.get("min_count_in_window", 3) or 3)),
+        instant_min_count=_env_int(
+            "ANOMALY_AUDIO_INSTANT_MIN_COUNT",
+            int(realtime_rules.get("instant_min_count", DEFAULT_AUDIO_INSTANT_MIN_COUNT) or DEFAULT_AUDIO_INSTANT_MIN_COUNT),
+        ),
+        sustain_window_size=_env_int("ANOMALY_AUDIO_WINDOW_SIZE", int(realtime_rules.get("window_size", DEFAULT_AUDIO_WINDOW_SIZE) or DEFAULT_AUDIO_WINDOW_SIZE)),
+        sustain_min_count=_env_int("ANOMALY_AUDIO_MIN_COUNT", int(realtime_rules.get("min_count_in_window", DEFAULT_AUDIO_MIN_COUNT_IN_WINDOW) or DEFAULT_AUDIO_MIN_COUNT_IN_WINDOW)),
         sustain_consecutive_needed=_env_int(
             "ANOMALY_AUDIO_CONSECUTIVE_NEEDED",
-            int(realtime_rules.get("consecutive_needed", 2) or 2),
+            int(realtime_rules.get("consecutive_needed", DEFAULT_AUDIO_CONSECUTIVE_NEEDED) or DEFAULT_AUDIO_CONSECUTIVE_NEEDED),
         ),
-        label_map=inverted_label_map or {0: "normal", 1: "emergency"},
+        label_map=inverted_label_map or dict(DEFAULT_AUDIO_LABEL_MAP),
         positive_labels=tuple(
             label
-            for label in (inverted_label_map or {0: "normal", 1: "emergency"}).values()
+            for label in (inverted_label_map or dict(DEFAULT_AUDIO_LABEL_MAP)).values()
             if label.lower() != "normal"
         ),
         adapter_kwargs={"raw_config": raw_audio_config},

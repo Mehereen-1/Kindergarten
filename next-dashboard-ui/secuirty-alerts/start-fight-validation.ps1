@@ -41,4 +41,22 @@ if ([string]::IsNullOrWhiteSpace($port)) {
     $port = "8011"
 }
 
-python main.py --serve --host 0.0.0.0 --port $port
+$explicitPython = $env:ANOMALY_SERVICE_PYTHON
+$windowsPython310 = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Python\pythoncore-3.10-64\python.exe' } else { '' }
+$localPython = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
+$localVenvReady = Test-Path (Join-Path $PSScriptRoot '.venv\.ready')
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
+$repoPython = Join-Path $repoRoot '.venv\Scripts\python.exe'
+$pythonExe = if (-not [string]::IsNullOrWhiteSpace($explicitPython) -and (Test-Path $explicitPython)) {
+    $explicitPython
+} elseif (-not [string]::IsNullOrWhiteSpace($windowsPython310) -and (Test-Path $windowsPython310)) {
+    $windowsPython310
+} elseif ($localVenvReady -and (Test-Path $localPython)) {
+    (Resolve-Path $localPython).Path
+} elseif (Test-Path $repoPython) {
+    (Resolve-Path $repoPython).Path
+} else {
+    'python'
+}
+
+& $pythonExe main.py --serve --host 0.0.0.0 --port $port

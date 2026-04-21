@@ -156,12 +156,16 @@ class AnomalyInferenceService:
         if duration_seconds is not None:
             fps = capture.get(cv2.CAP_PROP_FPS) or 25.0
             frame_limit = min(frame_limit, max(1, int(duration_seconds * fps)))
+        audio_duration_limit = duration_seconds
+        if audio_duration_limit is None:
+            fps = capture.get(cv2.CAP_PROP_FPS) or 25.0
+            audio_duration_limit = max(1.0, frame_limit / max(fps, 1e-6))
         if self.settings.audio.enabled and not self.audio_wrapper.load_error:
             try:
                 audio_results = self.audio_wrapper.analyze_source(
                     stream_url,
                     source_type="stream",
-                    max_duration_seconds=duration_seconds,
+                    max_duration_seconds=audio_duration_limit,
                 )
             except Exception as exc:
                 self.logger.warning("Audio analysis skipped for stream: %s", exc)

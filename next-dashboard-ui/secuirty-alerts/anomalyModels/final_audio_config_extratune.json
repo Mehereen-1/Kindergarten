@@ -1,16 +1,18 @@
 {
-  "threshold": 0.4,
+  "threshold": 0.65,
   "sr": 16000,
   "label_map": {
     "normal": 0,
     "emergency": 1
   },
   "realtime_rules": {
-    "instant_threshold": 0.6,
-    "sustain_threshold": 0.4,
+    "instant_threshold": 0.65,
+    "sustain_threshold": 0.65,
+    "instant_window_size": 4,
+    "instant_min_count": 3,
     "window_size": 5,
     "min_count_in_window": 3,
-    "consecutive_needed": 2,
+    "consecutive_needed": 3,
     "frame_time_sec": 0.48
   }
 }

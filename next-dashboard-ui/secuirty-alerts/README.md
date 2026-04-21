@@ -38,14 +38,14 @@ From the security alert environment:
 
 ```powershell
 cd next-dashboard-ui/secuirty-alerts
-pip install -r requirements.txt
+C:\Users\USER\AppData\Local\Python\pythoncore-3.10-64\python.exe -m pip install -r requirements.txt
 ```
 
 ## Start the app
 
 ```powershell
 cd next-dashboard-ui/secuirty-alerts
-python main.py --serve --port 8010
+C:\Users\USER\AppData\Local\Python\pythoncore-3.10-64\python.exe main.py --serve --port 8010
 ```
 
 ## NPU / iGPU realtime profile (Windows)
