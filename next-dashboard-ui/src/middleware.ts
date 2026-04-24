@@ -4,19 +4,26 @@ const BYPASS_ADMIN_AUTH = true;
 
 // Define role-based route mappings
 const roleRoutes: Record<string, string[]> = {
-  admin: ['/dashboard/admin', '/api/admin'],
+  admin: ['/admin', '/api/admin', '/list'],
   teacher: ['/teacher', '/api/teacher', '/api/chat'],
   parent: ['/parent', '/api/parent', '/api/chat'],
 };
 
 // Public routes that don't require authentication
-const publicRoutes = ['/', '/sign-in'];
+const publicRoutes = ['/', '/sign-in', '/admin-login', '/admin-request-reset', '/admin-reset-password', '/admin-setup'];
 
 // Routes that require authentication
 const protectedRoutes = [
   '/dashboard',
   '/teacher',
   '/parent',
+  '/admin/dashboard',
+  '/admin/exam-config',
+  '/admin/results',
+  '/admin/attendance-audit',
+  '/admin/attendance-reports',
+  '/admin/security-alerts',
+  '/admin/settings',
   '/api/admin',
   '/api/teacher',
   '/api/parent',
@@ -27,8 +34,22 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApiRoute = pathname.startsWith('/api/');
 
+  const legacyAdminAuthRoutes: Record<string, string> = {
+    '/admin/login': '/admin-login',
+    '/admin/request-reset': '/admin-request-reset',
+    '/admin/reset': '/admin-reset-password',
+    '/admin/setup': '/admin-setup',
+  };
+
+  const redirectedAdminAuthPath = legacyAdminAuthRoutes[pathname];
+  if (redirectedAdminAuthPath) {
+    const url = request.nextUrl.clone();
+    url.pathname = redirectedAdminAuthPath;
+    return NextResponse.redirect(url);
+  }
+
   // Temporary bypass to speed up admin feature testing.
-  if (BYPASS_ADMIN_AUTH && (pathname.startsWith('/dashboard/admin') || pathname.startsWith('/api/admin') || pathname.startsWith('/list/'))) {
+  if (BYPASS_ADMIN_AUTH && (pathname.startsWith('/admin') || pathname.startsWith('/api/admin') || pathname.startsWith('/list/'))) {
     return NextResponse.next();
   }
 
@@ -79,7 +100,7 @@ export function middleware(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     } else {
       // Redirect to appropriate dashboard
-      const dashboardUrl = role === 'admin' ? '/dashboard/admin' : role === 'teacher' ? '/teacher' : '/parent';
+      const dashboardUrl = role === 'admin' ? '/admin/dashboard' : role === 'teacher' ? '/teacher' : '/parent';
       return NextResponse.redirect(new URL(dashboardUrl, request.url));
     }
   }

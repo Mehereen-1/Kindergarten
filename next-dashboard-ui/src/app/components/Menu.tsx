@@ -11,7 +11,7 @@ const menuItems = [
       {
         icon: "/home.png",
         label: "Dashboard",
-        href: "/dashboard/admin",
+        href: "/admin/dashboard",
         visible: ["admin"],
       },
       {
@@ -23,38 +23,44 @@ const menuItems = [
       {
         icon: "/teacher.png",
         label: "Teachers",
-        href: "/list/teachers",
-        visible: ["admin", "teacher"],
+        href: "/admin/teachers",
+        visible: ["admin"],
       },
       {
         icon: "/student.png",
         label: "Students",
-        href: "/list/students",
-        visible: ["admin", "teacher"],
+        href: "/admin/students",
+        visible: ["admin"],
       },
       {
         icon: "/parent.png",
         label: "Parents",
-        href: "/list/parents",
-        visible: ["admin", "teacher"],
+        href: "/admin/parents",
+        visible: ["admin"],
       },
       {
         icon: "/subject.png",
         label: "Subjects",
-        href: "/list/subjects",
+        href: "/admin/subjects",
         visible: ["admin"],
       },
       {
         icon: "/class.png",
         label: "Classes",
-        href: "/list/classes",
-        visible: ["admin", "teacher"],
+        href: "/admin/classes",
+        visible: ["admin"],
+      },
+      {
+        icon: "/class.png",
+        label: "Classes",
+        href: "/teacher/classes",
+        visible: ["teacher"],
       },
       {
         icon: "/lesson.png",
         label: "Lessons",
-        href: "/list/lessons",
-        visible: ["admin", "teacher"],
+        href: "/admin/lessons",
+        visible: ["admin"],
       },
       {
         icon: "/exam.png",
@@ -125,8 +131,14 @@ const menuItems = [
       {
         icon: "/announcement.png",
         label: "Announcements",
+        href: "/admin/announcements",
+        visible: ["admin"],
+      },
+      {
+        icon: "/announcement.png",
+        label: "Announcements",
         href: "/list/announcements",
-        visible: ["admin", "teacher", "student", "parent"],
+        visible: ["teacher", "student", "parent"],
       },
       {
         icon: "/announcement.png",
@@ -148,7 +160,7 @@ const menuItems = [
       {
         icon: "/profile.png",
         label: "Profile",
-        href: "/admin/profile",
+        href: "/admin/dashboard",
         visible: ["admin"],
       },
       {
@@ -166,8 +178,26 @@ const menuItems = [
       {
         icon: "/setting.png",
         label: "Settings",
+        href: "/admin/settings",
+        visible: ["admin"],
+      },
+      {
+        icon: "/setting.png",
+        label: "Settings",
+        href: "/teacher/settings",
+        visible: ["teacher"],
+      },
+      {
+        icon: "/setting.png",
+        label: "Settings",
+        href: "/parent/settings",
+        visible: ["parent"],
+      },
+      {
+        icon: "/setting.png",
+        label: "Settings",
         href: "/settings",
-        visible: ["admin", "teacher", "student", "parent"],
+        visible: ["student"],
       },
       {
         icon: "/logout.png",

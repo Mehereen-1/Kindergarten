@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Bell, Settings, LogOut, BarChart3, Users, ChevronDown } from 'lucide-react';
+import { Search, Bell, Settings, LogOut, Users, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -70,16 +70,7 @@ const Navbar = () => {
           </div>
 
           <Link
-            href="/dashboard/admin"
-            className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-full bg-gradient-to-br from-[#5a685a] to-[#4e5c4e] text-white hover:brightness-95 shadow-[0_8px_24px_rgba(54,57,43,0.16)] transition-all text-sm font-semibold"
-            title="Dashboard"
-          >
-            <BarChart3 className="w-4 h-4" />
-            <span className="hidden md:inline">Dashboard</span>
-          </Link>
-
-          <Link
-            href="/list/students"
+            href="/admin/students"
             className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-full bg-[#eeefdd] border border-[#b9bba826] text-[#5a685a] hover:bg-[#d7e7d5] hover:text-[#354336] shadow-sm hover:shadow-md transition-all text-sm font-semibold"
             title="Students"
           >

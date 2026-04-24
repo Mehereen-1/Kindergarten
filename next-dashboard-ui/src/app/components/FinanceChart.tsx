@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
 import {
   LineChart,
   Line,
@@ -12,74 +13,96 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const data = [
-  {
-    name: "Jan",
-    income: 4000,
-    expense: 2400,
-  },
-  {
-    name: "Feb",
-    income: 3000,
-    expense: 1398,
-  },
-  {
-    name: "Mar",
-    income: 2000,
-    expense: 9800,
-  },
-  {
-    name: "Apr",
-    income: 2780,
-    expense: 3908,
-  },
-  {
-    name: "May",
-    income: 1890,
-    expense: 4800,
-  },
-  {
-    name: "Jun",
-    income: 2390,
-    expense: 3800,
-  },
-  {
-    name: "Jul",
-    income: 3490,
-    expense: 4300,
-  },
-  {
-    name: "Aug",
-    income: 3490,
-    expense: 4300,
-  },
-  {
-    name: "Sep",
-    income: 3490,
-    expense: 4300,
-  },
-  {
-    name: "Oct",
-    income: 3490,
-    expense: 4300,
-  },
-  {
-    name: "Nov",
-    income: 3490,
-    expense: 4300,
-  },
-  {
-    name: "Dec",
-    income: 3490,
-    expense: 4300,
-  },
-];
+type DatedRow = {
+  createdAt?: string;
+};
+
+type EventRow = {
+  startDate?: string;
+  createdAt?: string;
+};
+
+type MonthlyPoint = {
+  name: string;
+  users: number;
+  events: number;
+};
 
 const FinanceChart = () => {
+  const [students, setStudents] = useState<DatedRow[]>([]);
+  const [teachers, setTeachers] = useState<DatedRow[]>([]);
+  const [parents, setParents] = useState<DatedRow[]>([]);
+  const [events, setEvents] = useState<EventRow[]>([]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadSeries = async () => {
+      try {
+        const [studentsRes, teachersRes, parentsRes, eventsRes] = await Promise.all([
+          fetch('/api/admin/students'),
+          fetch('/api/admin/teachers'),
+          fetch('/api/admin/parents'),
+          fetch('/api/admin/events?role=all'),
+        ]);
+
+        if (!studentsRes.ok || !teachersRes.ok || !parentsRes.ok || !eventsRes.ok) {
+          throw new Error('Failed to load activity data');
+        }
+
+        const [studentsData, teachersData, parentsData, eventsData] = await Promise.all([
+          studentsRes.json(),
+          teachersRes.json(),
+          parentsRes.json(),
+          eventsRes.json(),
+        ]);
+
+        if (isActive) {
+          setStudents(Array.isArray(studentsData?.students) ? studentsData.students : []);
+          setTeachers(Array.isArray(teachersData?.teachers) ? teachersData.teachers : []);
+          setParents(Array.isArray(parentsData?.parents) ? parentsData.parents : []);
+          setEvents(Array.isArray(eventsData) ? eventsData : []);
+        }
+      } catch {
+        if (isActive) {
+          setStudents([]);
+          setTeachers([]);
+          setParents([]);
+          setEvents([]);
+        }
+      }
+    };
+
+    loadSeries();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const data = useMemo<MonthlyPoint[]>(() => {
+    const labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const points = labels.map((label) => ({ name: label, users: 0, events: 0 }));
+
+    const increment = (isoDate: string | undefined, key: 'users' | 'events') => {
+      if (!isoDate) return;
+      const date = new Date(isoDate);
+      if (Number.isNaN(date.getTime())) return;
+      const month = date.getMonth();
+      if (month < 0 || month > 11) return;
+      points[month][key] += 1;
+    };
+
+    [...students, ...teachers, ...parents].forEach((row) => increment(row.createdAt, 'users'));
+    events.forEach((row) => increment(row.startDate || row.createdAt, 'events'));
+
+    return points;
+  }, [students, teachers, parents, events]);
+
   return (
     <div className="bg-white rounded-xl w-full h-full p-4">
       <div className="flex justify-between items-center">
-        <h1 className="text-lg font-semibold">Finance</h1>
+        <h1 className="text-lg font-semibold">System Growth</h1>
         <Image src="/moreDark.png" alt="" width={20} height={20} />
       </div>
       <ResponsiveContainer width="100%" height="90%">
@@ -111,11 +134,11 @@ const FinanceChart = () => {
           />
           <Line
             type="monotone"
-            dataKey="income"
+            dataKey="users"
             stroke="#C3EBFA"
             strokeWidth={5}
           />
-          <Line type="monotone" dataKey="expense" stroke="#CFCEFF" strokeWidth={5}/>
+          <Line type="monotone" dataKey="events" stroke="#CFCEFF" strokeWidth={5}/>
         </LineChart>
       </ResponsiveContainer>
     </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, LogIn, Mail, Lock } from 'lucide-react';
@@ -22,36 +23,26 @@ export default function SignInPage() {
     try {
       const response = await fetch('/api/auth/signin', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-
       const data = await response.json();
-
       if (response.ok) {
-        // Store user info in cookies
         const userCookie = JSON.stringify({
           id: data.user.id,
           name: data.user.name,
           email: data.user.email,
           role: data.user.role,
         });
-
         document.cookie = `user=${encodeURIComponent(userCookie)}; path=/; max-age=${60 * 60 * 24 * 7}`;
         document.cookie = `userRole=${data.user.role}; path=/; max-age=${60 * 60 * 24 * 7}`;
-
-        // Check if user needs to change password (first login)
         if (data.redirectToChangePassword) {
           router.push(`/change-password?userId=${data.user.id}&firstLogin=true`);
           return;
         }
-
-        // Redirect based on role
         switch (data.user.role) {
           case 'admin':
-            router.push('/dashboard/admin');
+            router.push('/admin/dashboard');
             break;
           case 'teacher':
             router.push('/teacher');
@@ -95,7 +86,7 @@ export default function SignInPage() {
                   Sign in with a clean, simple flow.
                 </h1>
                 <p className="mt-5 text-base leading-7 text-[#636656] sm:text-lg">
-                  Use your school account to reach the correct panel. Teachers, parents, and administrators all enter from the same focused screen.
+                  Teachers and parents enter here with their school account. Administrators use the dedicated admin access flow.
                 </p>
               </div>
             </div>
@@ -112,7 +103,7 @@ export default function SignInPage() {
               </div>
               <div className="rounded-2xl bg-[#d7e7d5] p-4 shadow-[0_8px_20px_rgba(54,57,43,0.05)]">
                 <p className="text-sm font-semibold text-[#36392b]">Admin access</p>
-                <p className="mt-1 text-sm text-[#636656]">Overview and management tools.</p>
+                <p className="mt-1 text-sm text-[#636656]">Use the dedicated admin login and recovery pages.</p>
               </div>
             </div>
           </section>
@@ -196,6 +187,13 @@ export default function SignInPage() {
               <p className="mt-6 rounded-2xl bg-[#f4f5e4] px-4 py-3 text-sm leading-6 text-[#636656]">
                 New teachers: use the auto-generated password from your welcome email.
               </p>
+
+              <div className="mt-4 rounded-2xl border border-[#d8d3b3] bg-white/70 px-4 py-4 text-sm text-[#636656]">
+                Admins:
+                <Link href="/admin-login" className="ml-2 font-semibold text-[#5a685a] hover:text-[#4e5c4e]">
+                  Open the dedicated admin portal
+                </Link>
+              </div>
             </div>
           </section>
         </div>

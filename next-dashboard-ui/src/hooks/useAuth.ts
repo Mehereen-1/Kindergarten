@@ -61,7 +61,7 @@ export function useRequireAuth(requiredRole?: 'admin' | 'teacher' | 'parent') {
         // Redirect to appropriate dashboard
         switch (user.role) {
           case 'admin':
-            router.push('/dashboard/admin');
+            router.push('/admin/dashboard');
             break;
           case 'teacher':
             router.push('/teacher');

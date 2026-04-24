@@ -1,9 +1,9 @@
 "use client";
 import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
-  Rectangle,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -12,36 +12,94 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const data = [
-     {
-    name: "Sun",
-    present: 65,
-    absent: 55,
-  },
-  {
-    name: "Mon",
-    present: 60,
-    absent: 40,
-  },
-  {
-    name: "Tue",
-    present: 70,
-    absent: 60,
-  },
-  {
-    name: "Wed",
-    present: 90,
-    absent: 75,
-  },
-  {
-    name: "Thu",
-    present: 90,
-    absent: 75,
-  },
-  
-];
+type AttendanceRecord = {
+  date?: string;
+  status?: string;
+};
+
+type AttendanceSeriesPoint = {
+  name: string;
+  present: number;
+  absent: number;
+};
 
 const AttendanceChart = () => {
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadAttendance = async () => {
+      try {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - 6);
+
+        const response = await fetch(
+          `/api/teacher/attendance?from=${start.toISOString()}&to=${end.toISOString()}`
+        );
+        if (!response.ok) {
+          throw new Error('Failed to fetch attendance');
+        }
+
+        const data = await response.json();
+        if (isActive) {
+          setRecords(Array.isArray(data) ? data : []);
+        }
+      } catch {
+        if (isActive) {
+          setRecords([]);
+        }
+      }
+    };
+
+    loadAttendance();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const data = useMemo<AttendanceSeriesPoint[]>(() => {
+    const labelFor = (day: Date) => day.toLocaleDateString('en-US', { weekday: 'short' });
+
+    const days: Date[] = [];
+    const today = new Date();
+    for (let i = 6; i >= 0; i -= 1) {
+      const day = new Date(today);
+      day.setHours(0, 0, 0, 0);
+      day.setDate(today.getDate() - i);
+      days.push(day);
+    }
+
+    const keyFor = (date: Date) => date.toISOString().slice(0, 10);
+    const map = new Map<string, AttendanceSeriesPoint>(
+      days.map((day) => [
+        keyFor(day),
+        {
+          name: labelFor(day),
+          present: 0,
+          absent: 0,
+        },
+      ])
+    );
+
+    records.forEach((record) => {
+      if (!record.date) return;
+      const d = new Date(record.date);
+      if (Number.isNaN(d.getTime())) return;
+      const key = keyFor(d);
+      const bucket = map.get(key);
+      if (!bucket) return;
+
+      const status = String(record.status || '').toLowerCase();
+      if (status === 'present' || status === 'late') bucket.present += 1;
+      else bucket.absent += 1;
+    });
+
+    return days.map((day) => map.get(keyFor(day)) as AttendanceSeriesPoint);
+  }, [records]);
+
   return (
     <div className="bg-white rounded-lg p-4 h-full">
       <div className="flex justify-between items-center">
