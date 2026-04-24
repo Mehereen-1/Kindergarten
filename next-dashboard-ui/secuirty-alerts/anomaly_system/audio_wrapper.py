@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterator, List, Optional
 
 from anomaly_system.audio_inference import (
     AudioInferenceResult,
@@ -9,7 +9,9 @@ from anomaly_system.audio_inference import (
     load_audio_model_and_config,
     load_yamnet,
     process_video_file,
+    process_video_file_stream,
     process_wav_file,
+    process_wav_file_stream,
 )
 from anomaly_system.config import AudioModelConfig
 from anomaly_system.loaders import LoadedKerasArtifact
@@ -141,6 +143,37 @@ class AudioSecurityWrapper:
         except Exception as exc:
             self.load_error = str(exc)
             raise
+
+    def stream_source(
+        self,
+        media_source: str,
+        *,
+        source_type: str,
+        max_duration_seconds: Optional[float] = None,
+    ) -> Iterator[AudioInferenceResult]:
+        if not self.config.enabled:
+            return iter(())
+
+        self.ensure_loaded()
+        assert self.audio_model is not None
+        assert self.yamnet is not None
+        assert self.deployment_config is not None
+
+        if source_type == "audio":
+            return process_wav_file_stream(
+                media_source,
+                audio_model=self.audio_model,
+                yamnet_model=self.yamnet,
+                config=self.deployment_config,
+            )
+
+        return process_video_file_stream(
+            media_source,
+            audio_model=self.audio_model,
+            yamnet_model=self.yamnet,
+            config=self.deployment_config,
+            max_duration_seconds=max_duration_seconds,
+        )
 
     def _to_model_result(self, result: AudioInferenceResult, *, source_type: str) -> ModelResult:
         detected_label = "emergency" if result.alert else "normal"

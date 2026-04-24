@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import time
 from pathlib import Path
-from typing import Dict, Generator, List, Optional
+from typing import Dict, Generator, List, Optional, Tuple
 
 import cv2
 import requests
+import numpy as np
 
+from anomaly_system.audio_inference import (
+    AudioInferenceResult,
+    RealtimeAudioAlertEngine,
+    preprocess_audio_chunk,
+)
 from anomaly_system.audio_wrapper import AudioSecurityWrapper
 from anomaly_system.base import FrameContext
 from anomaly_system.config import ServiceConfig, get_settings
@@ -15,6 +22,53 @@ from anomaly_system.model_registry import ModelRegistry
 from anomaly_system.schemas import AnalysisResponse, HealthResponse, ModelResult, SystemMetrics
 from anomaly_system.utils import ensure_directory, get_logger
 from anomaly_system.video_buffer import RollingFrameBuffer
+
+
+@dataclass
+class LiveWebcamSession:
+    camera_name: Optional[str]
+    class_name: Optional[str]
+    notify_ingest: bool
+    buffer_max_frames: int
+    source: str = "webcam"
+    current_stride: int = 1
+    max_stride: int = 1
+    auto_stride_enabled: bool = True
+    target_processing_fps: float = 10.0
+    notify_cooldown_seconds: float = 20.0
+    started_at: float = field(default_factory=time.perf_counter)
+    stride_window_started: float = field(default_factory=time.perf_counter)
+    buffer: RollingFrameBuffer = field(init=False)
+    frame_index: int = 0
+    sampled_frames: int = 0
+    stride_window_samples: int = 0
+    last_timestamp: float = 0.0
+    latest_results: Dict[str, ModelResult] = field(default_factory=dict)
+    errors: List[str] = field(default_factory=list)
+    last_notify_at: float = 0.0
+    last_notify_signature: Tuple[str, ...] = field(default_factory=tuple)
+    last_frame_latency_ms: float = 0.0
+
+    def __post_init__(self) -> None:
+        self.buffer = RollingFrameBuffer(self.buffer_max_frames)
+
+
+@dataclass
+class LiveAudioSession:
+    camera_name: Optional[str]
+    class_name: Optional[str]
+    notify_ingest: bool
+    input_sample_rate: int
+    engine: RealtimeAudioAlertEngine
+    source: str = "microphone"
+    notify_cooldown_seconds: float = 20.0
+    started_at: float = field(default_factory=time.perf_counter)
+    chunk_index: int = 0
+    samples_received: int = 0
+    last_notify_at: float = 0.0
+    last_notify_signature: Tuple[str, ...] = field(default_factory=tuple)
+    last_chunk_latency_ms: float = 0.0
+    errors: List[str] = field(default_factory=list)
 
 
 class AnomalyInferenceService:
@@ -57,6 +111,254 @@ class AnomalyInferenceService:
 
     def models(self) -> List[dict]:
         return [info.dict() for info in [*self.registry.models_info(), self.audio_wrapper.info()]]
+
+    def create_live_webcam_session(
+        self,
+        *,
+        camera_name: Optional[str] = None,
+        class_name: Optional[str] = None,
+        notify_ingest: bool = True,
+    ) -> LiveWebcamSession:
+        self.initialize()
+        self.registry.reset_stream_state()
+        current_stride = max(1, self.settings.processing_frame_stride)
+        return LiveWebcamSession(
+            camera_name=camera_name,
+            class_name=class_name,
+            notify_ingest=notify_ingest,
+            buffer_max_frames=self.settings.buffer_max_frames,
+            current_stride=current_stride,
+            max_stride=max(current_stride, self.settings.realtime_max_frame_stride),
+            auto_stride_enabled=bool(self.settings.realtime_auto_stride),
+            target_processing_fps=max(1.0, float(self.settings.realtime_target_processing_fps)),
+        )
+
+    def create_live_audio_session(
+        self,
+        *,
+        camera_name: Optional[str] = None,
+        class_name: Optional[str] = None,
+        notify_ingest: bool = True,
+        input_sample_rate: Optional[int] = None,
+    ) -> LiveAudioSession:
+        self.initialize()
+        if not self.settings.audio.enabled:
+            raise RuntimeError("Audio analysis is disabled in this runtime")
+
+        self.audio_wrapper.ensure_loaded()
+        assert self.audio_wrapper.audio_model is not None
+        assert self.audio_wrapper.yamnet is not None
+        assert self.audio_wrapper.deployment_config is not None
+
+        engine = RealtimeAudioAlertEngine(
+            self.audio_wrapper.audio_model,
+            self.audio_wrapper.yamnet,
+            self.audio_wrapper.deployment_config,
+        )
+        engine.warmup()
+
+        session_sample_rate = max(1, int(input_sample_rate or self.audio_wrapper.deployment_config.sample_rate))
+        return LiveAudioSession(
+            camera_name=camera_name,
+            class_name=class_name,
+            notify_ingest=notify_ingest,
+            input_sample_rate=session_sample_rate,
+            engine=engine,
+        )
+
+    def process_live_webcam_frame(self, session: LiveWebcamSession, frame: np.ndarray) -> Dict[str, object]:
+        self.initialize()
+
+        frame_started = time.perf_counter()
+        session.errors = []
+        session.frame_index += 1
+        frame_index = session.frame_index
+
+        elapsed = max(1e-6, time.perf_counter() - session.started_at)
+        timestamp = elapsed
+        incoming_fps = max(1.0, min(60.0, frame_index / elapsed))
+        session.last_timestamp = timestamp
+        session.buffer.append(frame_index, timestamp, frame)
+
+        sampled = frame_index % max(1, session.current_stride) == 0
+        if sampled:
+            session.sampled_frames += 1
+            session.stride_window_samples += 1
+            height, width = frame.shape[:2]
+            context = FrameContext(
+                source=session.source,
+                frame_index=frame_index,
+                timestamp=timestamp,
+                fps=incoming_fps,
+                width=width,
+                height=height,
+                camera_name=session.camera_name,
+                class_name=session.class_name,
+            )
+
+            try:
+                results = self.registry.predict(frame, context, session.buffer)
+            except Exception as exc:
+                session.errors.append(str(exc))
+                results = []
+
+            for result in results:
+                session.latest_results[f"{result.model_name}:{result.event_type}"] = result
+
+            if session.auto_stride_enabled and session.stride_window_samples >= 24:
+                stride_elapsed = max(1e-6, time.perf_counter() - session.stride_window_started)
+                observed_fps = float(session.stride_window_samples / stride_elapsed)
+                if observed_fps < (session.target_processing_fps * 0.85) and session.current_stride < session.max_stride:
+                    session.current_stride += 1
+                    self.logger.info(
+                        "Live webcam auto-stride increased to %s (observed_fps=%.2f)",
+                        session.current_stride,
+                        observed_fps,
+                    )
+                elif observed_fps > (session.target_processing_fps * 1.25) and session.current_stride > 1:
+                    session.current_stride -= 1
+                    self.logger.info(
+                        "Live webcam auto-stride decreased to %s (observed_fps=%.2f)",
+                        session.current_stride,
+                        observed_fps,
+                    )
+                session.stride_window_started = time.perf_counter()
+                session.stride_window_samples = 0
+
+        session.last_frame_latency_ms = (time.perf_counter() - frame_started) * 1000.0
+        current_results = sorted(session.latest_results.values(), key=lambda item: item.confidence, reverse=True)
+        fused_alerts = self.fusion.fuse(current_results)
+
+        metrics = SystemMetrics(
+            fps=float(max(0.0, min(60.0, session.sampled_frames / elapsed))),
+            processing_time_ms=session.last_frame_latency_ms,
+            processed_frames=frame_index,
+            sampled_frames=session.sampled_frames,
+            active_models=[
+                *self.registry.active_model_names(),
+                *([self.audio_wrapper.name] if self.settings.audio.enabled and not self.audio_wrapper.load_error else []),
+            ],
+        )
+
+        response = AnalysisResponse(
+            status="warning" if fused_alerts or session.errors else "ok",
+            source=session.source,
+            frame_index=frame_index,
+            timestamp=timestamp,
+            alerts=fused_alerts,
+            model_results=current_results,
+            system_metrics=metrics,
+            errors=list(session.errors[-3:]),
+        )
+
+        ingest = self._maybe_notify_live_ingest(session, response)
+
+        payload: Dict[str, object] = response.dict()
+        payload.update(
+            {
+                "type": "frame",
+                "sampled": sampled,
+                "current_stride": session.current_stride,
+                "buffered_frames": len(session.buffer),
+                "latency_ms": round(session.last_frame_latency_ms, 2),
+                "ingest": ingest,
+                "message": self._live_frame_message(
+                    frame_index=frame_index,
+                    sampled=sampled,
+                    current_stride=session.current_stride,
+                    response=response,
+                    ingest=ingest,
+                ),
+            }
+        )
+        return payload
+
+    def process_live_audio_chunk(
+        self,
+        session: LiveAudioSession,
+        samples: np.ndarray,
+    ) -> List[Dict[str, object]]:
+        self.initialize()
+        if not self.settings.audio.enabled or self.audio_wrapper.load_error:
+            raise RuntimeError(self.audio_wrapper.load_error or "Audio analysis is disabled in this runtime")
+
+        self.audio_wrapper.ensure_loaded()
+        assert self.audio_wrapper.deployment_config is not None
+
+        chunk_started = time.perf_counter()
+        session.chunk_index += 1
+        session.errors = []
+
+        raw_samples = np.asarray(samples, dtype=np.float32).reshape(-1)
+        input_sample_count = int(raw_samples.size)
+        if raw_samples.size == 0:
+            session.last_chunk_latency_ms = (time.perf_counter() - chunk_started) * 1000.0
+            return []
+
+        session.samples_received += input_sample_count
+        if session.input_sample_rate != self.audio_wrapper.deployment_config.sample_rate:
+            raw_samples = preprocess_audio_chunk(
+                raw_samples,
+                sample_rate=session.input_sample_rate,
+                target_sample_rate=self.audio_wrapper.deployment_config.sample_rate,
+            )
+        else:
+            raw_samples = np.clip(raw_samples, -1.0, 1.0).astype(np.float32, copy=False)
+
+        outputs = session.engine.ingest_samples(raw_samples)
+        elapsed = max(1e-6, time.perf_counter() - session.started_at)
+        payloads: List[Dict[str, object]] = []
+
+        for output in outputs:
+            model_result = self.audio_wrapper._to_model_result(output, source_type=session.source)
+            alerts = self.fusion.fuse([model_result])
+            response = AnalysisResponse(
+                status="warning" if alerts else "ok",
+                source=session.source,
+                frame_index=model_result.frame_index,
+                timestamp=model_result.timestamp,
+                alerts=alerts,
+                model_results=[model_result],
+                system_metrics=SystemMetrics(
+                    fps=0.0,
+                    processing_time_ms=(time.perf_counter() - chunk_started) * 1000.0,
+                    processed_frames=session.chunk_index,
+                    sampled_frames=output.num_frames,
+                    active_models=[self.audio_wrapper.name],
+                ),
+                errors=list(session.errors[-3:]),
+            )
+
+            ingest = self._maybe_notify_live_audio_ingest(session, response)
+            payload = response.dict()
+            payload.update(
+                {
+                    "type": "frame",
+                    "chunk_index": session.chunk_index,
+                    "chunk_samples": input_sample_count,
+                    "input_sample_rate": session.input_sample_rate,
+                    "target_sample_rate": self.audio_wrapper.deployment_config.sample_rate,
+                    "latency_ms": round((time.perf_counter() - chunk_started) * 1000.0, 2),
+                    "ingest": ingest,
+                    "audio_result": output.to_dict(),
+                    "message": self._live_audio_message(
+                        frame_index=model_result.frame_index,
+                        audio_result=output,
+                        response=response,
+                        ingest=ingest,
+                    ),
+                }
+            )
+            payloads.append(payload)
+
+        session.last_chunk_latency_ms = (time.perf_counter() - chunk_started) * 1000.0
+        if not payloads:
+            self.logger.debug(
+                "Buffered live microphone chunk %s without a completed window yet (elapsed=%.2fs)",
+                session.chunk_index,
+                elapsed,
+            )
+        return payloads
 
     def analyze_video(
         self,
@@ -482,6 +784,122 @@ class AnomalyInferenceService:
 
         requests.post(notification.ingest_url, json=payload, headers=headers, timeout=notification.timeout_seconds).raise_for_status()
 
+    def _maybe_notify_live_ingest(
+        self,
+        session: LiveWebcamSession,
+        response: AnalysisResponse,
+    ) -> Optional[Dict[str, object]]:
+        if not session.notify_ingest:
+            return None
+
+        if not response.alerts:
+            session.last_notify_signature = tuple()
+            return {"success": True, "alerted": False, "reason": "no-alert"}
+
+        signature = tuple(sorted(f"{alert.type}:{alert.severity}" for alert in response.alerts))
+        now = time.perf_counter()
+
+        notification = self.settings.notification
+        if not notification.enabled or not notification.ingest_url:
+            session.last_notify_signature = signature
+            return {"success": True, "alerted": False, "reason": "ingest-disabled"}
+
+        if signature == session.last_notify_signature and (now - session.last_notify_at) < session.notify_cooldown_seconds:
+            return {"success": True, "alerted": False, "reason": "cooldown"}
+
+        try:
+            self._notify_ingest(response, camera_name=session.camera_name, class_name=session.class_name)
+        except Exception as exc:
+            self.logger.exception("Failed to notify live ingest endpoint")
+            response.errors.append(f"ingest_notify_failed: {exc}")
+            response.status = "warning"
+            return {"success": False, "alerted": False, "error": str(exc)}
+
+        session.last_notify_at = now
+        session.last_notify_signature = signature
+        return {"success": True, "alerted": True, "reason": "stored"}
+
+    def _maybe_notify_live_audio_ingest(
+        self,
+        session: LiveAudioSession,
+        response: AnalysisResponse,
+    ) -> Optional[Dict[str, object]]:
+        if not session.notify_ingest:
+            return None
+
+        if not response.alerts:
+            session.last_notify_signature = tuple()
+            return {"success": True, "alerted": False, "reason": "no-alert"}
+
+        signature = tuple(sorted(f"{alert.type}:{alert.severity}" for alert in response.alerts))
+        now = time.perf_counter()
+
+        notification = self.settings.notification
+        if not notification.enabled or not notification.ingest_url:
+            session.last_notify_signature = signature
+            return {"success": True, "alerted": False, "reason": "ingest-disabled"}
+
+        if signature == session.last_notify_signature and (now - session.last_notify_at) < session.notify_cooldown_seconds:
+            return {"success": True, "alerted": False, "reason": "cooldown"}
+
+        try:
+            self._notify_ingest(response, camera_name=session.camera_name, class_name=session.class_name)
+        except Exception as exc:
+            self.logger.exception("Failed to notify live audio ingest endpoint")
+            response.errors.append(f"ingest_notify_failed: {exc}")
+            response.status = "warning"
+            return {"success": False, "alerted": False, "error": str(exc)}
+
+        session.last_notify_at = now
+        session.last_notify_signature = signature
+        return {"success": True, "alerted": True, "reason": "stored"}
+
+    def _live_frame_message(
+        self,
+        *,
+        frame_index: int,
+        sampled: bool,
+        current_stride: int,
+        response: AnalysisResponse,
+        ingest: Optional[Dict[str, object]],
+    ) -> str:
+        if not sampled:
+            remaining = current_stride - (frame_index % max(1, current_stride))
+            if remaining == current_stride:
+                remaining = 0
+            if remaining > 0:
+                return f"Frame {frame_index} buffered. Next inference in {remaining} frame(s)."
+            return f"Frame {frame_index} buffered."
+
+        if response.alerts:
+            top_alert = max(response.alerts, key=lambda item: item.confidence)
+            stored_text = " and stored in the system" if ingest and ingest.get("alerted") else ""
+            return (
+                f"Frame {frame_index}: {top_alert.summary or top_alert.type} "
+                f"({top_alert.confidence * 100:.1f}%) detected{stored_text}."
+            )
+
+        return f"Frame {frame_index} processed. No anomaly detected."
+
+    def _live_audio_message(
+        self,
+        *,
+        frame_index: int,
+        audio_result: AudioInferenceResult,
+        response: AnalysisResponse,
+        ingest: Optional[Dict[str, object]],
+    ) -> str:
+        if response.alerts:
+            top_alert = max(response.alerts, key=lambda item: item.confidence)
+            stored_text = " and stored in the system" if ingest and ingest.get("alerted") else ""
+            alert_time = f" at {audio_result.alert_at_sec:.1f}s" if audio_result.alert_at_sec is not None else ""
+            return (
+                f"Audio frame {frame_index}{alert_time}: {top_alert.summary or top_alert.type} "
+                f"({top_alert.confidence * 100:.1f}%) detected{stored_text}."
+            )
+
+        return f"Audio frame {frame_index} processed. No anomaly detected."
+
     def analyze_audio(
         self,
         media_path: Path,
@@ -522,6 +940,90 @@ class AnomalyInferenceService:
                 response.errors.append(f"ingest_notify_failed: {exc}")
                 response.status = "warning"
         return response
+
+    def stream_audio_analysis(
+        self,
+        media_path: Path,
+        *,
+        source: str,
+        camera_name: Optional[str] = None,
+        class_name: Optional[str] = None,
+        notify_ingest: bool = False,
+    ) -> Generator[dict, None, None]:
+        self.initialize()
+        if not media_path.exists():
+            raise FileNotFoundError(f"Audio source not found: {media_path}")
+
+        if not self.settings.audio.enabled or self.audio_wrapper.load_error:
+            raise RuntimeError(self.audio_wrapper.load_error or "Audio analysis is disabled in this runtime")
+
+        started = time.perf_counter()
+        yield {
+            "type": "started",
+            "progress_percent": 0.0,
+            "processed_windows": 0,
+            "message": "Audio analysis started",
+        }
+
+        last_snapshot = None
+        windows_processed = 0
+        for snapshot in self.audio_wrapper.stream_source(
+            str(media_path),
+            source_type=source,
+            max_duration_seconds=None,
+        ):
+            windows_processed += 1
+            last_snapshot = snapshot
+            model_result = self.audio_wrapper._to_model_result(snapshot, source_type=source)
+            message = (
+                f"Detected {model_result.event_type} at {snapshot.alert_at_sec:.1f}s"
+                if snapshot.alert and snapshot.alert_at_sec is not None
+                else f"Processed audio window {windows_processed}"
+            )
+            yield {
+                "type": "progress",
+                "progress_percent": 0.0,
+                "processed_windows": windows_processed,
+                "message": message,
+                "audio_result": model_result.dict(),
+            }
+
+        if last_snapshot is None:
+            raise RuntimeError("Audio stream produced no results")
+
+        final_model_result = self.audio_wrapper._to_model_result(last_snapshot, source_type=source)
+        alerts = self.fusion.fuse([final_model_result])
+        response = AnalysisResponse(
+            status="ok",
+            source=source,
+            frame_index=final_model_result.frame_index,
+            timestamp=final_model_result.timestamp,
+            alerts=alerts,
+            model_results=[final_model_result],
+            system_metrics=SystemMetrics(
+                fps=0.0,
+                processing_time_ms=(time.perf_counter() - started) * 1000.0,
+                processed_frames=0,
+                sampled_frames=0,
+                active_models=[self.audio_wrapper.name] if self.settings.audio.enabled and not self.audio_wrapper.load_error else [],
+            ),
+            errors=[],
+        )
+
+        if notify_ingest and response.alerts:
+            try:
+                self._notify_ingest(response, camera_name=camera_name, class_name=class_name)
+            except Exception as exc:
+                self.logger.exception("Failed to notify ingest endpoint")
+                response.errors.append(f"ingest_notify_failed: {exc}")
+                response.status = "warning"
+
+        yield {
+            "type": "final",
+            "progress_percent": 100.0,
+            "processed_windows": windows_processed,
+            "result": response.dict(),
+        }
 
     def _merge_best_result(self, best_results: Dict[str, ModelResult], result: ModelResult) -> None:
         key = f"{result.model_name}:{result.event_type}"

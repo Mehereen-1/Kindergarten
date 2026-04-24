@@ -377,6 +377,16 @@ def _process_source_with_engine(
     return engine.finalize()
 
 
+def _stream_source_with_engine(
+    engine: RealtimeAudioAlertEngine,
+    block_iter: Iterable[np.ndarray],
+) -> Iterator[AudioInferenceResult]:
+    for block in block_iter:
+        for result in engine.ingest_samples(block):
+            yield result
+    yield engine.finalize()
+
+
 def process_wav_file(
     wav_path: str | Path,
     *,
@@ -409,6 +419,40 @@ def process_video_file(
         max_duration_seconds=max_duration_seconds,
     )
     return _process_source_with_engine(engine, block_iter)
+
+
+def process_wav_file_stream(
+    wav_path: str | Path,
+    *,
+    audio_model: Optional[Any] = None,
+    yamnet_model: Optional[Any] = None,
+    config: Optional[AudioDeploymentConfig] = None,
+) -> Iterator[AudioInferenceResult]:
+    audio_model, yamnet_model, config = _resolve_runtime_bundle(audio_model, yamnet_model, config)
+
+    engine = RealtimeAudioAlertEngine(audio_model, yamnet_model, config)
+    block_iter = iter_wav_blocks(Path(wav_path), target_sample_rate=config.sample_rate, hop_seconds=config.hop_seconds)
+    yield from _stream_source_with_engine(engine, block_iter)
+
+
+def process_video_file_stream(
+    video_path: str | Path,
+    *,
+    audio_model: Optional[Any] = None,
+    yamnet_model: Optional[Any] = None,
+    config: Optional[AudioDeploymentConfig] = None,
+    max_duration_seconds: Optional[float] = None,
+) -> Iterator[AudioInferenceResult]:
+    audio_model, yamnet_model, config = _resolve_runtime_bundle(audio_model, yamnet_model, config)
+
+    engine = RealtimeAudioAlertEngine(audio_model, yamnet_model, config)
+    block_iter = iter_ffmpeg_audio_blocks(
+        str(video_path),
+        target_sample_rate=config.sample_rate,
+        hop_seconds=config.hop_seconds,
+        max_duration_seconds=max_duration_seconds,
+    )
+    yield from _stream_source_with_engine(engine, block_iter)
 
 
 def process_microphone_stream(
