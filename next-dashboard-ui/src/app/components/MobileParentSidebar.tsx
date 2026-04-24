@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { X, Home, Users, Calendar, BarChart3, Bell, Brain, MessageSquare, ClipboardList, Settings } from "lucide-react";
+import { X, Home, Users, Calendar, BarChart3, Bell, Brain, MessageSquare, ClipboardList, Settings, ShieldCheck } from "lucide-react";
 
 const MobileParentSidebar = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
   const menuItems = [
     { icon: Home, label: "Dashboard", href: "/parent" },
     { icon: Users, label: "My Child", href: "/parent/child" },
+    { icon: ShieldCheck, label: "Verification", href: "/parent/verification" },
     { icon: Calendar, label: "Attendance", href: "/parent/attendance" },
     { icon: BarChart3, label: "Results", href: "/parent/results" },
     { icon: Bell, label: "Events", href: "/parent/events" },
@@ -27,7 +28,10 @@ const MobileParentSidebar = ({ open, onClose }: { open: boolean; onClose: () => 
         }`}
       >
         <div className="p-6 border-b border-white/30 flex items-center justify-between">
-          <h2 className="text-xl font-black text-white">KinderVision</h2>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-white" />
+            <h2 className="text-xl font-black text-white">KinderVision</h2>
+          </div>
           <button onClick={onClose} className="text-white">
             <X className="w-6 h-6" />
           </button>
