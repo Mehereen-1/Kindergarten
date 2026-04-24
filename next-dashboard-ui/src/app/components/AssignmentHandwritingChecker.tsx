@@ -81,6 +81,19 @@ type GradingResult = {
   badge: string;
   matchedWords: string[];
   missingWords: string[];
+  summaryLines?: string[];
+  numberBoxChecks?: Array<{ expected: number; detected: number | null; isCorrect: boolean; isUnclear?: boolean }>;
+};
+
+type OcrWordBox = {
+  text?: string;
+  confidence?: number;
+  bbox?: {
+    x0?: number;
+    y0?: number;
+    x1?: number;
+    y1?: number;
+  };
 };
 
 type AssignmentPreset = {
@@ -474,6 +487,718 @@ function evaluateRepeatedText(params: {
   };
 }
 
+function inferOcrHints(
+  template:
+    | 'tracing_sheet'
+    | 'match_sheet'
+    | 'circle_underline_sheet'
+    | 'coloring_sheet'
+    | 'picture_vocab_sheet'
+    | 'phonics_boxes_sheet'
+    | 'pattern_sheet'
+    | 'life_skill_sheet'
+    | 'alphabet_practice_sheet'
+    | 'sentence_repeat_sheet'
+    | 'spelling_repeat_sheet'
+    | 'number_practice_sheet',
+  expected: string,
+  preserveCase: boolean
+) {
+  const numericTemplate = template === 'number_practice_sheet';
+  const alphabetTemplate = template === 'alphabet_practice_sheet';
+  const phonicsTemplate = template === 'phonics_boxes_sheet';
+
+  const hasBangla = /[\u0980-\u09FF]/.test(expected);
+  const lang = hasBangla ? 'ben+eng' : 'eng';
+
+  let whitelist = '';
+  if (numericTemplate) {
+    whitelist = '0123456789';
+  } else if (alphabetTemplate || phonicsTemplate) {
+    whitelist = preserveCase
+      ? 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+      : 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ';
+  }
+
+  return {
+    lang,
+    psmCandidates: [6, 7, 11],
+    whitelist,
+  };
+}
+
+function escapeRegExp(value: string) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function sanitizeOcrWorksheetText(params: {
+  rawText: string;
+  worksheetTemplate:
+    | 'tracing_sheet'
+    | 'match_sheet'
+    | 'circle_underline_sheet'
+    | 'coloring_sheet'
+    | 'picture_vocab_sheet'
+    | 'phonics_boxes_sheet'
+    | 'pattern_sheet'
+    | 'life_skill_sheet'
+    | 'alphabet_practice_sheet'
+    | 'sentence_repeat_sheet'
+    | 'spelling_repeat_sheet'
+    | 'number_practice_sheet';
+  prompt: string;
+  expectedAnswer: string;
+  repeatCount?: number;
+}) {
+  const base = String(params.rawText || '');
+  let cleaned = base;
+
+  const boilerplatePhrases = [
+    'teacher prompt',
+    'reference answer',
+    'number practice boxes',
+    'answer lines',
+    'write each number clearly inside one box',
+    'parent instructions',
+    'kinder vision handwriting practice sheet',
+    'due date',
+    'student name',
+    'roll',
+    'class',
+    'subject',
+    'level',
+    params.prompt,
+    params.expectedAnswer,
+  ]
+    .map((item) => normalizeText(item, false))
+    .filter((item) => item.length >= 4);
+
+  for (const phrase of boilerplatePhrases) {
+    const pattern = new RegExp(escapeRegExp(phrase).replace(/\s+/g, '\\s+'), 'gi');
+    cleaned = cleaned.replace(pattern, ' ');
+  }
+
+  const lines = cleaned
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter((line) => /[\p{L}\p{N}]/u.test(line));
+
+  cleaned = lines.join('\n');
+
+  if (params.worksheetTemplate === 'number_practice_sheet') {
+    const numericSource = cleaned.replace(/[Oo]/g, '0');
+    const targetCount = Math.max(10, Math.min(80, Number(params.repeatCount || 2) * 10));
+    const recovered = recoverSequentialNumbersFromDigitStream(numericSource, targetCount);
+
+    const separated = (numericSource.match(/\d{1,3}/g) || [])
+      .map((token) => Number(token))
+      .filter((value) => Number.isFinite(value) && value >= 1 && value <= targetCount);
+
+    const sequence = recovered.length >= Math.max(4, Math.floor(targetCount * 0.4)) ? recovered : separated;
+
+    if (sequence.length > 0) {
+      const maxValue = sequence.length ? Math.max(...sequence) : null;
+      const totalLine = maxValue !== null ? `Total count: ${maxValue}` : '';
+      return [sequence.join(' '), totalLine].filter(Boolean).join('\n').trim();
+    }
+  }
+
+  return cleaned
+    .replace(/[|]{2,}/g, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+function extractNumbers(value: string) {
+  return (String(value || '').match(/\d{1,3}/g) || [])
+    .map((token) => Number(token))
+    .filter((num) => Number.isFinite(num));
+}
+
+function inferNumberPracticeTarget(expectedAnswer: string, prompt: string, repeatCount: number) {
+  const fromText = extractNumbers(`${expectedAnswer} ${prompt}`).filter((value) => value > 0 && value <= 200);
+  if (fromText.length > 0) {
+    return Math.max(...fromText);
+  }
+  return Math.max(20, Math.min(80, repeatCount * 10));
+}
+
+function recoverSequentialNumbersFromDigitStream(source: string, targetCount: number) {
+  const digits = String(source || '').replace(/\D/g, '');
+  if (!digits) return [] as number[];
+
+  const recovered: number[] = [];
+  let cursor = 0;
+
+  for (let expected = 1; expected <= targetCount; expected += 1) {
+    const token = String(expected);
+
+    if (digits.startsWith(token, cursor)) {
+      recovered.push(expected);
+      cursor += token.length;
+      continue;
+    }
+
+    const found = digits.indexOf(token, cursor);
+    if (found !== -1 && found - cursor <= 2) {
+      recovered.push(expected);
+      cursor = found + token.length;
+    }
+  }
+
+  return recovered;
+}
+
+function estimateNumberGridRegion(params: {
+  words: OcrWordBox[];
+  pageWidth: number;
+  pageHeight: number;
+}) {
+  const words = Array.isArray(params.words) ? params.words : [];
+  const pageWidth = Math.max(1, Number(params.pageWidth || 0));
+  const pageHeight = Math.max(1, Number(params.pageHeight || 0));
+
+  const normalized = words
+    .map((word) => ({
+      text: String(word?.text || '').trim(),
+      x0: Number(word?.bbox?.x0 || 0),
+      y0: Number(word?.bbox?.y0 || 0),
+      x1: Number(word?.bbox?.x1 || 0),
+      y1: Number(word?.bbox?.y1 || 0),
+    }))
+    .filter((word) => word.text.length > 0 && word.x1 > word.x0 && word.y1 > word.y0);
+
+  const numberSectionAnchors = normalized.filter((word) => /(number|practice|boxes)/i.test(word.text));
+  const answerSectionAnchors = normalized.filter((word) => /(answer|lines)/i.test(word.text));
+
+  let top = pageHeight * 0.44;
+  let bottom = pageHeight * 0.61;
+  let left = pageWidth * 0.09;
+  let right = pageWidth * 0.91;
+
+  if (numberSectionAnchors.length) {
+    top = Math.min(pageHeight * 0.9, Math.max(...numberSectionAnchors.map((word) => word.y1)) + 8);
+  }
+  if (answerSectionAnchors.length) {
+    bottom = Math.max(top + 40, Math.min(...answerSectionAnchors.map((word) => word.y0)) - 8);
+  }
+
+  return {
+    left,
+    top,
+    right: Math.max(left + 40, right),
+    bottom: Math.max(top + 40, bottom),
+  };
+}
+
+async function detectNumberBoxesByCellOcr(params: {
+  image: Blob | File;
+  tesseract: any;
+  targetCount: number;
+  words: OcrWordBox[];
+  pageWidth: number;
+  pageHeight: number;
+  onProgress?: (message: string) => void;
+}) {
+  const bitmap = await createImageBitmap(params.image);
+  try {
+    const region = estimateNumberGridRegion({
+      words: params.words,
+      pageWidth: params.pageWidth || bitmap.width,
+      pageHeight: params.pageHeight || bitmap.height,
+    });
+
+    const sourceWidth = params.pageWidth || bitmap.width;
+    const sourceHeight = params.pageHeight || bitmap.height;
+    const scaleX = bitmap.width / Math.max(1, sourceWidth);
+    const scaleY = bitmap.height / Math.max(1, sourceHeight);
+
+    const rx = Math.max(0, Math.floor(region.left * scaleX));
+    const ry = Math.max(0, Math.floor(region.top * scaleY));
+    const rw = Math.max(30, Math.floor((region.right - region.left) * scaleX));
+    const rh = Math.max(20, Math.floor((region.bottom - region.top) * scaleY));
+
+    const cols = 10;
+    const rows = Math.max(1, Math.ceil(params.targetCount / cols));
+    const cellW = rw / cols;
+    const cellH = rh / rows;
+
+    const upscale = bitmap.width < 2200 ? 2 : 1.5;
+    const pageCanvas = document.createElement('canvas');
+    pageCanvas.width = Math.max(1, Math.round(bitmap.width * upscale));
+    pageCanvas.height = Math.max(1, Math.round(bitmap.height * upscale));
+    const pageCtx = pageCanvas.getContext('2d', { willReadFrequently: true });
+    if (!pageCtx) return null;
+    pageCtx.fillStyle = '#ffffff';
+    pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+    pageCtx.drawImage(bitmap, 0, 0, pageCanvas.width, pageCanvas.height);
+
+    const results: Array<number | null> = [];
+    const scaledCellW = cellW * upscale;
+    const scaledCellH = cellH * upscale;
+    const scaledRx = rx * upscale;
+    const scaledRy = ry * upscale;
+
+    for (let index = 0; index < params.targetCount; index += 1) {
+      const row = Math.floor(index / cols);
+      const col = index % cols;
+      const expectedValue = index + 1;
+
+      const cx = scaledRx + col * scaledCellW;
+      const cy = scaledRy + row * scaledCellH;
+      const padX = Math.max(2, Math.floor(scaledCellW * 0.18));
+      const padY = Math.max(2, Math.floor(scaledCellH * 0.18));
+
+      const sx = Math.max(0, Math.floor(cx + padX));
+      const sy = Math.max(0, Math.floor(cy + padY));
+      const sw = Math.max(14, Math.floor(scaledCellW - padX * 2));
+      const sh = Math.max(14, Math.floor(scaledCellH - padY * 2));
+
+      const cellCanvas = document.createElement('canvas');
+      cellCanvas.width = 160;
+      cellCanvas.height = 160;
+      const cellCtx = cellCanvas.getContext('2d', { willReadFrequently: true });
+      if (!cellCtx) {
+        results.push(null);
+        continue;
+      }
+
+      cellCtx.fillStyle = '#ffffff';
+      cellCtx.fillRect(0, 0, 160, 160);
+      cellCtx.drawImage(pageCanvas, sx, sy, sw, sh, 14, 14, 132, 132);
+
+      if (params.onProgress) {
+        params.onProgress(`Refining number boxes (${index + 1}/${params.targetCount})`);
+      }
+
+      const variants = [
+        { threshold: 145, invert: false },
+        { threshold: 170, invert: false },
+        { threshold: 165, invert: true },
+      ];
+
+      const variantDataUrls: string[] = [];
+      for (const variant of variants) {
+        const variantCanvas = document.createElement('canvas');
+        variantCanvas.width = 160;
+        variantCanvas.height = 160;
+        const variantCtx = variantCanvas.getContext('2d', { willReadFrequently: true });
+        if (!variantCtx) continue;
+
+        variantCtx.drawImage(cellCanvas, 0, 0);
+        const imageData = variantCtx.getImageData(0, 0, 160, 160);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+          const bwBase = gray > variant.threshold ? 255 : 0;
+          const bw = variant.invert ? 255 - bwBase : bwBase;
+          data[i] = bw;
+          data[i + 1] = bw;
+          data[i + 2] = bw;
+          data[i + 3] = 255;
+        }
+        variantCtx.putImageData(imageData, 0, 0);
+        variantDataUrls.push(variantCanvas.toDataURL('image/png'));
+      }
+
+      let value: number | null = null;
+      let bestScore = -Infinity;
+      for (const imageUrl of variantDataUrls) {
+        for (const psm of [10, 8, 13]) {
+          const resp = await params.tesseract.recognize(imageUrl, 'eng', {
+            tessedit_pageseg_mode: String(psm),
+            tessedit_char_whitelist: '0123456789',
+            preserve_interword_spaces: '1',
+            user_defined_dpi: '300',
+          } as any);
+
+          const digits = String(resp?.data?.text || '').replace(/\D/g, '');
+          if (!digits) continue;
+
+          const parsed = Number(digits);
+          if (Number.isFinite(parsed) && parsed >= 1 && parsed <= params.targetCount) {
+            const conf = Number(resp?.data?.confidence || 0);
+            const expectedBias = parsed === expectedValue ? 30 : 0;
+            const nearBias = Math.abs(parsed - expectedValue) <= 1 ? 8 : 0;
+            const score = conf + expectedBias + nearBias;
+
+            if (score > bestScore) {
+              bestScore = score;
+              value = parsed;
+            }
+          }
+        }
+      }
+
+      results.push(value);
+    }
+
+    return results;
+  } finally {
+    bitmap.close();
+  }
+}
+
+function extractNumberBoxesFromOcrLayout(params: {
+  words: OcrWordBox[];
+  targetCount: number;
+  pageWidth: number;
+  pageHeight: number;
+}) {
+  const words = Array.isArray(params.words) ? params.words : [];
+  if (!words.length || !params.pageWidth || !params.pageHeight) return null;
+
+  const normalized = words
+    .map((word) => ({
+      text: String(word?.text || '').trim(),
+      confidence: Number(word?.confidence || 0),
+      x0: Number(word?.bbox?.x0 || 0),
+      y0: Number(word?.bbox?.y0 || 0),
+      x1: Number(word?.bbox?.x1 || 0),
+      y1: Number(word?.bbox?.y1 || 0),
+    }))
+    .filter((word) => word.text.length > 0 && word.x1 > word.x0 && word.y1 > word.y0);
+
+  if (!normalized.length) return null;
+
+  const region = estimateNumberGridRegion({ words: params.words, pageWidth: params.pageWidth, pageHeight: params.pageHeight });
+  const regionTop = region.top;
+  const regionBottom = region.bottom;
+  const regionLeft = region.left;
+  const regionRight = region.right;
+  const regionWidth = regionRight - regionLeft;
+  const regionHeight = regionBottom - regionTop;
+
+  if (regionWidth <= 40 || regionHeight <= 30) return null;
+
+  const cols = 10;
+  const rows = Math.max(1, Math.ceil(params.targetCount / cols));
+  const cellWidth = regionWidth / cols;
+  const cellHeight = regionHeight / rows;
+
+  const boxValues: Array<number | null> = [];
+
+  for (let index = 0; index < params.targetCount; index += 1) {
+    const row = Math.floor(index / cols);
+    const col = index % cols;
+
+    const xMin = regionLeft + col * cellWidth;
+    const xMax = xMin + cellWidth;
+    const yMin = regionTop + row * cellHeight;
+    const yMax = yMin + cellHeight;
+
+    const candidates = normalized
+      .filter((word) => {
+        const centerX = (word.x0 + word.x1) / 2;
+        const centerY = (word.y0 + word.y1) / 2;
+        return centerX >= xMin && centerX <= xMax && centerY >= yMin && centerY <= yMax;
+      })
+      .map((word) => {
+        const textDigits = word.text.replace(/[^0-9]/g, '');
+        const value = textDigits ? Number(textDigits) : NaN;
+        return { value, confidence: word.confidence };
+      })
+      .filter((item) => Number.isFinite(item.value) && item.value >= 1 && item.value <= params.targetCount)
+      .sort((a, b) => b.confidence - a.confidence);
+
+    boxValues.push(candidates.length ? candidates[0].value : null);
+  }
+
+  if (!boxValues.some((value) => value !== null)) {
+    return null;
+  }
+
+  return boxValues;
+}
+
+function evaluateNumberPracticeResponse(params: {
+  studentText: string;
+  expectedAnswer: string;
+  prompt: string;
+  repeatCount: number;
+  detectedBoxes?: Array<number | null> | null;
+}) {
+  const targetCount = inferNumberPracticeTarget(params.expectedAnswer, params.prompt, params.repeatCount);
+  const lines = String(params.studentText || '')
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  let detectedTotal: number | null = null;
+  for (const line of lines) {
+    const totalMatch = line.match(/total\s*count\s*[:\-]?\s*(\d{1,3})/i);
+    if (totalMatch) {
+      detectedTotal = Number(totalMatch[1]);
+      break;
+    }
+  }
+
+  const sequenceLine = lines.find((line) => !/total\s*count/i.test(line)) || lines[0] || '';
+  let sequenceNumbers = extractNumbers(sequenceLine).filter((value) => value >= 1 && value <= targetCount);
+
+  if (sequenceNumbers.length === 0) {
+    sequenceNumbers = extractNumbers(params.studentText).filter((value) => value >= 1 && value <= targetCount);
+  }
+
+  const recoveredSequence = recoverSequentialNumbersFromDigitStream(params.studentText, targetCount);
+  if (recoveredSequence.length >= Math.max(4, sequenceNumbers.length + 2)) {
+    sequenceNumbers = recoveredSequence;
+  }
+
+  if (detectedTotal === null) {
+    const allNumbers = extractNumbers(params.studentText);
+    if (allNumbers.length > 0) {
+      detectedTotal = allNumbers[allNumbers.length - 1];
+    }
+  }
+
+  const orderedUnique: number[] = [];
+  const seen = new Set<number>();
+  for (const value of sequenceNumbers) {
+    if (!seen.has(value)) {
+      seen.add(value);
+      orderedUnique.push(value);
+    }
+  }
+
+  const expectedNumbers = Array.from({ length: targetCount }, (_, index) => index + 1);
+  const providedBoxes = Array.isArray(params.detectedBoxes) ? params.detectedBoxes.slice(0, targetCount) : null;
+  const boxChecks = expectedNumbers.map((expected, index) => {
+    const detected = providedBoxes ? (providedBoxes[index] ?? null) : (index < sequenceNumbers.length ? sequenceNumbers[index] : null);
+    return {
+      expected,
+      detected,
+      isCorrect: detected === expected,
+      isUnclear: detected === null,
+    };
+  });
+
+  const positionCorrectCount = boxChecks.filter((item) => item.isCorrect).length;
+  const readableCount = boxChecks.filter((item) => !item.isUnclear).length;
+  const wrongCount = boxChecks.filter((item) => !item.isUnclear && !item.isCorrect).length;
+  const correctNumbers = expectedNumbers.filter((value) => seen.has(value));
+  const missingNumbers = expectedNumbers.filter((value) => !seen.has(value));
+
+  const sequenceCoverage = positionCorrectCount / Math.max(1, targetCount);
+  const totalScore =
+    detectedTotal === null
+      ? 0
+      : Math.max(0, 1 - Math.min(1, Math.abs(detectedTotal - targetCount) / Math.max(1, targetCount)));
+  const weightedSimilarity = sequenceCoverage * 0.8 + totalScore * 0.2;
+  const similarity = Math.round(weightedSimilarity * 100);
+  const totalCorrect = detectedTotal === targetCount;
+
+  const summaryLines = [
+    `OCR could read ${readableCount} out of ${targetCount} boxes clearly.`,
+    `From readable boxes: ${positionCorrectCount} correct, ${wrongCount} wrong.`,
+    `Detected total count: ${detectedTotal === null ? 'not clear' : detectedTotal} (${totalCorrect ? 'correct' : 'incorrect'}).`,
+  ];
+
+  if (readableCount < Math.ceil(targetCount * 0.6)) {
+    summaryLines.push('Many boxes are unclear in OCR. Please use a straighter, brighter photo or manual review.');
+  }
+
+  return {
+    similarity,
+    targetCount,
+    correctNumbers,
+    missingNumbers,
+    detectedTotal,
+    totalCorrect,
+    summaryLines,
+    boxChecks,
+  };
+}
+
+function escapeHtml(value: string) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function createPrintableWorksheetHtml(params: {
+  title: string;
+  className: string;
+  subject: string;
+  studentLevel: 'nursery' | 'kindergarten';
+  worksheetTemplate: string;
+  prompt: string;
+  expectedAnswer: string;
+  repeatCount: number;
+  dueDate?: string;
+}) {
+  const title = escapeHtml(params.title || 'Handwriting Worksheet');
+  const className = escapeHtml(params.className || 'Class');
+  const subject = escapeHtml(params.subject || 'Subject');
+  const levelLabel = params.studentLevel === 'nursery' ? 'Nursery' : 'Kindergarten';
+  const prompt = escapeHtml(params.prompt || 'Write your answer neatly in the practice area.');
+  const expectedAnswer = escapeHtml(params.expectedAnswer || '');
+  const repeatCount = Math.max(1, Math.min(50, Number(params.repeatCount || 1)));
+  const due = params.dueDate ? new Date(params.dueDate).toLocaleDateString() : 'Not set';
+
+  const writingLines = Array.from({ length: Math.max(6, Math.min(22, repeatCount + 4)) }, () => '<div class="line"></div>').join('');
+  const numberBoxes = Array.from({ length: Math.max(20, Math.min(80, repeatCount * 10)) }, () => '<span class="num-box"></span>').join('');
+
+  let activityBlock = `<div class="section"><h3>Practice Area</h3><div class="line-box">${writingLines}</div></div>`;
+
+  if (params.worksheetTemplate === 'number_practice_sheet') {
+    activityBlock = `
+      <div class="section">
+        <h3>Number Practice Boxes</h3>
+        <p class="hint">Write each number clearly inside one box.</p>
+        <div class="box-grid">${numberBoxes}</div>
+      </div>
+      <div class="section">
+        <h3>Answer Lines</h3>
+        <div class="line-box">${writingLines}</div>
+      </div>
+    `;
+  }
+
+  if (params.worksheetTemplate === 'match_sheet' || params.worksheetTemplate === 'circle_underline_sheet' || params.worksheetTemplate === 'coloring_sheet' || params.worksheetTemplate === 'pattern_sheet') {
+    activityBlock = `
+      <div class="section">
+        <h3>Worksheet Task</h3>
+        <p class="hint">Use the printed question card from teacher and complete this response area.</p>
+        <div class="visual-area">Paste or print question cards in this area.</div>
+      </div>
+      <div class="section">
+        <h3>Student Response</h3>
+        <div class="line-box">${writingLines}</div>
+      </div>
+    `;
+  }
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${title}</title>
+    <style>
+      @page { size: A4; margin: 14mm; }
+      body { font-family: "Segoe UI", Arial, sans-serif; color: #1f2937; }
+      .sheet { border: 2px solid #111827; border-radius: 10px; padding: 14px; }
+      .header { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; }
+      .brand { font-size: 11px; color: #6b7280; margin-top: 3px; }
+      .title { font-size: 24px; font-weight: 800; margin: 0; }
+      .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+      .meta-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; }
+      .meta-k { font-size: 11px; color: #6b7280; text-transform: uppercase; }
+      .meta-v { font-size: 14px; font-weight: 700; margin-top: 2px; }
+      .section { margin-top: 14px; }
+      h3 { font-size: 14px; margin: 0 0 6px; }
+      .prompt, .answer, .hint { font-size: 13px; line-height: 1.45; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 8px; }
+      .answer { background: #eef2ff; border-color: #c7d2fe; }
+      .line-box { border: 1px solid #d1d5db; border-radius: 8px; padding: 8px; }
+      .line { border-bottom: 1px dashed #9ca3af; height: 30px; }
+      .box-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px; }
+      .num-box { display: inline-block; width: 100%; height: 28px; border: 1px solid #6b7280; border-radius: 4px; }
+      .visual-area { min-height: 140px; border: 2px dashed #9ca3af; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 13px; }
+      .footer { margin-top: 14px; background: #ecfeff; border: 1px solid #a5f3fc; border-radius: 8px; padding: 8px; font-size: 12px; }
+      .row { display: flex; gap: 8px; margin-top: 10px; }
+      .field { flex: 1; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px; min-height: 20px; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="sheet">
+      <div class="header">
+        <div>
+          <h1 class="title">${title}</h1>
+          <div class="brand">Kinder Vision Handwriting Practice Sheet</div>
+        </div>
+        <div class="meta-card">
+          <div class="meta-k">Due Date</div>
+          <div class="meta-v">${escapeHtml(due)}</div>
+        </div>
+      </div>
+
+      <div class="meta">
+        <div class="meta-card"><div class="meta-k">Class</div><div class="meta-v">${className}</div></div>
+        <div class="meta-card"><div class="meta-k">Subject</div><div class="meta-v">${subject}</div></div>
+        <div class="meta-card"><div class="meta-k">Level</div><div class="meta-v">${escapeHtml(levelLabel)}</div></div>
+      </div>
+
+      <div class="row">
+        <div class="field">Student Name: ____________________________</div>
+        <div class="field">Roll: __________</div>
+        <div class="field">Date: __________</div>
+      </div>
+
+      <div class="section">
+        <h3>Teacher Prompt</h3>
+        <div class="prompt">${prompt}</div>
+      </div>
+
+      ${expectedAnswer ? `<div class="section"><h3>Reference Answer</h3><div class="answer">${expectedAnswer}</div></div>` : ''}
+
+      ${activityBlock}
+
+      <div class="footer">
+        Parent instructions: Print this page on A4, let child write clearly in good light, then take a straight photo and upload it in the app.
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+async function preprocessImageForOcr(file: File): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const maxW = 1800;
+    const scale = Math.min(2.0, Math.max(1.0, maxW / Math.max(1, bitmap.width)));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('Canvas context unavailable');
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(bitmap, 0, 0, width, height);
+
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+
+    let graySum = 0;
+    const grayVals = new Uint8Array(width * height);
+    for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+      const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+      grayVals[p] = gray;
+      graySum += gray;
+    }
+
+    const mean = graySum / Math.max(1, grayVals.length);
+    const threshold = Math.max(70, Math.min(200, mean - 8));
+
+    for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+      const adjusted = Math.max(0, Math.min(255, Math.round((grayVals[p] - 128) * 1.35 + 128)));
+      const bw = adjusted > threshold ? 255 : 0;
+      data[i] = bw;
+      data[i + 1] = bw;
+      data[i + 2] = bw;
+      data[i + 3] = 255;
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((result) => {
+        if (result) resolve(result);
+        else reject(new Error('Failed to prepare OCR image'));
+      }, 'image/png');
+    });
+    return blob;
+  } finally {
+    bitmap.close();
+  }
+}
+
 export default function AssignmentHandwritingChecker() {
   const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
@@ -525,6 +1250,7 @@ export default function AssignmentHandwritingChecker() {
   const [progress, setProgress] = useState('');
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<GradingResult | null>(null);
+  const [detectedNumberBoxes, setDetectedNumberBoxes] = useState<Array<number | null> | null>(null);
   const [error, setError] = useState('');
 
   const selectedAssignment = useMemo(
@@ -546,6 +1272,7 @@ export default function AssignmentHandwritingChecker() {
   );
 
   const isAutoTextAssignment = currentGradingMode === 'auto_text';
+  const isNumberPracticeTemplate = (selectedAssignment?.worksheetTemplate || worksheetTemplate) === 'number_practice_sheet';
 
   const activeTemplateProfile = useMemo(() => {
     const key = selectedAssignment?.worksheetTemplate || worksheetTemplate;
@@ -692,25 +1419,108 @@ export default function AssignmentHandwritingChecker() {
 
     try {
       const tesseract = await import('tesseract.js');
-      const guessBangla = /[\u0980-\u09FF]/.test(expectedAnswer + ' ' + studentHint);
-      const lang = guessBangla ? 'ben+eng' : 'eng';
+      const assignmentTemplate =
+        (selectedAssignment?.worksheetTemplate || worksheetTemplate) as
+          | 'tracing_sheet'
+          | 'match_sheet'
+          | 'circle_underline_sheet'
+          | 'coloring_sheet'
+          | 'picture_vocab_sheet'
+          | 'phonics_boxes_sheet'
+          | 'pattern_sheet'
+          | 'life_skill_sheet'
+          | 'alphabet_practice_sheet'
+          | 'sentence_repeat_sheet'
+          | 'spelling_repeat_sheet'
+          | 'number_practice_sheet';
 
-      const response = await tesseract.recognize(imageFile, lang as any, {
-        logger: (message: any) => {
-          if (message?.status) {
-            const pct = typeof message.progress === 'number' ? Math.round(message.progress * 100) : 0;
-            setProgress(`${message.status}${pct ? ` • ${pct}%` : ''}`);
+      const hints = inferOcrHints(assignmentTemplate, expectedAnswer + ' ' + studentHint, caseSensitive);
+      const processedBlob = await preprocessImageForOcr(imageFile);
+
+      const candidates: Array<{ text: string; confidence: number; source: string; psm: number; words: OcrWordBox[]; pageWidth: number; pageHeight: number }> = [];
+      for (const source of [
+        { name: 'processed', image: processedBlob },
+        { name: 'raw', image: imageFile },
+      ]) {
+        for (const psm of hints.psmCandidates) {
+          const response = await tesseract.recognize(source.image as any, hints.lang as any, {
+            logger: (message: any) => {
+              if (message?.status) {
+                const pct = typeof message.progress === 'number' ? Math.round(message.progress * 100) : 0;
+                setProgress(`${message.status}${pct ? ` • ${pct}%` : ''}`);
+              }
+            },
+            tessedit_pageseg_mode: String(psm),
+            preserve_interword_spaces: '1',
+            user_defined_dpi: '300',
+            ...(hints.whitelist ? { tessedit_char_whitelist: hints.whitelist } : {}),
+          } as any);
+
+          const text = String(response?.data?.text || '').trim();
+          const conf = Math.max(0, Math.round(Number(response?.data?.confidence || 0)));
+          const responseData = response?.data as any;
+          const words = Array.isArray(responseData?.words) ? responseData.words : [];
+          const pageWidth = Math.max(0, Number(responseData?.width || 0));
+          const pageHeight = Math.max(0, Number(responseData?.height || 0));
+          candidates.push({ text, confidence: conf, source: source.name, psm, words, pageWidth, pageHeight });
+        }
+      }
+
+      const ranked = [...candidates].sort((a, b) => {
+        const scoreA = a.confidence + Math.min(20, normalizeText(a.text, true).length * 0.6);
+        const scoreB = b.confidence + Math.min(20, normalizeText(b.text, true).length * 0.6);
+        return scoreB - scoreA;
+      });
+      const best = ranked[0] || { text: '', confidence: 0, source: 'none', psm: 6 };
+
+      const targetCount = inferNumberPracticeTarget(expectedAnswer, studentHint, Number(selectedAssignment?.repeatCount || repeatCount || 1));
+      let numberBoxes =
+        assignmentTemplate === 'number_practice_sheet'
+          ? extractNumberBoxesFromOcrLayout({
+              words: (best as any).words || [],
+              targetCount,
+              pageWidth: (best as any).pageWidth || 0,
+              pageHeight: (best as any).pageHeight || 0,
+            })
+          : null;
+
+      if (assignmentTemplate === 'number_practice_sheet') {
+        const readable = Array.isArray(numberBoxes) ? numberBoxes.filter((item) => item !== null).length : 0;
+        if (readable < Math.ceil(targetCount * 0.5)) {
+          const refined = await detectNumberBoxesByCellOcr({
+            image: processedBlob,
+            tesseract,
+            targetCount,
+            words: ((best as any).words || []) as OcrWordBox[],
+            pageWidth: (best as any).pageWidth || 0,
+            pageHeight: (best as any).pageHeight || 0,
+            onProgress: (message) => setProgress(message),
+          });
+          if (Array.isArray(refined)) {
+            numberBoxes = refined;
           }
-        },
-      } as any);
+        }
+      }
 
-      const text = String(response?.data?.text || '').trim();
-      const ocrConfidence = Math.max(0, Math.round(Number(response?.data?.confidence || 0)));
+      const text = sanitizeOcrWorksheetText({
+        rawText: String(best.text || ''),
+        worksheetTemplate: assignmentTemplate,
+        prompt: studentHint,
+        expectedAnswer,
+        repeatCount: Number(selectedAssignment?.repeatCount || repeatCount || 1),
+      });
+
+      if (assignmentTemplate === 'number_practice_sheet') {
+        setDetectedNumberBoxes(numberBoxes);
+      } else {
+        setDetectedNumberBoxes(null);
+      }
+      const ocrConfidence = Math.max(0, Math.round(Number(best.confidence || 0)));
 
       setOcrText(text);
       setEditableText(text);
       setConfidence(ocrConfidence);
-      setProgress('OCR complete');
+      setProgress(`OCR complete (${best.source}, PSM ${best.psm})`);
     } catch (ocrError: any) {
       setError(ocrError?.message || 'Failed to detect handwriting.');
       setProgress('OCR failed');
@@ -780,6 +1590,153 @@ export default function AssignmentHandwritingChecker() {
     }
   };
 
+  const handlePrintWorksheet = () => {
+    setError('');
+    const worksheetData = {
+      title: selectedAssignment?.title || newTitle || 'Handwriting Worksheet',
+      className: selectedAssignment?.className || newClassName || 'Class',
+      subject: selectedAssignment?.subject || newSubject || 'Subject',
+      studentLevel: (selectedAssignment?.studentLevel || studentLevel || 'kindergarten') as 'nursery' | 'kindergarten',
+      worksheetTemplate: selectedAssignment?.worksheetTemplate || worksheetTemplate,
+      prompt: selectedAssignment?.prompt || studentHint,
+      expectedAnswer: selectedAssignment?.expectedAnswer || expectedAnswer,
+      repeatCount: Number(selectedAssignment?.repeatCount || repeatCount || 1),
+      dueDate: selectedAssignment?.dueDate,
+    };
+
+    if (!worksheetData.title || worksheetData.title === 'Handwriting Worksheet') {
+      setError('Please select or create an assignment before printing a worksheet.');
+      return;
+    }
+
+    const html = createPrintableWorksheetHtml(worksheetData);
+    const safeFileName = `${String(worksheetData.title || 'worksheet')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'worksheet'}.html`;
+
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1080,height=900');
+    if (!printWindow) {
+      // Fallback for strict browsers: download HTML so user can open and print manually.
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = safeFileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+      setNotice('Pop-up blocked. Worksheet downloaded as HTML. Open it and print or save as PDF.');
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+
+    // Delay print briefly to ensure styles are fully applied.
+    window.setTimeout(() => {
+      printWindow.print();
+    }, 250);
+
+    setNotice('Worksheet opened in print view. Print or save as PDF and share with parents.');
+  };
+
+  const handleDownloadWorksheetPdf = async () => {
+    setError('');
+
+    const worksheetData = {
+      title: selectedAssignment?.title || newTitle || 'Handwriting Worksheet',
+      className: selectedAssignment?.className || newClassName || 'Class',
+      subject: selectedAssignment?.subject || newSubject || 'Subject',
+      studentLevel: (selectedAssignment?.studentLevel || studentLevel || 'kindergarten') as 'nursery' | 'kindergarten',
+      worksheetTemplate: selectedAssignment?.worksheetTemplate || worksheetTemplate,
+      prompt: selectedAssignment?.prompt || studentHint,
+      expectedAnswer: selectedAssignment?.expectedAnswer || expectedAnswer,
+      repeatCount: Number(selectedAssignment?.repeatCount || repeatCount || 1),
+      dueDate: selectedAssignment?.dueDate,
+    };
+
+    if (!worksheetData.title || worksheetData.title === 'Handwriting Worksheet') {
+      setError('Please select or create an assignment before downloading a worksheet PDF.');
+      return;
+    }
+
+    const html = createPrintableWorksheetHtml(worksheetData);
+    const styleMatches = Array.from(html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi));
+    const inlineStyles = styleMatches.map((match) => match[1] || '').join('\n');
+    const bodyStart = html.indexOf('<body>');
+    const bodyEnd = html.lastIndexOf('</body>');
+    const bodyContent = bodyStart >= 0 && bodyEnd > bodyStart
+      ? html.slice(bodyStart + '<body>'.length, bodyEnd)
+      : html;
+
+    const safeFileName = `${String(worksheetData.title || 'worksheet')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'worksheet'}.pdf`;
+
+    const mount = document.createElement('div');
+    mount.style.position = 'fixed';
+    mount.style.left = '-10000px';
+    mount.style.top = '0';
+    mount.style.width = '794px';
+    mount.style.background = '#ffffff';
+    mount.innerHTML = `<style>${inlineStyles}</style>${bodyContent}`;
+    document.body.appendChild(mount);
+
+    try {
+      const [{ jsPDF }, html2canvasModule] = await Promise.all([import('jspdf'), import('html2canvas')]);
+      const html2canvas = html2canvasModule.default;
+
+      const canvas = await html2canvas(mount, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+      });
+
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      const pageWidthMm = 210;
+      const pageHeightMm = 297;
+      const pxPerMm = canvas.width / pageWidthMm;
+      const pageHeightPx = Math.floor(pageHeightMm * pxPerMm);
+
+      let pageIndex = 0;
+      for (let y = 0; y < canvas.height; y += pageHeightPx) {
+        const sliceHeight = Math.min(pageHeightPx, canvas.height - y);
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceHeight;
+        const ctx = pageCanvas.getContext('2d');
+        if (!ctx) continue;
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        ctx.drawImage(canvas, 0, y, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+
+        const imgData = pageCanvas.toDataURL('image/png');
+        const renderedHeightMm = sliceHeight / pxPerMm;
+
+        if (pageIndex > 0) {
+          pdf.addPage();
+        }
+        pdf.addImage(imgData, 'PNG', 0, 0, pageWidthMm, renderedHeightMm);
+        pageIndex += 1;
+      }
+
+      pdf.save(safeFileName);
+      setNotice('Worksheet PDF downloaded in A4 format.');
+    } catch (pdfError: any) {
+      setError(pdfError?.message || 'Failed to generate worksheet PDF.');
+    } finally {
+      document.body.removeChild(mount);
+    }
+  };
+
   const handleScoreAnswer = () => {
     if (!isAutoTextAssignment) {
       setError('This assignment is visual/manual-review type. Submit directly for teacher review.');
@@ -812,6 +1769,38 @@ export default function AssignmentHandwritingChecker() {
     let cappedScore = 0;
     let matchedWords: string[] = [];
     let missingWords: string[] = [];
+    let summaryLines: string[] | undefined;
+
+    if (templateName === 'number_practice_sheet') {
+      const numberEvaluation = evaluateNumberPracticeResponse({
+        studentText: studentAnswer,
+        expectedAnswer: modelAnswer,
+        prompt: studentHint,
+        repeatCount: repeatTotal,
+        detectedBoxes: detectedNumberBoxes,
+      });
+
+      similarity = numberEvaluation.similarity / 100;
+      cappedScore = Math.max(0, Math.min(100, Math.round(numberEvaluation.similarity * 0.85 + confidence * 0.15)));
+      matchedWords = numberEvaluation.correctNumbers.map((value) => String(value));
+      missingWords = numberEvaluation.missingNumbers.map((value) => String(value));
+      summaryLines = numberEvaluation.summaryLines;
+
+      const feedbackPack = buildFeedback(cappedScore, similarity * 100, confidence);
+      setResult({
+        score: cappedScore,
+        similarity: Math.round(similarity * 100),
+        confidence,
+        language: detectedLanguage,
+        feedback: feedbackPack.feedback,
+        badge: feedbackPack.badge,
+        matchedWords,
+        missingWords,
+        summaryLines,
+        numberBoxChecks: numberEvaluation.boxChecks,
+      });
+      return;
+    }
 
     if (repeatedTemplate) {
       const repeatEvaluation = evaluateRepeatedText({
@@ -844,6 +1833,8 @@ export default function AssignmentHandwritingChecker() {
       badge: feedbackPack.badge,
       matchedWords,
       missingWords,
+      summaryLines,
+      numberBoxChecks: undefined,
     });
   };
 
@@ -1004,6 +1995,7 @@ export default function AssignmentHandwritingChecker() {
     setProgress('');
     setRunning(false);
     setResult(null);
+    setDetectedNumberBoxes(null);
     setError('');
   };
 
@@ -1237,6 +2229,29 @@ export default function AssignmentHandwritingChecker() {
                   </p>
                 </div>
 
+                <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900 space-y-2">
+                  <p className="font-semibold">Parent handout flow</p>
+                  <p>1) Print worksheet 2) Child writes answer 3) Parent uploads photo in student account.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDownloadWorksheetPdf}
+                      className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2 text-white font-semibold hover:bg-cyan-800"
+                    >
+                      <FileImage size={16} />
+                      Download A4 PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePrintWorksheet}
+                      className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-cyan-800 font-semibold border border-cyan-300 hover:bg-cyan-100"
+                    >
+                      <FileImage size={16} />
+                      Open Print View
+                    </button>
+                  </div>
+                </div>
+
                 <div>
                   <button
                     type="button"
@@ -1313,29 +2328,25 @@ export default function AssignmentHandwritingChecker() {
             )}
 
             <div className="flex flex-wrap gap-3">
-              {!isTeacherOrAdmin ? (
-                <button
-                  type="button"
-                  onClick={handleDetectHandwriting}
-                  disabled={running}
-                  className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-white font-semibold hover:bg-indigo-700 disabled:opacity-60"
-                >
-                  {running ? <Loader2 className="animate-spin" size={16} /> : <Wand2 size={16} />}
-                  Detect handwriting
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={handleDetectHandwriting}
+                disabled={running}
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-white font-semibold hover:bg-indigo-700 disabled:opacity-60"
+              >
+                {running ? <Loader2 className="animate-spin" size={16} /> : <Wand2 size={16} />}
+                Detect handwriting
+              </button>
 
-              {!isTeacherOrAdmin ? (
-                <button
-                  type="button"
-                  onClick={handleScoreAnswer}
-                  disabled={!isAutoTextAssignment}
-                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-white font-semibold hover:bg-emerald-700"
-                >
-                  <CheckCircle2 size={16} />
-                  Check answer
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={handleScoreAnswer}
+                disabled={!isAutoTextAssignment}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-white font-semibold hover:bg-emerald-700"
+              >
+                <CheckCircle2 size={16} />
+                Check answer
+              </button>
 
               <button
                 type="button"
@@ -1361,6 +2372,12 @@ export default function AssignmentHandwritingChecker() {
             {!isTeacherOrAdmin && deadlinePassed ? (
               <div className="text-sm text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
                 Deadline passed. You can no longer submit this assignment.
+              </div>
+            ) : null}
+
+            {isTeacherOrAdmin ? (
+              <div className="text-sm text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
+                Teacher test mode: you can run OCR and scoring here. Final submission save remains student-only.
               </div>
             ) : null}
 
@@ -1633,6 +2650,13 @@ export default function AssignmentHandwritingChecker() {
 
                 <div className="rounded-xl bg-amber-50 border border-amber-100 p-3">
                   <p className="text-sm font-semibold text-amber-800">{result.badge}</p>
+                  {result.summaryLines?.length ? (
+                    <div className="mt-1 space-y-1">
+                      {result.summaryLines.map((line, index) => (
+                        <p key={`${line}-${index}`} className="text-sm text-amber-900">{line}</p>
+                      ))}
+                    </div>
+                  ) : null}
                   <p className="text-sm text-amber-900 mt-1">{result.feedback}</p>
                 </div>
 
@@ -1648,7 +2672,7 @@ export default function AssignmentHandwritingChecker() {
                 </div>
 
                 <div className="rounded-xl border border-gray-200 p-3">
-                  <p className="text-xs font-semibold text-gray-500 mb-2">Matched words</p>
+                  <p className="text-xs font-semibold text-gray-500 mb-2">{isNumberPracticeTemplate ? 'Correct numbers' : 'Matched words'}</p>
                   <div className="flex flex-wrap gap-2">
                     {result.matchedWords.length > 0 ? result.matchedWords.map((word) => (
                       <span key={word} className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
@@ -1659,7 +2683,7 @@ export default function AssignmentHandwritingChecker() {
                 </div>
 
                 <div className="rounded-xl border border-gray-200 p-3">
-                  <p className="text-xs font-semibold text-gray-500 mb-2">Missing words</p>
+                  <p className="text-xs font-semibold text-gray-500 mb-2">{isNumberPracticeTemplate ? 'Missing numbers' : 'Missing words'}</p>
                   <div className="flex flex-wrap gap-2">
                     {result.missingWords.length > 0 ? result.missingWords.map((word) => (
                       <span key={word} className="text-xs bg-rose-100 text-rose-800 px-2 py-1 rounded-full">
@@ -1668,6 +2692,25 @@ export default function AssignmentHandwritingChecker() {
                     )) : <span className="text-sm text-gray-500">None</span>}
                   </div>
                 </div>
+
+                {isNumberPracticeTemplate && result.numberBoxChecks?.length ? (
+                  <div className="rounded-xl border border-gray-200 p-3">
+                    <p className="text-xs font-semibold text-gray-500 mb-2">Per-box check (expected vs detected)</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                      {result.numberBoxChecks.map((item, index) => (
+                        <div
+                          key={`${item.expected}-${index}`}
+                          className={`rounded-lg border px-2 py-1.5 text-xs ${item.isCorrect ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : item.isUnclear ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}
+                        >
+                          <div className="font-semibold">Box {index + 1}</div>
+                          <div>Expected: {item.expected}</div>
+                          <div>Detected: {item.detected === null ? 'blank' : item.detected}</div>
+                          <div>{item.isCorrect ? '✓ Correct' : item.isUnclear ? '? Unclear' : '✗ Wrong'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="rounded-xl bg-gray-50 border border-dashed border-gray-300 p-4 text-sm text-gray-600">

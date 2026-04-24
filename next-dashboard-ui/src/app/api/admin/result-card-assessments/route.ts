@@ -11,6 +11,11 @@ import { getResolvedResultCardTemplate } from '@/lib/result-card';
 import { getCandidateAcademicYears } from '@/lib/subjectAssignment';
 
 const BYPASS_ADMIN_AUTH = true;
+type ResolvedStudent = { studentId: string; name: string; rollNo: string };
+
+function isResolvedStudent(student: ResolvedStudent | null): student is ResolvedStudent {
+  return student !== null;
+}
 
 function mapToPlainObject(values: unknown) {
   if (values instanceof Map) {
@@ -50,7 +55,7 @@ function sanitizeAssessmentValues(
   );
 }
 
-async function resolveStudents(examCycleId: string, classId: string) {
+async function resolveStudents(examCycleId: string, classId: string): Promise<ResolvedStudent[]> {
   const examCycle = await ExamCycle.findById(examCycleId).lean();
   if (!examCycle) {
     throw new Error('Exam cycle not found');
@@ -124,7 +129,7 @@ async function resolveStudents(examCycleId: string, classId: string) {
         rollNo: history.rollNo || '',
       };
     })
-    .filter(Boolean)
+    .filter(isResolvedStudent)
     .sort((left, right) => String(left.rollNo || '').localeCompare(String(right.rollNo || '')));
 }
 
@@ -224,9 +229,10 @@ export async function PUT(request: NextRequest) {
       resolveStudents(examCycleId, classId),
     ]);
 
-    const validStudentIds = new Set(students.map((student) => student.studentId));
-    const allowedCoKeys = new Set((template.coScholasticRows || []).map((row: any) => String(row.key)));
-    const allowedDisciplineKeys = new Set((template.disciplineRows || []).map((row: any) => String(row.key)));
+    const validStudentIds = new Set<string>(students.map((student) => student.studentId));
+    const allowedCoKeys = new Set<string>((template.coScholasticRows || []).map((row: any) => String(row.key)));
+    const allowedDisciplineKeys = new Set<string>((template.disciplineRows || []).map((row: any) => String(row.key)));
+    const updaterId = sessionUser?.id || 'system';
 
     for (const assessment of assessments) {
       const studentId = String(assessment?.studentId || '').trim();
@@ -260,10 +266,10 @@ export async function PUT(request: NextRequest) {
             studentId,
             coScholasticValues,
             disciplineValues,
-            updatedBy: sessionUser.id,
+            updatedBy: updaterId,
           },
           $setOnInsert: {
-            createdBy: sessionUser.id,
+            createdBy: updaterId,
           },
         },
         {

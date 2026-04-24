@@ -23,6 +23,8 @@ import numpy as np
 from insightface.app import FaceAnalysis
 from bson import ObjectId
 
+from storage_backend import AttendanceStorage
+
 
 DEFAULT_INSIGHTFACE_HOME = os.getenv(
     "INSIGHTFACE_HOME",
@@ -52,6 +54,7 @@ def load_embeddings_from_db(db):
         sids = []
 
         students_collection = db.get_collection("students")
+        storage = AttendanceStorage()
 
         for i, record in enumerate(records):
             student_id = record.get("student_id")
@@ -73,6 +76,11 @@ def load_embeddings_from_db(db):
 
             for emb_data in embeddings_list:
                 emb = emb_data.get("embedding")
+                if emb is None and emb_data.get("embedding_file"):
+                    try:
+                        emb = storage.load_embedding(emb_data.get("embedding_file"))
+                    except Exception as file_exc:
+                        print(f"   ⚠️ Failed to load embedding_file for record {i+1}: {file_exc}")
                 if emb:
                     emb_array = np.array(emb, dtype=np.float32)
                     norm = np.linalg.norm(emb_array)

@@ -8,6 +8,23 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from anomaly_system.config_loader import (
+    AUDIO_CONFIG_FILENAME,
+    AUDIO_MODEL_FILENAME,
+    DEFAULT_AUDIO_CONSECUTIVE_NEEDED,
+    DEFAULT_AUDIO_FRAME_TIME_SEC,
+    DEFAULT_AUDIO_INSTANT_MIN_COUNT,
+    DEFAULT_AUDIO_INSTANT_THRESHOLD,
+    DEFAULT_AUDIO_INSTANT_WINDOW_SIZE,
+    DEFAULT_AUDIO_LABEL_MAP,
+    DEFAULT_AUDIO_MIN_COUNT_IN_WINDOW,
+    DEFAULT_AUDIO_SAMPLE_RATE,
+    DEFAULT_AUDIO_SUSTAIN_THRESHOLD,
+    DEFAULT_AUDIO_THRESHOLD,
+    DEFAULT_AUDIO_WINDOW_SIZE,
+    normalize_audio_label_map,
+)
+
 
 def _env_flag(name: str, default: bool) -> bool:
     value = os.getenv(name)
@@ -63,6 +80,15 @@ def _python_supports_audio_stack() -> bool:
     return sys.version_info < (3, 13)
 
 
+def _default_onnx_providers() -> Tuple[str, ...]:
+    # Prefer DirectML on Windows when available. It can use integrated accelerators
+    # and falls back to CPU automatically if unsupported in the runtime build.
+    prefer_dml = _env_flag("ANOMALY_ONNX_PREFER_DML", os.name == "nt")
+    if prefer_dml:
+        return ("DmlExecutionProvider", "CPUExecutionProvider")
+    return ("CPUExecutionProvider",)
+
+
 @dataclass(frozen=True)
 class ModelAdapterConfig:
     name: str
@@ -110,9 +136,13 @@ class CrowdMotionConfig:
 
 @dataclass(frozen=True)
 class FusionConfig:
-    medium_confidence: float = 0.75
-    high_confidence: float = 0.9
-    min_alert_gap_frames: int = 8
+    medium_confidence: float = 0.6
+    high_confidence: float = 0.82
+    min_alert_gap_frames: int = 18
+    fight_min_confidence: float = 0.8
+    fall_min_confidence: float = 0.88
+    fire_min_confidence: float = 0.75
+    enable_ambiguous_motion_alerts: bool = False
 
 
 @dataclass(frozen=True)
@@ -121,16 +151,18 @@ class AudioModelConfig:
     checkpoint_path: Path
     config_path: Path
     enabled: bool = True
-    threshold: float = 0.4
-    sample_rate: int = 16000
+    threshold: float = DEFAULT_AUDIO_THRESHOLD
+    sample_rate: int = DEFAULT_AUDIO_SAMPLE_RATE
     embedding_size: int = 1024
-    window_seconds: float = 0.48
-    hop_seconds: float = 0.24
-    instant_threshold: float = 0.6
-    sustain_threshold: float = 0.4
-    sustain_window_size: int = 5
-    sustain_min_count: int = 3
-    sustain_consecutive_needed: int = 2
+    window_seconds: float = DEFAULT_AUDIO_FRAME_TIME_SEC
+    hop_seconds: float = DEFAULT_AUDIO_FRAME_TIME_SEC
+    instant_threshold: float = DEFAULT_AUDIO_INSTANT_THRESHOLD
+    sustain_threshold: float = DEFAULT_AUDIO_SUSTAIN_THRESHOLD
+    instant_window_size: int = DEFAULT_AUDIO_INSTANT_WINDOW_SIZE
+    instant_min_count: int = DEFAULT_AUDIO_INSTANT_MIN_COUNT
+    sustain_window_size: int = DEFAULT_AUDIO_WINDOW_SIZE
+    sustain_min_count: int = DEFAULT_AUDIO_MIN_COUNT_IN_WINDOW
+    sustain_consecutive_needed: int = DEFAULT_AUDIO_CONSECUTIVE_NEEDED
     label_map: Dict[int, str] = field(default_factory=dict)
     positive_labels: Tuple[str, ...] = tuple()
     adapter_kwargs: Dict[str, Any] = field(default_factory=dict)
@@ -155,7 +187,10 @@ class ServiceConfig:
     project_root: Path
     models_dir: Path
     device: str = "auto"
-    processing_frame_stride: int = 4
+    processing_frame_stride: int = 2
+    realtime_auto_stride: bool = True
+    realtime_target_processing_fps: float = 10.0
+    realtime_max_frame_stride: int = 4
     buffer_max_frames: int = 96
     max_video_frames: Optional[int] = None
     default_stream_frames: int = 300
@@ -200,7 +235,7 @@ def _discover_additional_models(models_dir: Path, known_names: Sequence[str]) ->
                 positive_label=_env_str(f"ANOMALY_{stem.upper()}_POSITIVE_LABEL", stem),
                 label_map={0: stem},
                 device="cpu",
-                onnx_providers=("CPUExecutionProvider",),
+                onnx_providers=_default_onnx_providers(),
             )
         )
     return discovered
@@ -218,8 +253,8 @@ def get_settings() -> ServiceConfig:
         checkpoint_path=models_dir / "best_fight_binary_mobilenetv3_gru.pth",
         framework="torch",
         enabled=_env_flag("ANOMALY_ENABLE_FIGHT", True),
-        threshold=_env_float("ANOMALY_FIGHT_THRESHOLD", 0.88),
-        run_every_n_frames=_env_int("ANOMALY_FIGHT_RUN_EVERY", 4),
+        threshold=_env_float("ANOMALY_FIGHT_THRESHOLD", 0.72),
+        run_every_n_frames=_env_int("ANOMALY_FIGHT_RUN_EVERY", 2),
         temporal=True,
         clip_length=_env_int("ANOMALY_FIGHT_CLIP_LENGTH", 16),
         clip_stride=_env_int("ANOMALY_FIGHT_CLIP_STRIDE", 1),
@@ -233,7 +268,16 @@ def get_settings() -> ServiceConfig:
         builder_import_path=_env_optional("ANOMALY_FIGHT_BUILDER") or "anomaly_system.checkpoint_builders:build_fight_model",
         strict_state_dict=_env_flag("ANOMALY_FIGHT_STRICT", False),
         device=_env_str("ANOMALY_FIGHT_DEVICE", _env_str("ANOMALY_DEVICE", "auto")),
-        adapter_kwargs={"logits_key": _env_optional("ANOMALY_FIGHT_LOGITS_KEY")},
+        adapter_kwargs={
+            "logits_key": _env_optional("ANOMALY_FIGHT_LOGITS_KEY"),
+            "invert_binary_scores": _env_flag("ANOMALY_FIGHT_INVERT_SCORES", False),
+            "ema_alpha": _env_float("ANOMALY_FIGHT_EMA_ALPHA", 0.55),
+            "hysteresis_on_margin": _env_float("ANOMALY_FIGHT_ON_MARGIN", 0.08),
+            "hysteresis_off_margin": _env_float("ANOMALY_FIGHT_OFF_MARGIN", 0.18),
+            "min_on_frames": _env_int("ANOMALY_FIGHT_MIN_ON_FRAMES", 2),
+            "min_off_frames": _env_int("ANOMALY_FIGHT_MIN_OFF_FRAMES", 3),
+            "maybe_margin": _env_float("ANOMALY_FIGHT_MAYBE_MARGIN", 0.10),
+        },
     )
 
     fall = ModelAdapterConfig(
@@ -242,8 +286,8 @@ def get_settings() -> ServiceConfig:
         checkpoint_path=models_dir / "best_payutch_final_refined_model _fall.pth",
         framework="torch",
         enabled=_env_flag("ANOMALY_ENABLE_FALL", True),
-        threshold=_env_float("ANOMALY_FALL_THRESHOLD", 0.85),
-        run_every_n_frames=_env_int("ANOMALY_FALL_RUN_EVERY", 4),
+        threshold=_env_float("ANOMALY_FALL_THRESHOLD", 0.70),
+        run_every_n_frames=_env_int("ANOMALY_FALL_RUN_EVERY", 2),
         temporal=True,
         clip_length=_env_int("ANOMALY_FALL_CLIP_LENGTH", 20),
         clip_stride=_env_int("ANOMALY_FALL_CLIP_STRIDE", 1),
@@ -257,7 +301,15 @@ def get_settings() -> ServiceConfig:
         builder_import_path=_env_optional("ANOMALY_FALL_BUILDER") or "anomaly_system.checkpoint_builders:build_fall_model",
         strict_state_dict=_env_flag("ANOMALY_FALL_STRICT", False),
         device=_env_str("ANOMALY_FALL_DEVICE", _env_str("ANOMALY_DEVICE", "auto")),
-        adapter_kwargs={"logits_key": _env_optional("ANOMALY_FALL_LOGITS_KEY")},
+        adapter_kwargs={
+            "logits_key": _env_optional("ANOMALY_FALL_LOGITS_KEY"),
+            "ema_alpha": _env_float("ANOMALY_FALL_EMA_ALPHA", 0.55),
+            "hysteresis_on_margin": _env_float("ANOMALY_FALL_ON_MARGIN", 0.08),
+            "hysteresis_off_margin": _env_float("ANOMALY_FALL_OFF_MARGIN", 0.18),
+            "min_on_frames": _env_int("ANOMALY_FALL_MIN_ON_FRAMES", 2),
+            "min_off_frames": _env_int("ANOMALY_FALL_MIN_OFF_FRAMES", 3),
+            "maybe_margin": _env_float("ANOMALY_FALL_MAYBE_MARGIN", 0.10),
+        },
     )
 
     fire = ModelAdapterConfig(
@@ -266,8 +318,8 @@ def get_settings() -> ServiceConfig:
         checkpoint_path=models_dir / "fire_best.onnx",
         framework="onnx",
         enabled=_env_flag("ANOMALY_ENABLE_FIRE", True),
-        threshold=_env_float("ANOMALY_FIRE_THRESHOLD", 0.8),
-        run_every_n_frames=_env_int("ANOMALY_FIRE_RUN_EVERY", 6),
+        threshold=_env_float("ANOMALY_FIRE_THRESHOLD", 0.68),
+        run_every_n_frames=_env_int("ANOMALY_FIRE_RUN_EVERY", 3),
         temporal=False,
         clip_length=1,
         clip_stride=1,
@@ -279,11 +331,11 @@ def get_settings() -> ServiceConfig:
         positive_label=_env_str("ANOMALY_FIRE_POSITIVE_LABEL", "fire"),
         label_map={0: "fire"},
         device="cpu",
-        onnx_providers=("CPUExecutionProvider",),
+        onnx_providers=_default_onnx_providers(),
         adapter_kwargs={"output_name": _env_optional("ANOMALY_FIRE_OUTPUT")},
     )
 
-    audio_config_path = models_dir / "final_audio_config_extratune.json"
+    audio_config_path = models_dir / AUDIO_CONFIG_FILENAME
     raw_audio_config: Dict[str, Any] = {}
     if audio_config_path.exists():
         try:
@@ -294,40 +346,39 @@ def get_settings() -> ServiceConfig:
             raw_audio_config = {}
 
     raw_label_map = raw_audio_config.get("label_map", {}) if isinstance(raw_audio_config, dict) else {}
-    inverted_label_map: Dict[int, str] = {}
-    if isinstance(raw_label_map, dict):
-        for label, index in raw_label_map.items():
-            try:
-                inverted_label_map[int(index)] = str(label)
-            except (TypeError, ValueError):
-                continue
+    inverted_label_map = normalize_audio_label_map(raw_label_map)
 
     realtime_rules = raw_audio_config.get("realtime_rules", {}) if isinstance(raw_audio_config, dict) else {}
     audio = AudioModelConfig(
         name="audio_security_model",
-        checkpoint_path=models_dir / "final_audio_model_extratune.keras",
+        checkpoint_path=models_dir / AUDIO_MODEL_FILENAME,
         config_path=audio_config_path,
         enabled=_env_flag("ANOMALY_ENABLE_AUDIO", _python_supports_audio_stack()),
-        threshold=_env_float("ANOMALY_AUDIO_THRESHOLD", float(raw_audio_config.get("threshold", 0.4) or 0.4)),
-        sample_rate=_env_int("ANOMALY_AUDIO_SR", int(raw_audio_config.get("sr", 16000) or 16000)),
+        threshold=_env_float("ANOMALY_AUDIO_THRESHOLD", float(raw_audio_config.get("threshold", DEFAULT_AUDIO_THRESHOLD) or DEFAULT_AUDIO_THRESHOLD)),
+        sample_rate=_env_int("ANOMALY_AUDIO_SR", int(raw_audio_config.get("sr", DEFAULT_AUDIO_SAMPLE_RATE) or DEFAULT_AUDIO_SAMPLE_RATE)),
         embedding_size=_env_int("ANOMALY_AUDIO_EMBEDDING_SIZE", 1024),
-        window_seconds=_env_float("ANOMALY_AUDIO_WINDOW_SECONDS", float(realtime_rules.get("frame_time_sec", 0.48) or 0.48)),
-        hop_seconds=_env_float(
-            "ANOMALY_AUDIO_HOP_SECONDS",
-            float((realtime_rules.get("frame_time_sec", 0.48) or 0.48) / 2.0),
+        window_seconds=_env_float("ANOMALY_AUDIO_WINDOW_SECONDS", float(realtime_rules.get("frame_time_sec", DEFAULT_AUDIO_FRAME_TIME_SEC) or DEFAULT_AUDIO_FRAME_TIME_SEC)),
+        hop_seconds=_env_float("ANOMALY_AUDIO_HOP_SECONDS", float(realtime_rules.get("frame_time_sec", DEFAULT_AUDIO_FRAME_TIME_SEC) or DEFAULT_AUDIO_FRAME_TIME_SEC)),
+        instant_threshold=_env_float("ANOMALY_AUDIO_INSTANT_THRESHOLD", float(realtime_rules.get("instant_threshold", DEFAULT_AUDIO_INSTANT_THRESHOLD) or DEFAULT_AUDIO_INSTANT_THRESHOLD)),
+        sustain_threshold=_env_float("ANOMALY_AUDIO_SUSTAIN_THRESHOLD", float(realtime_rules.get("sustain_threshold", DEFAULT_AUDIO_SUSTAIN_THRESHOLD) or DEFAULT_AUDIO_SUSTAIN_THRESHOLD)),
+        instant_window_size=_env_int(
+            "ANOMALY_AUDIO_INSTANT_WINDOW_SIZE",
+            int(realtime_rules.get("instant_window_size", DEFAULT_AUDIO_INSTANT_WINDOW_SIZE) or DEFAULT_AUDIO_INSTANT_WINDOW_SIZE),
         ),
-        instant_threshold=_env_float("ANOMALY_AUDIO_INSTANT_THRESHOLD", float(realtime_rules.get("instant_threshold", 0.6) or 0.6)),
-        sustain_threshold=_env_float("ANOMALY_AUDIO_SUSTAIN_THRESHOLD", float(realtime_rules.get("sustain_threshold", 0.4) or 0.4)),
-        sustain_window_size=_env_int("ANOMALY_AUDIO_WINDOW_SIZE", int(realtime_rules.get("window_size", 5) or 5)),
-        sustain_min_count=_env_int("ANOMALY_AUDIO_MIN_COUNT", int(realtime_rules.get("min_count_in_window", 3) or 3)),
+        instant_min_count=_env_int(
+            "ANOMALY_AUDIO_INSTANT_MIN_COUNT",
+            int(realtime_rules.get("instant_min_count", DEFAULT_AUDIO_INSTANT_MIN_COUNT) or DEFAULT_AUDIO_INSTANT_MIN_COUNT),
+        ),
+        sustain_window_size=_env_int("ANOMALY_AUDIO_WINDOW_SIZE", int(realtime_rules.get("window_size", DEFAULT_AUDIO_WINDOW_SIZE) or DEFAULT_AUDIO_WINDOW_SIZE)),
+        sustain_min_count=_env_int("ANOMALY_AUDIO_MIN_COUNT", int(realtime_rules.get("min_count_in_window", DEFAULT_AUDIO_MIN_COUNT_IN_WINDOW) or DEFAULT_AUDIO_MIN_COUNT_IN_WINDOW)),
         sustain_consecutive_needed=_env_int(
             "ANOMALY_AUDIO_CONSECUTIVE_NEEDED",
-            int(realtime_rules.get("consecutive_needed", 2) or 2),
+            int(realtime_rules.get("consecutive_needed", DEFAULT_AUDIO_CONSECUTIVE_NEEDED) or DEFAULT_AUDIO_CONSECUTIVE_NEEDED),
         ),
-        label_map=inverted_label_map or {0: "normal", 1: "emergency"},
+        label_map=inverted_label_map or dict(DEFAULT_AUDIO_LABEL_MAP),
         positive_labels=tuple(
             label
-            for label in (inverted_label_map or {0: "normal", 1: "emergency"}).values()
+            for label in (inverted_label_map or dict(DEFAULT_AUDIO_LABEL_MAP)).values()
             if label.lower() != "normal"
         ),
         adapter_kwargs={"raw_config": raw_audio_config},
@@ -346,16 +397,23 @@ def get_settings() -> ServiceConfig:
         project_root=project_root,
         models_dir=models_dir,
         device=_env_str("ANOMALY_DEVICE", "auto"),
-        processing_frame_stride=_env_int("ANOMALY_FRAME_STRIDE", 4),
+        processing_frame_stride=_env_int("ANOMALY_FRAME_STRIDE", 2),
+        realtime_auto_stride=_env_flag("ANOMALY_REALTIME_AUTOSTRIDE", True),
+        realtime_target_processing_fps=_env_float("ANOMALY_REALTIME_TARGET_FPS", 10.0),
+        realtime_max_frame_stride=_env_int("ANOMALY_REALTIME_MAX_STRIDE", 4),
         buffer_max_frames=_env_int("ANOMALY_BUFFER_MAX_FRAMES", 96),
         max_video_frames=_env_int("ANOMALY_MAX_VIDEO_FRAMES", 0) or None,
         default_stream_frames=_env_int("ANOMALY_DEFAULT_STREAM_FRAMES", 300),
         temp_files=TempFileConfig(directory=temp_dir, suffix=_env_str("ANOMALY_TEMP_SUFFIX", ".mp4")),
         notification=notification,
         fusion=FusionConfig(
-            medium_confidence=_env_float("ANOMALY_FUSION_MEDIUM_CONF", 0.75),
-            high_confidence=_env_float("ANOMALY_FUSION_HIGH_CONF", 0.9),
-            min_alert_gap_frames=_env_int("ANOMALY_FUSION_GAP_FRAMES", 8),
+            medium_confidence=_env_float("ANOMALY_FUSION_MEDIUM_CONF", 0.6),
+            high_confidence=_env_float("ANOMALY_FUSION_HIGH_CONF", 0.82),
+            min_alert_gap_frames=_env_int("ANOMALY_FUSION_GAP_FRAMES", 18),
+            fight_min_confidence=_env_float("ANOMALY_FUSION_FIGHT_MIN_CONF", 0.8),
+            fall_min_confidence=_env_float("ANOMALY_FUSION_FALL_MIN_CONF", 0.88),
+            fire_min_confidence=_env_float("ANOMALY_FUSION_FIRE_MIN_CONF", 0.75),
+            enable_ambiguous_motion_alerts=_env_flag("ANOMALY_ENABLE_AMBIGUOUS_MOTION_ALERTS", False),
         ),
         fight=fight,
         fall=fall,

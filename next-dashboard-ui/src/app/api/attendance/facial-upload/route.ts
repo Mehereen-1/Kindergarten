@@ -3,7 +3,6 @@ import { connectDB } from '@/lib/mongodb';
 import FacialDatabase from '@/lib/models/FacialDatabase';
 import Student from '@/lib/models/Student';
 import { getServerCctvBackendUrl } from '@/lib/serverConfig';
-import { storeWebFileAsset } from '@/lib/serverStorage';
 
 const PYTHON_BACKEND = getServerCctvBackendUrl();
 
@@ -31,9 +30,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let uploadedCount = 0;
     const imageUrls: string[] = [];
     let embeddingCount = 0;
+    let filesProcessedByBackend = 0;
 
     // Send images to Python backend for facial embedding extraction
     console.log(`📤 Sending ${files.length} images to Python backend for student ${studentId}`);
@@ -65,36 +64,21 @@ export async function POST(req: NextRequest) {
       
       if (backendResponse.ok) {
         embeddingCount = backendResult.embeddings_created || 0;
-        const filesProcessed = backendResult.files_processed || 0;
-        console.log(`✅ Backend response: processed ${filesProcessed} files, created ${embeddingCount} embeddings`);
+        filesProcessedByBackend = backendResult.files_processed || 0;
+        if (Array.isArray(backendResult.image_urls)) {
+          imageUrls.push(...backendResult.image_urls.filter((item: unknown) => typeof item === 'string'));
+        }
+        console.log(`✅ Backend response: processed ${filesProcessedByBackend} files, created ${embeddingCount} embeddings`);
         
         if (embeddingCount === 0) {
           console.warn(`⚠️ No embeddings created - possible issues: no faces detected, encoding error, or database issue`);
         }
       } else {
         console.error(`❌ Backend error (${backendResponse.status}): ${backendResult.error || backendText}`);
-        // Continue with local file saving even if backend fails
+        // Keep request alive so caller gets a structured error/partial result.
       }
     } catch (err) {
       console.error('Error communicating with Python backend:', err);
-      console.log('Continuing with local file saving...');
-    }
-
-    // Store preview images in Mongo-backed storage so Vercel does not depend on
-    // a writable application filesystem at runtime.
-    for (const file of files) {
-      try {
-        const storedAsset = await storeWebFileAsset(file, {
-          purpose: 'attendance-preview',
-          studentId,
-          classId: String(student.classId || ''),
-        });
-
-        imageUrls.push(storedAsset.url);
-        uploadedCount++;
-      } catch (err) {
-        console.error('Error saving file:', err);
-      }
     }
 
     const update: Record<string, any> = {
@@ -112,12 +96,6 @@ export async function POST(req: NextRequest) {
       update.$set.preview_image_url = imageUrls[0];
     }
 
-    // When the Python backend is unavailable, keep the sample count usable in Mongo.
-    // If the backend succeeded, it already incremented the count while storing embeddings.
-    if (embeddingCount === 0 && uploadedCount > 0) {
-      update.$inc = { number_of_samples: uploadedCount };
-    }
-
     // Update or create facial database record
     const facialRecord = await FacialDatabase.findOneAndUpdate(
       { student_id: studentId },
@@ -127,10 +105,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `✅ Successfully processed ${uploadedCount} images and created ${embeddingCount} facial embeddings for ${student.name}`,
+      message: `✅ Successfully processed ${filesProcessedByBackend} images and created ${embeddingCount} facial embeddings for ${student.name}`,
       studentId,
       studentName: student.name,
-      uploadedCount,
+      uploadedCount: filesProcessedByBackend,
       embeddingsCreated: embeddingCount,
       imageUrls,
       facialRecordId: facialRecord._id,

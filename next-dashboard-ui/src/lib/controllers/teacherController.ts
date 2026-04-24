@@ -1,7 +1,10 @@
 import { connectDB } from '../mongodb';
-import { Teacher } from '../models/User';
-import { Class } from '../models/Class';
+import TeacherProfile from '../models/TeacherProfile';
+import ClassModel from '../models/Class';
 import mongoose from 'mongoose';
+
+const Teacher = TeacherProfile as any;
+const Class = ClassModel as any;
 
 interface CreateTeacherInput {
   userId: string;

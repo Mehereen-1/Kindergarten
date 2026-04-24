@@ -9,6 +9,7 @@ import {
   canAutoStartSecurityAlertService,
   ensureSecurityAlertServiceReady,
   getServiceUrl,
+  getSecurityAlertPythonCandidates,
 } from '@/lib/securityAlertServiceManager';
 
 export const runtime = 'nodejs';
@@ -28,19 +29,6 @@ async function postWithRetry(url: string, buildFormData: () => FormData) {
     }
   }
   throw lastError instanceof Error ? lastError : new Error('Failed to connect to anomaly service');
-}
-
-function getPythonCandidates(): Array<{ command: string; prefixArgs: string[] }> {
-  const candidates: Array<{ command: string; prefixArgs: string[] }> = [];
-  if (process.env.ANOMALY_SERVICE_PYTHON) {
-    candidates.push({ command: process.env.ANOMALY_SERVICE_PYTHON, prefixArgs: [] });
-  }
-  candidates.push(
-    { command: 'python', prefixArgs: [] },
-    { command: 'py', prefixArgs: ['-3'] },
-    { command: 'py', prefixArgs: [] }
-  );
-  return candidates;
 }
 
 async function writeTempVideo(file: File) {
@@ -63,7 +51,7 @@ async function runCliFallback(videoPath: string, cameraName: string, className: 
   const mainPath = path.join(serviceDir, 'main.py');
   let lastError = 'CLI fallback failed';
 
-  for (const candidate of getPythonCandidates()) {
+  for (const candidate of getSecurityAlertPythonCandidates()) {
     const args = [
       ...candidate.prefixArgs,
       mainPath,

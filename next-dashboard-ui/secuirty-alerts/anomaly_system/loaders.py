@@ -143,7 +143,13 @@ def load_onnx_checkpoint(config: ModelAdapterConfig) -> LoadedOnnxArtifact:
         raise CheckpointLoadError(f"Missing checkpoint: {config.checkpoint_path}")
 
     ort = lazy_import_onnxruntime()
-    session = ort.InferenceSession(str(config.checkpoint_path), providers=list(config.onnx_providers))
+    requested = list(config.onnx_providers or ("CPUExecutionProvider",))
+    available = set(ort.get_available_providers())
+    selected = [provider for provider in requested if provider in available]
+    if not selected:
+        selected = ["CPUExecutionProvider"]
+
+    session = ort.InferenceSession(str(config.checkpoint_path), providers=selected)
     input_meta = session.get_inputs()[0]
     output_names = tuple(output.name for output in session.get_outputs())
     shape = getattr(input_meta, "shape", None) or []
@@ -153,7 +159,12 @@ def load_onnx_checkpoint(config: ModelAdapterConfig) -> LoadedOnnxArtifact:
         input_name=input_meta.name,
         output_names=output_names,
         expected_rank=expected_rank,
-        metadata={"shape": list(shape), "providers": list(config.onnx_providers)},
+        metadata={
+            "shape": list(shape),
+            "providers_requested": requested,
+            "providers_selected": selected,
+            "providers_available": sorted(available),
+        },
     )
 
 

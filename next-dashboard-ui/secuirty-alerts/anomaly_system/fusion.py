@@ -12,7 +12,8 @@ class FusionEngine:
         self.config = config
 
     def fuse(self, results: Iterable[ModelResult]) -> List[UnifiedAlert]:
-        detections = positives(results, min_confidence=self.config.medium_confidence)
+        all_results = list(results)
+        detections = positives(all_results, min_confidence=self.config.medium_confidence)
         alerts: List[UnifiedAlert] = []
 
         fight = self._best_event(detections, "fight")
@@ -28,12 +29,50 @@ class FusionEngine:
         impact = self._best_audio(detections, {"crash_impact", "glass_break"})
         generic_security_audio = self._best_audio(detections, {"security_audio"})
 
-        if fire:
+        ambiguous_fight_fall = False
+        if self.config.enable_ambiguous_motion_alerts and fight and fall:
+            close_confidence = abs(fight.confidence - fall.confidence) <= 0.12
+            not_strongly_separated = max(fight.confidence, fall.confidence) < (self.config.high_confidence + 0.03)
+            if close_confidence and not_strongly_separated:
+                ambiguous_fight_fall = True
+                alerts.append(
+                    self._alert(
+                        "maybe_fight_fall_alert",
+                        "medium",
+                        "Motion anomaly may be fight or fall (needs manual review)",
+                        [fight, fall],
+                    )
+                )
+
+        if self.config.enable_ambiguous_motion_alerts and not fight and not fall:
+            maybe_threshold = max(0.45, self.config.medium_confidence * 0.8)
+            fight_candidate = self._best_any_event(all_results, "fight")
+            fall_candidate = self._best_any_event(all_results, "fall")
+            if (
+                fight_candidate
+                and fall_candidate
+                and fight_candidate.confidence >= maybe_threshold
+                and fall_candidate.confidence >= maybe_threshold
+            ):
+                alerts.append(
+                    self._alert(
+                        "maybe_fight_fall_alert",
+                        "medium",
+                        "Possible fight/fall activity detected with moderate confidence",
+                        [fight_candidate, fall_candidate],
+                    )
+                )
+
+        strong_fire = fire and fire.confidence >= self.config.fire_min_confidence
+        strong_fight = fight and fight.confidence >= self.config.fight_min_confidence
+        strong_fall = fall and fall.confidence >= self.config.fall_min_confidence
+
+        if fire and (alarm or strong_fire):
             severity = "critical" if (alarm or fire.confidence >= self.config.high_confidence) else "high"
             summary = "Fire with alarm detected" if alarm else "Fire detected in classroom"
             alerts.append(self._alert("fire_emergency", severity, summary, [fire, alarm]))
 
-        if fall and impact:
+        if not ambiguous_fight_fall and fall and impact:
             alerts.append(
                 self._alert(
                     "possible_accident",
@@ -42,10 +81,10 @@ class FusionEngine:
                     [fall, impact],
                 )
             )
-        elif fall:
+        elif not ambiguous_fight_fall and strong_fall:
             alerts.append(self._alert("fall_alert", "medium", "Possible fall detected", [fall]))
 
-        if fight and distress:
+        if not ambiguous_fight_fall and fight and distress:
             alerts.append(
                 self._alert(
                     "violence_alert",
@@ -54,7 +93,7 @@ class FusionEngine:
                     [fight, distress],
                 )
             )
-        elif fight and (running_surge or sudden_gathering or rush_to_zone):
+        elif not ambiguous_fight_fall and fight and (running_surge or sudden_gathering or rush_to_zone) and strong_fight:
             alerts.append(
                 self._alert(
                     "escalation_alert",
@@ -63,7 +102,7 @@ class FusionEngine:
                     [fight, running_surge, sudden_gathering, rush_to_zone],
                 )
             )
-        elif fight and generic_security_audio:
+        elif not ambiguous_fight_fall and fight and generic_security_audio and strong_fight:
             alerts.append(
                 self._alert(
                     "security_alert",
@@ -72,7 +111,7 @@ class FusionEngine:
                     [fight, generic_security_audio],
                 )
             )
-        elif fight:
+        elif not ambiguous_fight_fall and strong_fight:
             alerts.append(self._alert("fight_alert", "high", "Fight detected in classroom", [fight]))
 
         if alarm and running_surge:
@@ -120,6 +159,10 @@ class FusionEngine:
         return self._dedupe(alerts)
 
     def _best_event(self, results: Iterable[ModelResult], event_type: str) -> Optional[ModelResult]:
+        matches = [result for result in results if result.event_type == event_type]
+        return max(matches, key=lambda item: item.confidence) if matches else None
+
+    def _best_any_event(self, results: Iterable[ModelResult], event_type: str) -> Optional[ModelResult]:
         matches = [result for result in results if result.event_type == event_type]
         return max(matches, key=lambda item: item.confidence) if matches else None
 
