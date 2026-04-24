@@ -1,5 +1,5 @@
 import { connectDB } from '../mongodb';
-import { Message } from '../models/Message';
+import Message from '../models/Message';
 
 interface CreateMessageInput {
   content: string;

@@ -40,6 +40,7 @@ type WebcamAnalysisResult = {
     active_models?: string[];
   };
   errors?: string[];
+  error?: string;
   ingest?: {
     success?: boolean;
     alerted?: boolean;

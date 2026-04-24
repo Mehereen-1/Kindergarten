@@ -1,6 +1,8 @@
 import { connectDB } from '../mongodb';
-import { Parent } from '../models/User';
+import ParentProfile from '../models/ParentProfile';
 import mongoose from 'mongoose';
+
+const Parent = ParentProfile as any;
 
 interface CreateParentInput {
   userId: string;

@@ -220,6 +220,13 @@ function adjustDisplayedPercent(rawPercent: number) {
   return Math.max(0, Math.min(100, rawPercent - UI_CONFIDENCE_REDUCTION_POINTS));
 }
 
+function toPercent(value: number | null | undefined) {
+  const raw = Number(value || 0);
+  if (!Number.isFinite(raw)) return 0;
+  if (raw <= 1) return Math.max(0, Math.min(100, raw * 100));
+  return Math.max(0, Math.min(100, raw));
+}
+
 function displayAlertTitle(title: string, rawPercent: number) {
   const adjusted = Math.round(adjustDisplayedPercent(rawPercent));
   const stripped = title.replace(/\s*\(\d+(?:\.\d+)?%\)\s*$/, '').trim();
@@ -258,7 +265,7 @@ function normalizeSoundCheckResult(rawResult: any, sourceType: 'video' | 'audio'
     return rawResult as SoundCheckResponse;
   }
 
-  const modelResults = Array.isArray(rawResult.model_results) ? rawResult.model_results : [];
+  const modelResults: Array<Record<string, any>> = Array.isArray(rawResult.model_results) ? rawResult.model_results : [];
   const audioRows = modelResults.filter(
     (row: any) => String(row?.model_name || '').toLowerCase() === 'audio_security_model'
   );

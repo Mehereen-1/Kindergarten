@@ -37,6 +37,7 @@ type LiveAudioAnalysisResult = {
     active_models?: string[];
   };
   errors?: string[];
+  error?: string;
   ingest?: {
     success?: boolean;
     alerted?: boolean;
@@ -56,6 +57,8 @@ type LiveAudioAnalysisResult = {
   latency_ms?: number;
   chunk_index?: number;
   chunk_samples?: number;
+  chunk_window_seconds?: number;
+  hop_seconds?: number;
   input_sample_rate?: number;
   target_sample_rate?: number;
   encoding?: string;

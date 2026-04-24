@@ -1,6 +1,6 @@
 import { connectDB } from '../mongodb';
-import { Observation } from '../models/Observation';
-import { Student } from '../models/Student';
+import Observation from '../models/Observation';
+import Student from '../models/Student';
 
 type ObservationCategory = 'BEHAVIOR' | 'SOCIAL' | 'LANGUAGE' | 'MOTOR_SKILLS' | 'EMOTIONAL';
 

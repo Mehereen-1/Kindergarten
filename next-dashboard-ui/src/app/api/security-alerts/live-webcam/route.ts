@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { ensureSecurityAlertServiceReady, getServiceUrl } from '@/lib/securityAlertServiceManager';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 function toWebSocketUrl(serviceUrl: string) {
   const url = new URL(serviceUrl);

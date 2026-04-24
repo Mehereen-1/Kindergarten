@@ -14,6 +14,8 @@ import { extractSessionUser } from '@/lib/auth';
 import { getResolvedResultCardTemplate } from '@/lib/result-card';
 import { getCandidateAcademicYears } from '@/lib/subjectAssignment';
 
+type ResolvedStudent = { studentId: string; name: string; rollNo: string };
+
 function mapToPlainObject(values: unknown) {
   if (values instanceof Map) {
     return Object.fromEntries(values.entries());
@@ -49,7 +51,7 @@ function sanitizeAssessmentValues(values: unknown, allowedKeys: Set<string>) {
   );
 }
 
-async function resolveStudents(examCycleId: string, classId: string) {
+async function resolveStudents(examCycleId: string, classId: string): Promise<ResolvedStudent[]> {
   const examCycle = await ExamCycle.findById(examCycleId).lean();
   if (!examCycle) {
     throw new Error('Exam cycle not found');
@@ -123,7 +125,7 @@ async function resolveStudents(examCycleId: string, classId: string) {
         rollNo: history.rollNo || '',
       };
     })
-    .filter(Boolean) as Array<{ studentId: string; name: string; rollNo: string }>;
+    .filter((student): student is ResolvedStudent => student !== null);
 }
 
 async function isTeacherAllowed(examCycleId: string, classId: string, teacherId: string) {
@@ -269,9 +271,9 @@ export async function PUT(request: NextRequest) {
       resolveStudents(examCycleId, classId),
     ]);
 
-    const validStudentIds = new Set(students.map((student) => student.studentId));
-    const allowedCoKeys = new Set((template.coScholasticRows || []).map((row: any) => String(row.key)));
-    const allowedDisciplineKeys = new Set((template.disciplineRows || []).map((row: any) => String(row.key)));
+    const validStudentIds = new Set<string>(students.map((student) => student.studentId));
+    const allowedCoKeys = new Set<string>((template.coScholasticRows || []).map((row: any) => String(row.key)));
+    const allowedDisciplineKeys = new Set<string>((template.disciplineRows || []).map((row: any) => String(row.key)));
 
     for (const assessment of assessments) {
       const studentId = String(assessment?.studentId || '').trim();

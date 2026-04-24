@@ -7,6 +7,7 @@
     ],
     "allowJs": true,
     "skipLibCheck": true,
+    "target": "es2017",
     "strict": false,
     "noEmit": true,
     "esModuleInterop": true,

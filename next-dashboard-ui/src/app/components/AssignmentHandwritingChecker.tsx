@@ -1458,9 +1458,10 @@ export default function AssignmentHandwritingChecker() {
 
           const text = String(response?.data?.text || '').trim();
           const conf = Math.max(0, Math.round(Number(response?.data?.confidence || 0)));
-          const words = Array.isArray(response?.data?.words) ? response.data.words : [];
-          const pageWidth = Math.max(0, Number(response?.data?.width || 0));
-          const pageHeight = Math.max(0, Number(response?.data?.height || 0));
+          const responseData = response?.data as any;
+          const words = Array.isArray(responseData?.words) ? responseData.words : [];
+          const pageWidth = Math.max(0, Number(responseData?.width || 0));
+          const pageHeight = Math.max(0, Number(responseData?.height || 0));
           candidates.push({ text, confidence: conf, source: source.name, psm, words, pageWidth, pageHeight });
         }
       }

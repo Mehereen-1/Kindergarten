@@ -69,7 +69,7 @@ export async function storeBufferAsset({ buffer, filename, mimeType, metadata }:
   const uploadStream = bucket.openUploadStream(filename, {
     contentType: mimeType || 'application/octet-stream',
     metadata: metadata || {},
-  });
+  } as any);
 
   await new Promise<void>((resolve, reject) => {
     uploadStream.once('finish', () => resolve());

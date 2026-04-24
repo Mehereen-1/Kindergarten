@@ -148,7 +148,7 @@ export async function PATCH(
     };
 
     const sessionUser = extractSessionUser(req.cookies.get('user')?.value);
-    const adminId = sessionUser?.id;
+    const adminId = sessionUser?.id || 'system';
     const userRole = sessionUser?.role || req.cookies.get('userRole')?.value;
 
     // Only admin can approve/publish
