@@ -1,20 +1,63 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Search, Bell, Settings, LogOut, Users, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+
+type AdminProfile = {
+  id: string;
+  email: string;
+};
 
 const Navbar = () => {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [profileMenu, setProfileMenu] = useState(false);
   const [notificationMenu, setNotificationMenu] = useState(false);
+  const [admin, setAdmin] = useState<AdminProfile | null>(null);
 
-  const handleLogout = () => {
-    document.cookie = 'user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;';
-    document.cookie = 'userRole=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;';
-    router.push('/sign-in');
+  useEffect(() => {
+    let isActive = true;
+
+    const loadAdmin = async () => {
+      try {
+        const response = await fetch('/api/admin/me', { cache: 'no-store' });
+        if (!response.ok) {
+          return;
+        }
+
+        const data = await response.json();
+        if (isActive) {
+          setAdmin(data?.admin || null);
+        }
+      } catch {
+        if (isActive) {
+          setAdmin(null);
+        }
+      }
+    };
+
+    void loadAdmin();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const adminDisplayName = useMemo(() => {
+    if (!admin?.email) return 'Admin';
+    return admin.email.split('@')[0] || 'Admin';
+  }, [admin]);
+
+  const adminInitial = useMemo(() => {
+    const source = adminDisplayName.trim();
+    return source ? source[0]?.toUpperCase() : 'A';
+  }, [adminDisplayName]);
+
+  const handleLogout = async () => {
+    await fetch('/api/admin/logout', { method: 'POST' });
+    router.push('/admin-login');
   };
 
   return (
@@ -84,11 +127,11 @@ const Navbar = () => {
               className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-[#eeefdd] transition-all group"
             >
               <div className="flex flex-col items-end">
-                <span className="text-sm font-semibold text-[#36392b]">Admin User</span>
+                <span className="text-sm font-semibold text-[#36392b]">{adminDisplayName}</span>
                 <span className="text-xs text-[#636656]">Administrator</span>
               </div>
               <div className="w-9 h-9 rounded-full bg-[#d7e7d5] flex items-center justify-center text-[#354336] font-bold shadow-md group-hover:shadow-lg transition-all">
-                A
+                {adminInitial}
               </div>
               <ChevronDown className="w-4 h-4 text-[#636656] group-hover:text-[#36392b] transition-all" />
             </button>
@@ -96,8 +139,8 @@ const Navbar = () => {
             {profileMenu && (
               <div className="absolute top-full mt-2 right-0 bg-[#fafaebf2] backdrop-blur-md border border-[#b9bba826] rounded-xl shadow-[0_14px_34px_rgba(54,57,43,0.12)] overflow-hidden z-50 w-56 animate-in fade-in slide-in-from-top-2 duration-200">
                 <div className="px-4 py-3 border-b border-[#b9bba826] bg-[#eeefdd]">
-                  <p className="text-sm font-semibold text-[#36392b]">Admin User</p>
-                  <p className="text-xs text-[#636656]">admin@kindervision.com</p>
+                  <p className="text-sm font-semibold text-[#36392b]">{adminDisplayName}</p>
+                  <p className="text-xs text-[#636656]">{admin?.email || 'Loading admin profile...'}</p>
                 </div>
                 <Link
                   href="/admin/settings"

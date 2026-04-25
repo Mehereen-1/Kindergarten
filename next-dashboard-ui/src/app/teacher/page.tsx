@@ -31,66 +31,59 @@ export default function TeacherPage() {
   const [classes, setClasses] = useState<TeacherClassSummary[]>([]);
   const [events, setEvents] = useState<TeacherEvent[]>([]);
   const [attendanceRate, setAttendanceRate] = useState(0);
+  const [timetable, setTimetable] = useState<any[]>([]);
 
   const currentYear = String(new Date().getFullYear());
 
   useEffect(() => {
     const loadDashboardData = async () => {
       if (!user?.id) return;
-
       try {
-        const classesResponse = await fetch(
-          `/api/teacher/classes?teacherId=${encodeURIComponent(user.id)}&academicYear=${encodeURIComponent(currentYear)}`,
-          { cache: "no-store" }
-        );
+        const [classesResponse, eventsResponse, timetableResponse] = await Promise.all([
+          fetch(`/api/teacher/classes?teacherId=${encodeURIComponent(user.id)}&academicYear=${encodeURIComponent(currentYear)}`, { cache: "no-store" }),
+          fetch("/api/teacher/events", { cache: "no-store" }),
+          fetch(`/api/teacher/timetable?teacherId=${encodeURIComponent(user.id)}&academicYear=${encodeURIComponent(currentYear)}`, { cache: "no-store" })
+        ]);
         const classesData = classesResponse.ok ? await classesResponse.json() : [];
         const classList = Array.isArray(classesData) ? classesData : [];
         setClasses(classList);
-
-        const eventsResponse = await fetch("/api/teacher/events", { cache: "no-store" });
         const eventsData = eventsResponse.ok ? await eventsResponse.json() : [];
         const teacherEvents = Array.isArray(eventsData) ? eventsData : [];
         setEvents(teacherEvents);
+        const timetableData = timetableResponse.ok ? await timetableResponse.json() : { entries: [] };
+        setTimetable(Array.isArray(timetableData.entries) ? timetableData.entries : []);
 
         if (!classList.length) {
           setAttendanceRate(0);
           return;
         }
-
         const classIds = classList.map((classDoc: TeacherClassSummary) => classDoc._id).filter(Boolean);
-
         const monthStart = new Date();
         monthStart.setDate(1);
         monthStart.setHours(0, 0, 0, 0);
-
         const monthEnd = new Date(monthStart);
         monthEnd.setMonth(monthEnd.getMonth() + 1);
-
         const attendanceResponse = await fetch(
           `/api/teacher/attendance?classIds=${encodeURIComponent(classIds.join(","))}&from=${encodeURIComponent(monthStart.toISOString())}&to=${encodeURIComponent(monthEnd.toISOString())}`,
           { cache: "no-store" }
         );
-
         const attendanceData = attendanceResponse.ok ? await attendanceResponse.json() : [];
         const attendanceRecords = Array.isArray(attendanceData) ? attendanceData : [];
-
         if (!attendanceRecords.length) {
           setAttendanceRate(0);
           return;
         }
-
         const presentLikeCount = attendanceRecords.filter(
           (record: { status?: string }) => record.status === "present" || record.status === "late"
         ).length;
-
         setAttendanceRate(Math.round((presentLikeCount / attendanceRecords.length) * 100));
       } catch {
         setClasses([]);
         setEvents([]);
         setAttendanceRate(0);
+        setTimetable([]);
       }
     };
-
     if (!authLoading) {
       loadDashboardData();
     }
@@ -104,14 +97,33 @@ export default function TeacherPage() {
     return { start, end };
   }, []);
 
+  // Merge today's timetable and events for a complete schedule
   const todayEvents = useMemo(() => {
-    return events
-      .filter((event) => {
-        const start = new Date(event.startDate);
-        return start >= todayRange.start && start < todayRange.end;
-      })
-      .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
-  }, [events, todayRange]);
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    // Timetable entries for today
+    const timetableToday = timetable.filter((entry: any) => {
+      // entry.dayOfWeek matches today
+      const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+      return days[today.getDay()] === entry.dayOfWeek;
+    }).map((entry: any) => ({
+      _id: entry._id,
+      title: entry.subjectId?.name || "Class",
+      description: entry.classId?.name ? `Class: ${entry.classId.name}` : "",
+      startDate: `${todayStr}T${entry.startTime}`,
+      endDate: `${todayStr}T${entry.endTime}`,
+      location: entry.room || "Campus",
+      allDay: false,
+      isTimetable: true,
+    }));
+    // Events for today
+    const eventsToday = events.filter((event) => {
+      const start = new Date(event.startDate);
+      return start >= todayRange.start && start < todayRange.end;
+    });
+    // Merge and sort
+    return [...timetableToday, ...eventsToday].sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+  }, [events, timetable, todayRange]);
 
   const formatter = useMemo(
     () =>
@@ -157,8 +169,32 @@ export default function TeacherPage() {
     return `Next: ${formatter.format(new Date(nextEvent.startDate))}`;
   }, [todayEvents, formatter]);
 
+  // Combine timetable and events for the calendar
   const calendarEvents = useMemo(() => {
-    return events
+    // Timetable entries for all days in the academic year
+    const timetableEvents: any[] = [];
+    const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    // For each timetable entry, create events for each matching day in the current month
+    timetable.forEach((entry: any) => {
+      const entryDay = days.indexOf(entry.dayOfWeek);
+      for (let d = 1; d <= 31; d++) {
+        const date = new Date(year, month, d);
+        if (date.getMonth() !== month) break;
+        if (date.getDay() === entryDay) {
+          timetableEvents.push({
+            title: entry.subjectId?.name || "Class",
+            start: new Date(`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}T${entry.startTime}`),
+            end: new Date(`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}T${entry.endTime}`),
+            allDay: false,
+          });
+        }
+      }
+    });
+    // Add real events
+    const realEvents = events
       .filter((event) => event.startDate && event.endDate)
       .map((event) => ({
         title: event.title,
@@ -166,7 +202,8 @@ export default function TeacherPage() {
         start: new Date(event.startDate),
         end: new Date(event.endDate),
       }));
-  }, [events]);
+    return [...timetableEvents, ...realEvents];
+  }, [events, timetable]);
 
   return (
     <>

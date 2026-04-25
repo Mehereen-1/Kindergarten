@@ -21,7 +21,7 @@ interface BigCalendarProps {
 
 const BigCalendar = ({ events }: BigCalendarProps) => {
   const [view, setView] = useState<View>(Views.WORK_WEEK);
-  const eventSource = events && events.length ? events : calendarEvents;
+  const eventSource = events && events.length ? events : [];
 
   const handleOnChangeView = (selectedView: View) => {
     setView(selectedView);

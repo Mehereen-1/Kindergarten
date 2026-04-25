@@ -1,57 +1,77 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 const TeacherMiniCalendar = () => {
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 28)); // January 28, 2026
+  const { user } = useAuth();
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [events, setEvents] = useState<any[]>([]);
+  const [timetable, setTimetable] = useState<any[]>([]);
 
-  const getDaysInMonth = (date: Date) => {
-    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  };
+  useEffect(() => {
+    if (!user?.id) return;
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const monthStart = new Date(year, month, 1);
+    const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
+    Promise.all([
+      fetch(`/api/teacher/events`).then(r => r.ok ? r.json() : []),
+      fetch(`/api/teacher/timetable?teacherId=${user.id}`).then(r => r.ok ? r.json() : { entries: [] })
+    ]).then(([eventsData, timetableData]) => {
+      const realEvents = (Array.isArray(eventsData) ? eventsData : []).filter((ev: any) => {
+        const evDate = new Date(ev.startDate);
+        return evDate >= monthStart && evDate <= monthEnd;
+      });
+      setEvents(realEvents);
+      setTimetable(Array.isArray(timetableData.entries) ? timetableData.entries : []);
+    });
+  }, [user?.id, currentDate]);
 
-  const getFirstDayOfMonth = (date: Date) => {
-    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  };
-
-  const previousMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
-  };
-
-  const nextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
-  };
-
+  const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  const getFirstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  const previousMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
+  const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
   const daysInMonth = getDaysInMonth(currentDate);
   const firstDay = getFirstDayOfMonth(currentDate);
   const days: Array<number | null> = [];
-
-  // Add empty cells for days before month starts (adjust for Monday start)
   const adjustedFirstDay = firstDay === 0 ? 6 : firstDay - 1;
-  for (let i = 0; i < adjustedFirstDay; i++) {
-    days.push(null);
-  }
-
-  // Add days of month
-  for (let i = 1; i <= daysInMonth; i++) {
-    days.push(i);
-  }
-
-  const monthNames = ["January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-  ];
-
+  for (let i = 0; i < adjustedFirstDay; i++) days.push(null);
+  for (let i = 1; i <= daysInMonth; i++) days.push(i);
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const isToday = (day: number | null) => {
     if (day === null) return false;
     const today = new Date();
-    return day === today.getDate() &&
-      currentDate.getMonth() === today.getMonth() &&
-      currentDate.getFullYear() === today.getFullYear();
+    return day === today.getDate() && currentDate.getMonth() === today.getMonth() && currentDate.getFullYear() === today.getFullYear();
   };
-
-  const isWeekend = (index: number) => {
-    return (index + 1) % 7 === 0 || (index + 1) % 7 === 6;
-  };
+  const isWeekend = (index: number) => (index + 1) % 7 === 0 || (index + 1) % 7 === 6;
+  // Mark days with events (from both events and timetable)
+  const eventDays = new Set([
+    ...events.map(ev => new Date(ev.startDate).getDate()),
+    ...timetable
+      .filter((entry: any) => {
+        // entry.dayOfWeek matches this month
+        const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+        const entryDay = days.indexOf(entry.dayOfWeek);
+        // Find all dates in this month that match entryDay
+        for (let d = 1; d <= daysInMonth; d++) {
+          const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), d);
+          if (date.getDay() === entryDay) return true;
+        }
+        return false;
+      })
+      .flatMap((entry: any) => {
+        const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+        const entryDay = days.indexOf(entry.dayOfWeek);
+        const result: number[] = [];
+        for (let d = 1; d <= daysInMonth; d++) {
+          const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), d);
+          if (date.getDay() === entryDay) result.push(d);
+        }
+        return result;
+      })
+  ]);
 
   return (
     <div className="bg-[#f8e999] rounded-[24px_48px_16px_40px] shadow-sm relative overflow-hidden animate-in fade-in slide-in-from-right-5 duration-700"
@@ -148,10 +168,47 @@ const TeacherMiniCalendar = () => {
           </h4>
           <div className="space-y-2">
             {[
-              { title: "Class Meeting", time: "10:00 AM - 11:00 AM", icon: "groups" },
-              { title: "Parent Conference", time: "2:00 PM - 3:00 PM", icon: "forum" },
-              { title: "Exam Preparation", time: "3:30 PM - 4:30 PM", icon: "school" },
-            ].map((event, idx) => (
+              ...events.map((event: any) => ({
+                title: event.title,
+                time: `${new Date(event.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(event.endDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+                icon: "event",
+              })),
+              ...timetable
+                .filter((entry: any) => {
+                  // Only show upcoming for this month
+                  const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+                  const entryDay = days.indexOf(entry.dayOfWeek);
+                  const today = new Date();
+                  const thisMonth = currentDate.getMonth();
+                  const thisYear = currentDate.getFullYear();
+                  // Find next date in this month for this entry
+                  for (let d = today.getDate(); d <= daysInMonth; d++) {
+                    const date = new Date(thisYear, thisMonth, d);
+                    if (date.getDay() === entryDay && date >= today) return true;
+                  }
+                  return false;
+                })
+                .map((entry: any) => {
+                  const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+                  const entryDay = days.indexOf(entry.dayOfWeek);
+                  const thisMonth = currentDate.getMonth();
+                  const thisYear = currentDate.getFullYear();
+                  // Find next date in this month for this entry
+                  let foundDate: Date | null = null;
+                  for (let d = 1; d <= daysInMonth; d++) {
+                    const date = new Date(thisYear, thisMonth, d);
+                    if (date.getDay() === entryDay && date >= new Date()) {
+                      foundDate = date;
+                      break;
+                    }
+                  }
+                  return {
+                    title: entry.subjectId?.name || "Class",
+                    time: foundDate ? `${foundDate.toLocaleDateString()} ${entry.startTime} - ${entry.endTime}` : `${entry.startTime} - ${entry.endTime}`,
+                    icon: "school",
+                  };
+                })
+            ].slice(0, 5).map((event, idx) => (
               <div
                 key={idx}
                 className="flex items-start gap-3 p-2 rounded-lg hover:bg-[#fff7d6]/50 transition-all group cursor-pointer animate-in fade-in slide-in-from-left-5 duration-500"
