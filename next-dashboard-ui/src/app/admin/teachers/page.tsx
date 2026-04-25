@@ -8,6 +8,7 @@ import { role } from "@/lib/data";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useAdvancedSearch } from "@/hooks/useAdvancedSearch";
 
 type Teacher = {
   _id: string;
@@ -60,6 +61,17 @@ const columns = [
 const TeacherListPage = () => {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loadError, setLoadError] = useState('');
+
+  const {
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    filteredItems: filteredTeachers,
+    suggestions: searchSuggestions,
+  } = useAdvancedSearch({
+    items: teachers,
+    fields: ["name", "email", "teacherId", "subjects", "classes", "phone", "address"],
+    suggestionField: "name",
+  });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -144,7 +156,13 @@ const TeacherListPage = () => {
           <h1 className="hidden md:block text-2xl font-black text-[#3a3927]">All Teachers</h1>
         </div>
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
-          <TableSearch />
+          <TableSearch
+            value={searchQuery}
+            onChange={setSearchQuery}
+            suggestions={searchSuggestions}
+            onSuggestionSelect={setSearchQuery}
+            placeholder="Search teacher, subject, class..."
+          />
           <div className="flex items-center gap-4 self-end">
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]">
               <Image src="/filter.png" alt="" width={14} height={14} />
@@ -166,8 +184,13 @@ const TeacherListPage = () => {
           {loadError}
         </div>
       )}
+      {!!searchQuery && (
+        <div className="mt-3 text-xs text-[#5a6142]">
+          {filteredTeachers.length} result{filteredTeachers.length === 1 ? '' : 's'} found
+        </div>
+      )}
       {/* LIST */}
-      <Table columns={columns} renderRow={renderRow} data={teachers} />
+      <Table columns={columns} renderRow={renderRow} data={filteredTeachers} />
       {/* PAGINATION */}
       <Pagination />
     </div>

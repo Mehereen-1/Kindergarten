@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
+import TableSearch from '@/app/components/TableSearch';
+import { useAdvancedSearch } from '@/hooks/useAdvancedSearch';
 
 type ValuePiece = Date | null;
 type CalendarValue = ValuePiece | [ValuePiece, ValuePiece];
@@ -102,6 +104,17 @@ export default function EventSection({ role, canManage, title }: Props) {
   const eventsForSelectedDate = events.filter((event) => {
     const d = new Date(event.startDate);
     return sameDay(d, selectedDate);
+  });
+
+  const {
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    filteredItems: filteredEventsForDate,
+    suggestions: searchSuggestions,
+  } = useAdvancedSearch({
+    items: eventsForSelectedDate,
+    fields: ['title', 'description', 'location', 'targetRole', 'startDate'],
+    suggestionField: 'title',
   });
 
   const eventDates = new Set(events.map((event) => new Date(event.startDate).toDateString()));
@@ -261,13 +274,23 @@ export default function EventSection({ role, canManage, title }: Props) {
             Events on {selectedDate.toDateString()}
           </h2>
 
+          <div className="mb-4">
+            <TableSearch
+              value={searchQuery}
+              onChange={setSearchQuery}
+              suggestions={searchSuggestions}
+              onSuggestionSelect={setSearchQuery}
+              placeholder="Search events, location, notes..."
+            />
+          </div>
+
           {loading ? (
             <p className="text-slate-500">Loading events...</p>
-          ) : eventsForSelectedDate.length === 0 ? (
+          ) : filteredEventsForDate.length === 0 ? (
             <p className="text-slate-500">No events for this date.</p>
           ) : (
             <div className="space-y-3">
-              {eventsForSelectedDate.map((event) => (
+              {filteredEventsForDate.map((event) => (
                 <div key={event._id} className="border border-slate-200 rounded-lg p-4">
                   <div className="flex items-center justify-between gap-4">
                     <h3 className="font-semibold text-slate-900">{event.title}</h3>

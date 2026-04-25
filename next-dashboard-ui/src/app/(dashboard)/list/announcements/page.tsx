@@ -1,9 +1,12 @@
+"use client";
+
 import FormModal from "@/app/components/FormModal";
 import Pagination from "@/app/components/Pagination";
 import Table from "@/app/components/Table";
 import TableSearch from "@/app/components/TableSearch";
 import { announcementsData, role } from "@/lib/data";
 import Image from "next/image";
+import { useAdvancedSearch } from "@/hooks/useAdvancedSearch";
 
 type Announcement = {
   id: number;
@@ -33,6 +36,17 @@ const columns = [
 ];
 
 const AnnouncementListPage = () => {
+  const {
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    filteredItems: filteredAnnouncements,
+    suggestions: searchSuggestions,
+  } = useAdvancedSearch({
+    items: announcementsData,
+    fields: ["title", "class", "date"],
+    suggestionField: "title",
+  });
+
   const renderRow = (item: Announcement) => (
     <tr
       key={item.id}
@@ -62,7 +76,13 @@ const AnnouncementListPage = () => {
           All Announcements
         </h1>
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
-          <TableSearch />
+          <TableSearch
+            value={searchQuery}
+            onChange={setSearchQuery}
+            suggestions={searchSuggestions}
+            onSuggestionSelect={setSearchQuery}
+            placeholder="Search announcement title or class..."
+          />
           <div className="flex items-center gap-4 self-end">
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-lamaYellow">
               <Image src="/filter.png" alt="" width={14} height={14} />
@@ -76,8 +96,13 @@ const AnnouncementListPage = () => {
           </div>
         </div>
       </div>
+      {!!searchQuery && (
+        <div className="mt-3 text-xs text-gray-600">
+          {filteredAnnouncements.length} result{filteredAnnouncements.length === 1 ? "" : "s"} found
+        </div>
+      )}
       {/* LIST */}
-      <Table columns={columns} renderRow={renderRow} data={announcementsData} />
+      <Table columns={columns} renderRow={renderRow} data={filteredAnnouncements} />
       {/* PAGINATION */}
       <Pagination />
     </div>

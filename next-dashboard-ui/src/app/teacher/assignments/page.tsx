@@ -7,6 +7,7 @@ import Pagination from '@/app/components/Pagination';
 import Table from '@/app/components/Table';
 import TableSearch from '@/app/components/TableSearch';
 import TeacherTopBar from '@/app/components/TeacherTopBar';
+import { useAdvancedSearch } from '@/hooks/useAdvancedSearch';
 
 type Assignment = {
   _id: string;
@@ -45,6 +46,17 @@ export default function TeacherAssignmentListPage() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const {
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    filteredItems: filteredAssignments,
+    suggestions: searchSuggestions,
+  } = useAdvancedSearch({
+    items: assignments,
+    fields: ['title', 'subject', 'className', 'dueDate'],
+    suggestionField: 'title',
+  });
 
   const isTeacherOrAdmin = viewerRole === 'teacher' || viewerRole === 'admin';
 
@@ -148,7 +160,13 @@ export default function TeacherAssignmentListPage() {
           <div className="flex items-center justify-between">
             <h1 className="hidden md:block text-lg font-semibold">All Assignments</h1>
             <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
-              <TableSearch />
+              <TableSearch
+                value={searchQuery}
+                onChange={setSearchQuery}
+                suggestions={searchSuggestions}
+                onSuggestionSelect={setSearchQuery}
+                placeholder="Search assignment, class, subject..."
+              />
               <div className="flex items-center gap-4 self-end">
                 <button
                   type="button"
@@ -169,7 +187,12 @@ export default function TeacherAssignmentListPage() {
           {error ? (
             <div className="mt-3 text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>
           ) : null}
-          <Table columns={columns} renderRow={renderRow} data={loading ? [] : assignments} />
+          {!!searchQuery && (
+            <div className="mt-3 text-xs text-gray-600">
+              {filteredAssignments.length} result{filteredAssignments.length === 1 ? '' : 's'} found
+            </div>
+          )}
+          <Table columns={columns} renderRow={renderRow} data={loading ? [] : filteredAssignments} />
           {loading ? <p className="text-sm text-gray-500 mt-3">Loading assignments...</p> : null}
           <Pagination />
         </div>

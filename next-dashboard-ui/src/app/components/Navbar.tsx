@@ -13,6 +13,7 @@ type AdminProfile = {
 const Navbar = () => {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
   const [profileMenu, setProfileMenu] = useState(false);
   const [notificationMenu, setNotificationMenu] = useState(false);
   const [admin, setAdmin] = useState<AdminProfile | null>(null);
@@ -55,6 +56,68 @@ const Navbar = () => {
     return source ? source[0]?.toUpperCase() : 'A';
   }, [adminDisplayName]);
 
+  const searchableItems = useMemo(
+    () => [
+      { label: 'Dashboard', href: '/admin' },
+      { label: 'Students', href: '/list/students' },
+      { label: 'Teachers', href: '/list/teachers' },
+      { label: 'Parents', href: '/list/parents' },
+      { label: 'Classes', href: '/list/classes' },
+      { label: 'Subjects', href: '/list/subjects' },
+      { label: 'Lessons', href: '/list/lessons' },
+      { label: 'Exams', href: '/list/exams' },
+      { label: 'Results', href: '/list/results' },
+      { label: 'Assignments', href: '/list/assignments' },
+      { label: 'Announcements', href: '/list/announcements' },
+      { label: 'Attendance', href: '/admin/attendance' },
+      { label: 'Attendance Audit', href: '/admin/attendance-audit' },
+      { label: 'Import Teachers', href: '/admin/import-teachers' },
+      { label: 'Import Parents', href: '/admin/import-parents' },
+      { label: 'Import Students', href: '/admin/import-students' },
+      { label: 'Admin Settings', href: '/admin/settings' },
+    ],
+    []
+  );
+
+  const searchResults = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return [];
+
+    return searchableItems
+      .map((item) => {
+        const label = item.label.toLowerCase();
+        let score = 0;
+        if (label === query) score = 100;
+        else if (label.startsWith(query)) score = 80;
+        else if (label.includes(query)) score = 60;
+        return { ...item, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6);
+  }, [searchQuery, searchableItems]);
+
+  const navigateTo = (href: string) => {
+    router.push(href);
+    setSearchFocused(false);
+    setSearchQuery('');
+  };
+
+  const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const first = searchResults[0];
+    if (first) {
+      navigateTo(first.href);
+      return;
+    }
+
+    if (searchQuery.trim()) {
+      // Fallback route keeps behavior predictable when there is no direct match.
+      router.push(`/list/students?q=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchFocused(false);
+    }
+  };
+
   const handleLogout = async () => {
     await fetch('/api/admin/logout', { method: 'POST' });
     router.push('/admin-login');
@@ -64,16 +127,37 @@ const Navbar = () => {
     <nav className="bg-[#fefdf1]/88 backdrop-blur-md border-b border-[#b9bba826] sticky top-0 z-40 shadow-[0_6px_24px_rgba(54,57,43,0.06)]">
       <div className="flex items-center justify-between px-6 py-4 gap-4">
         <div className="flex-1 max-w-md">
-          <div className="relative group">
+          <form className="relative group" onSubmit={handleSearchSubmit}>
             <Search className="absolute left-3 top-3.5 w-5 h-5 text-[#7f8271] group-hover:text-[#5a685a] transition-colors" />
             <input
               type="text"
               placeholder="Search users, classes, students..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setTimeout(() => setSearchFocused(false), 120)}
               className="w-full pl-10 pr-4 py-3 rounded-xl bg-[#fafaeb] border border-[#b9bba826] text-[#36392b] placeholder-[#7f8271] focus:outline-none focus:ring-2 focus:ring-[#5a685a66] focus:bg-[#ffffffcc] focus:border-[#5a685a] transition-all"
             />
-          </div>
+
+            {searchFocused && searchQuery.trim() && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-[#fafaebf2] backdrop-blur-md border border-[#b9bba826] rounded-xl shadow-[0_14px_34px_rgba(54,57,43,0.12)] overflow-hidden z-50">
+                {searchResults.length ? (
+                  searchResults.map((item) => (
+                    <button
+                      key={`${item.label}-${item.href}`}
+                      type="button"
+                      onMouseDown={() => navigateTo(item.href)}
+                      className="w-full text-left px-4 py-2.5 text-sm text-[#36392b] hover:bg-[#eeefdd] transition-all"
+                    >
+                      {item.label}
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-4 py-2.5 text-sm text-[#636656]">No matching results</div>
+                )}
+              </div>
+            )}
+          </form>
         </div>
 
         <div className="flex items-center gap-4">

@@ -9,6 +9,7 @@ import { role } from "@/lib/data";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useAdvancedSearch } from "@/hooks/useAdvancedSearch";
 
 type ClassOption = {
   _id: string;
@@ -387,7 +388,7 @@ function StudentListPageContent() {
     return Array.from(sections).sort();
   }, [students]);
 
-  const filteredStudents = useMemo(() => {
+  const classSectionFilteredStudents = useMemo(() => {
     return students.filter((student) => {
       if (selectedClassFilter && selectedClassFilter !== 'all' && student.classRefId !== selectedClassFilter) {
         if (student.classId !== selectedClassFilter) {
@@ -406,6 +407,17 @@ function StudentListPageContent() {
       return true;
     });
   }, [students, selectedClassFilter, selectedSectionFilter]);
+
+  const {
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    filteredItems: filteredStudents,
+    suggestions: searchSuggestions,
+  } = useAdvancedSearch({
+    items: classSectionFilteredStudents,
+    fields: ["name", "email", "phone", "address", "className", "classId", "rollNo", "id", "grade"],
+    suggestionField: "name",
+  });
 
   return (
     <div className="bg-[#fffdf6] border border-[#d6d2b5]/70 p-4 md:p-5 rounded-2xl flex-1 m-4 mt-0 shadow-sm">
@@ -474,7 +486,13 @@ function StudentListPageContent() {
                 : `Save All Changes (${Object.keys(pendingClassChanges).length})`}
             </button>
           )}
-          <TableSearch />
+          <TableSearch
+            value={searchQuery}
+            onChange={setSearchQuery}
+            suggestions={searchSuggestions}
+            onSuggestionSelect={setSearchQuery}
+            placeholder="Search student name, class, phone..."
+          />
           <div className="flex items-center gap-4 self-end">
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]">
               <Image src="/filter.png" alt="" width={14} height={14} />
@@ -494,6 +512,11 @@ function StudentListPageContent() {
       {loadError && (
         <div className="mt-4 rounded-lg border border-[#a14a2f]/30 bg-[#f5e7e2] text-[#8b3c25] text-sm px-3 py-2">
           {loadError}
+        </div>
+      )}
+      {!!searchQuery && (
+        <div className="mt-3 text-xs text-[#5a6142]">
+          {filteredStudents.length} result{filteredStudents.length === 1 ? "" : "s"} found
         </div>
       )}
       {/* LIST */}
