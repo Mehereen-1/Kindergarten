@@ -1,9 +1,12 @@
+"use client";
+
 import FormModal from "@/app/components/FormModal";
 import Pagination from "@/app/components/Pagination";
 import Table from "@/app/components/Table";
 import TableSearch from "@/app/components/TableSearch";
 import { examsData, role } from "@/lib/data";
 import Image from "next/image";
+import { useAdvancedSearch } from "@/hooks/useAdvancedSearch";
 
 type Exam = {
   id: number;
@@ -39,6 +42,17 @@ const columns = [
 ];
 
 const ExamListPage = () => {
+  const {
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    filteredItems: filteredExams,
+    suggestions: searchSuggestions,
+  } = useAdvancedSearch({
+    items: examsData,
+    fields: ["subject", "class", "teacher", "date"],
+    suggestionField: "subject",
+  });
+
   const renderRow = (item: Exam) => (
     <tr
       key={item.id}
@@ -67,7 +81,13 @@ const ExamListPage = () => {
       <div className="flex items-center justify-between">
         <h1 className="hidden md:block text-lg font-semibold">All Exams</h1>
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
-          <TableSearch />
+          <TableSearch
+            value={searchQuery}
+            onChange={setSearchQuery}
+            suggestions={searchSuggestions}
+            onSuggestionSelect={setSearchQuery}
+            placeholder="Search exam, class, teacher..."
+          />
           <div className="flex items-center gap-4 self-end">
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-lamaYellow">
               <Image src="/filter.png" alt="" width={14} height={14} />
@@ -79,8 +99,13 @@ const ExamListPage = () => {
           </div>
         </div>
       </div>
+      {!!searchQuery && (
+        <div className="mt-3 text-xs text-gray-600">
+          {filteredExams.length} result{filteredExams.length === 1 ? "" : "s"} found
+        </div>
+      )}
       {/* LIST */}
-      <Table columns={columns} renderRow={renderRow} data={examsData} />
+      <Table columns={columns} renderRow={renderRow} data={filteredExams} />
       {/* PAGINATION */}
       <Pagination />
     </div>

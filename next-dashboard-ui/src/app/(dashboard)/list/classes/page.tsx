@@ -8,6 +8,7 @@ import TableSearch from "@/app/components/TableSearch";
 import { role } from "@/lib/data";
 import Image from "next/image";
 import Link from "next/link";
+import { useAdvancedSearch } from "@/hooks/useAdvancedSearch";
 
 type Class = {
   _id: string;
@@ -62,6 +63,17 @@ const ClassListPage = () => {
   const [isAssigning, setIsAssigning] = useState<Record<string, boolean>>({});
   const [academicYear, setAcademicYear] = useState(String(new Date().getFullYear()));
   const [loadError, setLoadError] = useState("");
+
+  const {
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    filteredItems: filteredClasses,
+    suggestions: searchSuggestions,
+  } = useAdvancedSearch({
+    items: classes,
+    fields: ["name", "classId", "capacity", "grade", "teacher.name"],
+    suggestionField: "name",
+  });
 
   const yearOptions = useMemo(() => {
     const current = new Date().getFullYear();
@@ -254,7 +266,13 @@ const ClassListPage = () => {
               ))}
             </select>
           </div>
-          <TableSearch />
+          <TableSearch
+            value={searchQuery}
+            onChange={setSearchQuery}
+            suggestions={searchSuggestions}
+            onSuggestionSelect={setSearchQuery}
+            placeholder="Search class, grade, teacher..."
+          />
           <div className="flex items-center gap-4 self-end">
             <button className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]">
               <Image src="/filter.png" alt="" width={14} height={14} />
@@ -271,8 +289,13 @@ const ClassListPage = () => {
           {loadError}
         </div>
       )}
+      {!!searchQuery && (
+        <div className="mt-3 text-xs text-[#5a6142]">
+          {filteredClasses.length} result{filteredClasses.length === 1 ? "" : "s"} found
+        </div>
+      )}
       {/* LIST */}
-      <Table columns={columns} renderRow={renderRow} data={classes} />
+      <Table columns={columns} renderRow={renderRow} data={filteredClasses} />
       {/* PAGINATION */}
       <Pagination />
     </div>
