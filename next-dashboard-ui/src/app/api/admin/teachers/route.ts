@@ -32,15 +32,13 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Return both array format and object format for compatibility
     return NextResponse.json({
       teachers: response,
       count: response.length,
-      // Also support direct array access for backward compatibility
-      ...response
     });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to load teachers';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -73,6 +71,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(teacher, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to create teacher';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

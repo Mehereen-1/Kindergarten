@@ -21,31 +21,49 @@ type AdminTab =
 export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [studentCount, setStudentCount] = useState<number | null>(null);
+  const [teacherCount, setTeacherCount] = useState<number | null>(null);
+  const [parentCount, setParentCount] = useState<number | null>(null);
 
   useEffect(() => {
     let isActive = true;
 
-    const loadStudentCount = async () => {
+    const loadDashboardCounts = async () => {
       try {
-        const response = await fetch('/api/admin/students');
-        if (!response.ok) {
-          throw new Error('Failed to load students');
+        const [studentsResponse, teachersResponse, parentsResponse] = await Promise.all([
+          fetch('/api/admin/students'),
+          fetch('/api/admin/teachers'),
+          fetch('/api/admin/parents'),
+        ]);
+
+        if (!studentsResponse.ok || !teachersResponse.ok || !parentsResponse.ok) {
+          throw new Error('Failed to load dashboard counts');
         }
 
-        const data = await response.json();
-        const count = Array.isArray(data?.students) ? data.students.length : 0;
+        const [studentsData, teachersData, parentsData] = await Promise.all([
+          studentsResponse.json(),
+          teachersResponse.json(),
+          parentsResponse.json(),
+        ]);
+
+        const students = Array.isArray(studentsData?.students) ? studentsData.students : [];
+        const teachers = Array.isArray(teachersData?.teachers) ? teachersData.teachers : [];
+        const parents = Array.isArray(parentsData?.parents) ? parentsData.parents : [];
 
         if (isActive) {
-          setStudentCount(count);
+          setStudentCount(students.length);
+          setTeacherCount(teachers.length);
+          setParentCount(parents.length);
         }
       } catch {
         if (isActive) {
           setStudentCount(null);
+          setTeacherCount(null);
+          setParentCount(null);
         }
       }
     };
 
-    void loadStudentCount();
+    void loadDashboardCounts();
 
     return () => {
       isActive = false;
@@ -106,9 +124,8 @@ export default function AdminDashboardPage() {
           <div className="flex w-full flex-col gap-8 lg:w-2/3">
             <div className="flex flex-wrap justify-between gap-4">
               <UserCard type="student" count={studentCount} />
-              <UserCard type="teacher" />
-              <UserCard type="parent" />
-              <UserCard type="staff" />
+              <UserCard type="teacher" count={teacherCount} />
+              <UserCard type="parent" count={parentCount} />
             </div>
 
             <div className="flex flex-col gap-4 lg:flex-row">

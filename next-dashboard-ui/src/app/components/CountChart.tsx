@@ -62,9 +62,9 @@ const CountChart = () => {
   }, [students]);
 
   const chartData = [
-    { name: 'Total', count: total, fill: 'white' },
-    { name: 'Girls', count: girls, fill: '#FAE27C' },
-    { name: 'Boys', count: boys, fill: '#C3EBFA' },
+    { name: 'Total', count: total, fill: '#e5e7eb' },
+    { name: 'Girls', count: girls, fill: '#f59e0b' },
+    { name: 'Boys', count: boys, fill: '#2563eb' },
   ];
 
   const boysPct = total > 0 ? Math.round((boys / total) * 100) : 0;
@@ -102,14 +102,14 @@ const CountChart = () => {
       {/* BOTTOM */}
       <div className="flex justify-center gap-16">
         <div className="flex flex-col gap-1">
-          <div className="w-5 h-5 bg-lamaSky rounded-full" />
+          <div className="w-5 h-5 bg-[#2563eb] rounded-full" />
           <h1 className="font-bold">{boys.toLocaleString('en-US')}</h1>
-          <h2 className="text-xs text-gray-300">Boys ({boysPct}%)</h2>
+          <h2 className="text-xs text-gray-600">Boys ({boysPct}%)</h2>
         </div>
         <div className="flex flex-col gap-1">
-          <div className="w-5 h-5 bg-lamaYellow rounded-full" />
+          <div className="w-5 h-5 bg-[#f59e0b] rounded-full" />
           <h1 className="font-bold">{girls.toLocaleString('en-US')}</h1>
-          <h2 className="text-xs text-gray-300">Girls ({girlsPct}%)</h2>
+          <h2 className="text-xs text-gray-600">Girls ({girlsPct}%)</h2>
         </div>
       </div>
     </div>

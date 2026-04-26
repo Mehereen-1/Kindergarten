@@ -81,6 +81,7 @@ const TeacherListPage = () => {
         setLoadError('');
         const response = await fetch("/api/admin/teachers", {
           signal: controller.signal,
+          cache: "no-store",
         });
 
         if (!response.ok) {
@@ -132,15 +133,20 @@ const TeacherListPage = () => {
       <td>
         <div className="flex items-center gap-2">
           <Link href={`/admin/teachers/${item._id}`}>
-            <button className="w-7 h-7 flex items-center justify-center rounded-full bg-lamaSky">
-              <Image src="/view.png" alt="" width={16} height={16} />
+            <button
+              className="h-8 px-2 flex items-center gap-1 justify-center rounded-md bg-lamaSky text-[#1f3c4f]"
+              title="View teacher details"
+              aria-label="View teacher details"
+            >
+              <Image src="/view.png" alt="View" width={16} height={16} />
+              <span className="text-xs font-medium">View</span>
             </button>
           </Link>
           {role === "admin" && (
             // <button className="w-7 h-7 flex items-center justify-center rounded-full bg-lamaPurple">
             //   <Image src="/delete.png" alt="" width={16} height={16} />
             // </button>
-            <FormModal table="teacher" type="delete" id={item._id} />
+            <FormModal table="teacher" type="delete" id={item._id} labelMode="iconText" />
           )}
         </div>
       </td>
@@ -164,11 +170,19 @@ const TeacherListPage = () => {
             placeholder="Search teacher, subject, class..."
           />
           <div className="flex items-center gap-4 self-end">
-            <button className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]">
-              <Image src="/filter.png" alt="" width={14} height={14} />
+            <button
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]"
+              title="Filter"
+              aria-label="Filter"
+            >
+              <Image src="/filter.png" alt="Filter" width={14} height={14} />
             </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]">
-              <Image src="/sort.png" alt="" width={14} height={14} />
+            <button
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]"
+              title="Sort"
+              aria-label="Sort"
+            >
+              <Image src="/sort.png" alt="Sort" width={14} height={14} />
             </button>
             {role === "admin" && (
               // <button className="w-8 h-8 flex items-center justify-center rounded-full bg-lamaYellow">

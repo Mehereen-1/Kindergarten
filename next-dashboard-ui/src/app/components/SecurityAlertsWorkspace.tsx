@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Bell, Camera, Clock3, Mail, RefreshCw, ShieldAlert, Trash2, Upload, Volume2 } from 'lucide-react';
+import { Camera, RefreshCw, ShieldAlert, Trash2, Upload, Volume2 } from 'lucide-react';
 
 import SecurityAlertsLiveAudioTester from '@/app/components/SecurityAlertsLiveAudioTester';
 import SecurityAlertsWebcamTester from '@/app/components/SecurityAlertsWebcamTester';
@@ -193,6 +193,7 @@ type SoundCheckStreamEvent =
     };
 
 const UI_CONFIDENCE_REDUCTION_POINTS = 12;
+const SHOW_VISUAL_ANOMALY_UI = false;
 
 const CLASSROOM_BLUEPRINT: Array<Pick<ClassroomStream, 'id' | 'className' | 'cameraName'>> = [
   { id: 'star-kg', className: 'star (kg)', cameraName: 'Star Classroom Camera' },
@@ -367,6 +368,26 @@ function mapNoticeToAlert(notice: NoticeApiItem): AlertItem {
   };
 }
 
+function isSoundAlert(alert: AlertItem) {
+  const searchable = [
+    alert.title,
+    alert.type,
+    alert.cameraName,
+    alert.className,
+    alert.videoName,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return (
+    searchable.includes('sound') ||
+    searchable.includes('audio') ||
+    searchable.includes('scream') ||
+    searchable.includes('security_audio')
+  );
+}
+
 function isLocalServiceUrl(serviceUrl?: string | null) {
   if (!serviceUrl) return false;
   return /^https?:\/\/(localhost|127\.0\.0\.1|::1)(?::\d+)?(?:\/|$)/i.test(serviceUrl);
@@ -417,23 +438,11 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
     });
   }, [serverAlerts]);
 
-  const summary = useMemo(() => {
-    const base = role === 'teacher'
-      ? sortedServerAlerts.filter((alert) => alert.assignedTo !== 'Admin Team')
-      : sortedServerAlerts;
-
-    return {
-      total: base.length,
-      unresolved: base.length,
-      critical: base.filter((alert) => alert.severity === 'critical').length,
-      emailsPending: base.filter((alert) => alert.emailStatus !== 'sent').length,
-    };
-  }, [sortedServerAlerts, role]);
-
   const visibleAlerts = useMemo(() => {
-    return role === 'teacher'
+    const roleAlerts = role === 'teacher'
       ? sortedServerAlerts.filter((alert) => alert.assignedTo !== 'Admin Team')
       : sortedServerAlerts;
+    return roleAlerts.filter(isSoundAlert);
   }, [role, sortedServerAlerts]);
 
   const focusedStream = useMemo(
@@ -652,6 +661,21 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
     }
   }, [refreshModelPanel, refreshServiceStatus]);
 
+  const refreshAlertsFromServer = useCallback(async () => {
+    const response = await fetch(`/api/notices?role=${role}&limit=300`, { cache: 'no-store' });
+    const data = await response.json();
+    if (!response.ok) {
+      return;
+    }
+
+    const notices = Array.isArray(data?.notices) ? data.notices : [];
+    const anomalies = notices
+      .filter((notice: NoticeApiItem) => notice?.type === 'anomaly-alert')
+      .map((notice: NoticeApiItem) => mapNoticeToAlert(notice));
+
+    setServerAlerts(anomalies);
+  }, [role]);
+
   const runSoundCheck = useCallback(
     async (sourceType: 'video' | 'audio') => {
       const media = sourceType === 'video' ? soundVideoFile : soundAudioFile;
@@ -723,13 +747,55 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
               finalResult = normalizeSoundCheckResult(event.result, sourceType);
               if (finalResult) {
                 setSoundCheckResult(finalResult);
-                setSoundCheckMessage(
-                  finalResult.verdict === 'anomaly'
-                    ? `Anomaly detected by audio model (${Number(finalResult.confidencePercent || 0).toFixed(1)}%).`
-                    : finalResult.verdict === 'unavailable'
+                if (finalResult.verdict === 'anomaly') {
+                  const rawConfidence = Number(finalResult.confidenceRaw || 0);
+                  const confidence = rawConfidence > 1 ? rawConfidence / 100 : rawConfidence;
+                  const topLabel = finalResult.audioSummary?.topLabel || 'sound_anomaly';
+                  const ingestResponse = await fetch('/api/security-alerts/ingest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      source: 'offline-sound-validation',
+                      cameraName: 'Audio Validation',
+                      className: 'audio-validation-lab',
+                      location: 'Audio Validation',
+                      sourceVideo: media.name,
+                      alerts: [
+                        {
+                          type: 'sound_anomaly_alert',
+                          label: topLabel,
+                          summary: `Sound anomaly detected from uploaded ${sourceType}`,
+                          severity: confidence >= 0.75 ? 'high' : 'medium',
+                          confidence,
+                          triggered_by: ['audio_security_model'],
+                          metadata: {
+                            sourceMode: finalResult.sourceMode,
+                            fileName: media.name,
+                            detectedRows: finalResult.audioSummary?.detectedRows || 0,
+                            totalRows: finalResult.audioSummary?.rows || 0,
+                            topEventType: finalResult.audioSummary?.topEventType || 'security_audio',
+                          },
+                        },
+                      ],
+                      modelResults: finalResult.result?.audio_model_results || [],
+                    }),
+                  });
+                  const ingest = await ingestResponse.json().catch(() => ({}));
+                  if (!ingestResponse.ok || ingest?.success === false) {
+                    throw new Error(ingest?.error || 'Sound detected, but alert storage failed.');
+                  }
+
+                  await refreshAlertsFromServer();
+                  setSoundCheckMessage(
+                    `Anomaly detected by audio model (${Number(finalResult.confidencePercent || 0).toFixed(1)}%). Alert stored in the queue.`
+                  );
+                } else {
+                  setSoundCheckMessage(
+                    finalResult.verdict === 'unavailable'
                       ? `Audio analysis unavailable: ${finalResult.reason || 'the backend did not return any audio model rows.'}`
                       : `Marked normal by audio model (${Number(finalResult.confidencePercent || 0).toFixed(1)}%).`
-                );
+                  );
+                }
               }
               return;
             }
@@ -750,23 +816,8 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
         setSoundCheckBusy(false);
       }
     },
-    [soundAudioFile, soundVideoFile]
+    [refreshAlertsFromServer, soundAudioFile, soundVideoFile]
   );
-
-  const refreshAlertsFromServer = useCallback(async () => {
-    const response = await fetch(`/api/notices?role=${role}&limit=300`, { cache: 'no-store' });
-    const data = await response.json();
-    if (!response.ok) {
-      return;
-    }
-
-    const notices = Array.isArray(data?.notices) ? data.notices : [];
-    const anomalies = notices
-      .filter((notice: NoticeApiItem) => notice?.type === 'anomaly-alert')
-      .map((notice: NoticeApiItem) => mapNoticeToAlert(notice));
-
-    setServerAlerts(anomalies);
-  }, [role]);
 
   useEffect(() => {
     let mounted = true;
@@ -1044,46 +1095,12 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
         <div className="max-w-3xl">
           <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-sm font-semibold">
             <ShieldAlert className="h-4 w-4" />
-            Security Alerts
+            Sound Security Alerts
           </div>
-          <h1 className="text-3xl font-black tracking-tight md:text-4xl">Anomaly Alerts</h1>
+          <h1 className="text-3xl font-black tracking-tight md:text-4xl">Sound Anomaly Alerts</h1>
           <p className="mt-3 max-w-2xl text-sm text-orange-50 md:text-base">
-            Concurrent classroom CCTV monitoring with automatic anomaly detection.
+            Classroom sound anomaly detection from live microphone, uploaded audio, or extracted video audio.
           </p>
-        </div>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-red-100 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-500">Total alerts today</p>
-            <AlertTriangle className="h-5 w-5 text-red-500" />
-          </div>
-          <p className="mt-4 text-3xl font-black text-slate-900">{summary.total}</p>
-        </div>
-
-        <div className="rounded-2xl border border-orange-100 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-500">Unresolved alerts</p>
-            <Clock3 className="h-5 w-5 text-orange-500" />
-          </div>
-          <p className="mt-4 text-3xl font-black text-slate-900">{summary.unresolved}</p>
-        </div>
-
-        <div className="rounded-2xl border border-rose-100 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-500">Critical detections</p>
-            <Bell className="h-5 w-5 text-rose-500" />
-          </div>
-          <p className="mt-4 text-3xl font-black text-slate-900">{summary.critical}</p>
-        </div>
-
-        <div className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-500">Emails pending</p>
-            <Mail className="h-5 w-5 text-blue-500" />
-          </div>
-          <p className="mt-4 text-3xl font-black text-slate-900">{summary.emailsPending}</p>
         </div>
       </section>
 
@@ -1093,7 +1110,7 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
             <div>
               <h2 className="text-xl font-black text-slate-900">Anomaly Service Control</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Start the Python security service here before testing uploaded classroom clips.
+                Start the Python security service here before testing sound anomaly detection.
               </p>
             </div>
 
@@ -1183,26 +1200,32 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-5 flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-xl font-black text-slate-900">Sound Anomaly Validation (Live Microphone)</h2>
+              <h2 className="text-xl font-black text-slate-900">Sound Anomaly System</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Open the browser microphone and stream raw audio directly into the anomaly service. The backend keeps
-                the rolling temporal state, so this behaves like a realtime system instead of a batch file upload.
+                Use uploaded audio or video for repeatable validation. The live microphone panel is kept as a
+                realtime prototype because detection depends on laptop microphone quality, distance, and room noise.
               </p>
             </div>
             <div className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
               <Volume2 className="h-4 w-4" />
-              Live audio verdict
+              Offline validation recommended
             </div>
+          </div>
+
+          <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            For demonstration and report evidence, use the uploaded audio/video test below. Live microphone streaming
+            is a supporting prototype and may show normal output when the laptop microphone does not capture the
+            scream clearly.
           </div>
 
           <SecurityAlertsLiveAudioTester onAlertStored={() => void refreshAlertsFromServer()} />
 
           <div className="mt-6 border-t border-slate-200 pt-6">
             <div className="mb-4">
-              <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">Offline file validation</h3>
+              <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">Primary offline file validation</h3>
               <p className="mt-1 text-xs text-slate-600">
-                Use a video or audio file when you want a repeatable batch test or need to compare against saved
-                footage.
+                Upload a saved scream/anomaly sample here for the most stable test. This mode uses controlled input,
+                so it is better for evaluation, screenshots, and final presentation.
               </p>
             </div>
 
@@ -1312,7 +1335,7 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
         </section>
       )}
 
-      {role === 'admin' && (
+      {SHOW_VISUAL_ANOMALY_UI && role === 'admin' && (
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -1336,9 +1359,9 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h2 className="text-xl font-black text-slate-900">Anomaly Model Registry</h2>
+              <h2 className="text-xl font-black text-slate-900">Sound Anomaly Model</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Upload validated .onnx checkpoints to secuirty-alerts/anomalyModels. Restart service after updates.
+                Upload the audio model and config used by the sound anomaly service. Restart service after updates.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -1362,6 +1385,7 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
             </div>
           </div>
 
+          {SHOW_VISUAL_ANOMALY_UI && (
           <div className="mt-4 grid gap-3 md:grid-cols-4">
             <input
               type="file"
@@ -1393,6 +1417,7 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
               Upload model
             </button>
           </div>
+          )}
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1486,17 +1511,20 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
             ) : null}
           </div>
 
-          <textarea
-            value={uploadNotes}
-            onChange={(event) => setUploadNotes(event.target.value)}
-            placeholder="Upload notes (optional)"
-            className="mt-3 min-h-[72px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-          />
+          {SHOW_VISUAL_ANOMALY_UI && (
+            <textarea
+              value={uploadNotes}
+              onChange={(event) => setUploadNotes(event.target.value)}
+              placeholder="Upload notes (optional)"
+              className="mt-3 min-h-[72px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+            />
+          )}
 
           {modelPanel.message ? (
             <p className="mt-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">{modelPanel.message}</p>
           ) : null}
 
+          {SHOW_VISUAL_ANOMALY_UI && (
           <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -1549,10 +1577,11 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
               </tbody>
             </table>
           </div>
+          )}
         </section>
       )}
 
-      {role === 'admin' && (
+      {SHOW_VISUAL_ANOMALY_UI && role === 'admin' && (
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -1740,7 +1769,7 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xl font-black text-slate-900">Real anomaly queue</h2>
+          <h2 className="text-xl font-black text-slate-900">Sound anomaly queue</h2>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
             {visibleAlerts.length} alerts
           </span>
@@ -1749,7 +1778,7 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
         <div className="mt-4 space-y-4">
           {visibleAlerts.length === 0 && (
             <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-              No anomaly alerts yet.
+              No sound anomaly alerts yet.
             </div>
           )}
 
@@ -1794,7 +1823,7 @@ export default function SecurityAlertsWorkspace({ role }: { role: AlertRole }) {
         </div>
       </section>
 
-      {focusStreamId && focusedStream && (
+      {SHOW_VISUAL_ANOMALY_UI && focusStreamId && focusedStream && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4">
           <div className="w-full max-w-5xl rounded-3xl bg-white p-5 shadow-2xl">
             <div className="mb-4 flex items-center justify-between gap-4">

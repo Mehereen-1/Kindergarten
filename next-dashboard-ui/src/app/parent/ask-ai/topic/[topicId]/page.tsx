@@ -12,6 +12,7 @@ type TopicDetail = {
   contentText: string;
   uploadedAt?: string;
   file?: { url: string; name: string; type?: string; size?: number } | null;
+  files?: Array<{ url: string; name: string; type?: string; size?: number }>;
   ai?: { summary?: string; keyPoints?: string[]; concepts?: string[] };
   rag?: { ready: boolean; chunkCount: number };
   quiz?: { quizId: string; totalQuestions: number; isPublished?: boolean } | null;
@@ -37,14 +38,17 @@ function ParentTopicWorkspacePageContent() {
 
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [showEmbeddedPreview, setShowEmbeddedPreview] = useState(false);
+  const [activeFileIndex, setActiveFileIndex] = useState(0);
 
   const classId = topic?.classId || classIdFromQuery;
+  const topicFiles = topic?.files?.length ? topic.files : topic?.file ? [topic.file] : [];
+  const activeFile = topicFiles[activeFileIndex] || topicFiles[0] || null;
 
   const isPdf = useMemo(() => {
-    const lowerName = topic?.file?.name?.toLowerCase() || '';
-    const lowerType = topic?.file?.type?.toLowerCase() || '';
+    const lowerName = activeFile?.name?.toLowerCase() || '';
+    const lowerType = activeFile?.type?.toLowerCase() || '';
     return lowerName.endsWith('.pdf') || lowerType.includes('pdf');
-  }, [topic]);
+  }, [activeFile]);
 
   const fetchTopic = async () => {
     if (!topicId) return;
@@ -67,6 +71,7 @@ function ParentTopicWorkspacePageContent() {
 
   useEffect(() => {
     setShowEmbeddedPreview(false);
+    setActiveFileIndex(0);
     fetchTopic();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicId]);
@@ -173,12 +178,14 @@ function ParentTopicWorkspacePageContent() {
 
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-4">Content Preview</h2>
-          {topic.file?.url ? (
+          {activeFile?.url ? (
             <div className="border border-gray-200 rounded-lg bg-slate-100">
               <div className="p-4 border-b border-gray-200 bg-white flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-gray-800 font-semibold">{topic.file.name || 'Uploaded file'}</p>
-                  <p className="text-xs text-gray-500">Use explicit actions below to preview or download.</p>
+                  <p className="text-gray-800 font-semibold">{activeFile.name || 'Uploaded file'}</p>
+                  <p className="text-xs text-gray-500">
+                    {topicFiles.length > 1 ? `${topicFiles.length} attached files. Select one to preview or download.` : 'Use explicit actions below to preview or download.'}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   {isPdf ? (
@@ -191,7 +198,7 @@ function ParentTopicWorkspacePageContent() {
                     </button>
                   ) : (
                     <a
-                      href={topic.file.url}
+                      href={activeFile.url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 hover:text-indigo-900"
@@ -201,7 +208,7 @@ function ParentTopicWorkspacePageContent() {
                     </a>
                   )}
                   <a
-                    href={`${topic.file.url}${String(topic.file.url).includes('?') ? '&' : '?'}download=1`}
+                    href={`${activeFile.url}${String(activeFile.url).includes('?') ? '&' : '?'}download=1`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-900"
@@ -212,10 +219,33 @@ function ParentTopicWorkspacePageContent() {
                 </div>
               </div>
 
+              {topicFiles.length > 1 && (
+                <div className="p-3 border-b border-gray-200 bg-white flex flex-wrap gap-2">
+                  {topicFiles.map((file, index) => (
+                    <button
+                      key={`${file.url}-${index}`}
+                      type="button"
+                      onClick={() => {
+                        setActiveFileIndex(index);
+                        setShowEmbeddedPreview(false);
+                      }}
+                      className={`text-xs font-semibold px-3 py-2 rounded-lg border ${
+                        index === activeFileIndex
+                          ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300'
+                      }`}
+                      title={file.name || `File ${index + 1}`}
+                    >
+                      {file.name || `File ${index + 1}`}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {isPdf && showEmbeddedPreview ? (
                 <iframe
-                  src={topic.file.url}
-                  title={topic.file.name || 'Uploaded PDF'}
+                  src={activeFile.url}
+                  title={activeFile.name || 'Uploaded PDF'}
                   className="w-full h-[520px]"
                 />
               ) : (

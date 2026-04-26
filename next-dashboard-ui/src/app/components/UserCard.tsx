@@ -6,11 +6,7 @@ type UserCardProps = {
 };
 
 const formatCount = (count?: number | null) => {
-  if (count === undefined) {
-    return "1,234";
-  }
-
-  if (count === null) {
+  if (count === undefined || count === null) {
     return "--";
   }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { requireSecurityAlertRoles } from '@/lib/securityAlertsAccess';
 
 export const runtime = 'nodejs';
 
@@ -372,6 +373,11 @@ function isMobileClass(classId: number, labels: string[], mobileClassIds: Set<nu
 // ─── route handler ───────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  const access = requireSecurityAlertRoles(request, ['admin', 'teacher'], 'run security inference');
+  if (!access.ok) {
+    return access.response;
+  }
+
   try {
     const body = await request.json();
     const { pixels, width, height } = body as {

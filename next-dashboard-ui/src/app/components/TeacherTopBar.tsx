@@ -83,7 +83,7 @@ const TeacherTopBar = () => {
       { label: "Events", href: "/teacher/events" },
       { label: "Timetable", href: "/teacher/timetable" },
       { label: "Parent Messages", href: "/teacher/chat" },
-      { label: "Security Alerts", href: "/teacher/security-alerts" },
+      { label: "Sound Alerts", href: "/teacher/security-alerts" },
       { label: "My Profile", href: "/teacher/profile" },
       { label: "Settings", href: "/teacher/settings" },
     ];

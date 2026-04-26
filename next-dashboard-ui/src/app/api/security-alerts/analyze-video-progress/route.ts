@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { ensureSecurityAlertServiceReady, getServiceUrl } from '@/lib/securityAlertServiceManager';
+import { requireSecurityAlertRoles } from '@/lib/securityAlertsAccess';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
+  const access = requireSecurityAlertRoles(request, ['admin', 'teacher'], 'stream security video analysis');
+  if (!access.ok) {
+    return access.response;
+  }
+
   try {
     const formData = await request.formData();
     const video = formData.get('video');

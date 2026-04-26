@@ -11,8 +11,8 @@ type AdminMe = {
 
 const controlPanelLinks = [
   {
-    title: 'Security Alerts',
-    description: 'Monitor classroom anomaly alerts and review incident timelines.',
+    title: 'Sound Alerts',
+    description: 'Monitor classroom sound anomaly alerts and review incident timelines.',
     href: '/admin/security-alerts',
   },
   {

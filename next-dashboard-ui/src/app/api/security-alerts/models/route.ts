@@ -8,6 +8,7 @@ import {
   ensureSecurityAlertAudioServiceReady,
   getSecurityAlertServiceStatus,
 } from '@/lib/securityAlertServiceManager';
+import { requireSecurityAlertRoles } from '@/lib/securityAlertsAccess';
 
 export const runtime = 'nodejs';
 
@@ -198,7 +199,12 @@ async function listLocalModels() {
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const access = requireSecurityAlertRoles(request, ['admin'], 'view anomaly models');
+  if (!access.ok) {
+    return access.response;
+  }
+
   try {
     const payload = await listLocalModels();
     return NextResponse.json(payload);
@@ -211,6 +217,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const access = requireSecurityAlertRoles(request, ['admin'], 'upload anomaly models');
+  if (!access.ok) {
+    return access.response;
+  }
+
   try {
     await ensureModelsDir();
 
@@ -386,6 +397,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const access = requireSecurityAlertRoles(request, ['admin'], 'delete anomaly models');
+  if (!access.ok) {
+    return access.response;
+  }
+
   try {
     const kind = parseKind(request.nextUrl.searchParams.get('kind'));
 

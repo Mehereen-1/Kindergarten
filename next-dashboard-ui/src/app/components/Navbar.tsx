@@ -10,6 +10,12 @@ type AdminProfile = {
   email: string;
 };
 
+type NotificationItem = {
+  id: string;
+  title: string;
+  timestamp: string;
+};
+
 const Navbar = () => {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
@@ -17,6 +23,7 @@ const Navbar = () => {
   const [profileMenu, setProfileMenu] = useState(false);
   const [notificationMenu, setNotificationMenu] = useState(false);
   const [admin, setAdmin] = useState<AdminProfile | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
     let isActive = true;
@@ -46,6 +53,54 @@ const Navbar = () => {
     };
   }, []);
 
+  useEffect(() => {
+    let isActive = true;
+
+    const loadNotifications = async () => {
+      try {
+        const response = await fetch('/api/admin/events?role=all', { cache: 'no-store' });
+        if (!response.ok) return;
+
+        const events = await response.json();
+        if (!Array.isArray(events)) return;
+
+        const mapped: NotificationItem[] = events
+          .map((event: any, index: number) => ({
+            id: String(event?._id || event?.id || `${event?.title || 'event'}-${index}`),
+            title: String(event?.title || 'Event update'),
+            timestamp: String(event?.startDate || event?.createdAt || new Date().toISOString()),
+          }))
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+          .slice(0, 8);
+
+        if (isActive) {
+          setNotifications(mapped);
+        }
+      } catch {
+        if (isActive) {
+          setNotifications([]);
+        }
+      }
+    };
+
+    void loadNotifications();
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const formatRelativeTime = (value: string) => {
+    const timestamp = new Date(value).getTime();
+    if (Number.isNaN(timestamp)) return '';
+
+    const diffMinutes = Math.max(1, Math.floor((Date.now() - timestamp) / 60000));
+    if (diffMinutes < 60) return `${diffMinutes} min ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+  };
+
   const adminDisplayName = useMemo(() => {
     if (!admin?.email) return 'Admin';
     return admin.email.split('@')[0] || 'Admin';
@@ -58,22 +113,20 @@ const Navbar = () => {
 
   const searchableItems = useMemo(
     () => [
-      { label: 'Dashboard', href: '/admin' },
-      { label: 'Students', href: '/list/students' },
-      { label: 'Teachers', href: '/list/teachers' },
-      { label: 'Parents', href: '/list/parents' },
-      { label: 'Classes', href: '/list/classes' },
-      { label: 'Subjects', href: '/list/subjects' },
-      { label: 'Lessons', href: '/list/lessons' },
-      { label: 'Exams', href: '/list/exams' },
-      { label: 'Results', href: '/list/results' },
-      { label: 'Assignments', href: '/list/assignments' },
-      { label: 'Announcements', href: '/list/announcements' },
-      { label: 'Attendance', href: '/admin/attendance' },
+      { label: 'Dashboard', href: '/admin/dashboard' },
+      { label: 'Students', href: '/admin/students' },
+      { label: 'Teachers', href: '/admin/teachers' },
+      { label: 'Parents', href: '/admin/parents' },
+      { label: 'Classes', href: '/admin/classes' },
+      { label: 'Subjects', href: '/admin/subjects' },
+      { label: 'Lessons', href: '/admin/lessons' },
+      { label: 'Exams', href: '/admin/exam-config' },
+      { label: 'Results', href: '/admin/results' },
+      { label: 'Announcements', href: '/admin/announcements' },
+      { label: 'Attendance Reports', href: '/admin/attendance-reports' },
       { label: 'Attendance Audit', href: '/admin/attendance-audit' },
-      { label: 'Import Teachers', href: '/admin/import-teachers' },
-      { label: 'Import Parents', href: '/admin/import-parents' },
-      { label: 'Import Students', href: '/admin/import-students' },
+      { label: 'Sound Alerts', href: '/admin/security-alerts' },
+      { label: 'Timetable', href: '/admin/timetable' },
       { label: 'Admin Settings', href: '/admin/settings' },
     ],
     []
@@ -113,7 +166,7 @@ const Navbar = () => {
 
     if (searchQuery.trim()) {
       // Fallback route keeps behavior predictable when there is no direct match.
-      router.push(`/list/students?q=${encodeURIComponent(searchQuery.trim())}`);
+      router.push(`/admin/students?q=${encodeURIComponent(searchQuery.trim())}`);
       setSearchFocused(false);
     }
   };
@@ -169,7 +222,7 @@ const Navbar = () => {
             >
               <Bell className="w-5 h-5" />
               <span className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center bg-[#ae4025] text-white rounded-full text-xs font-bold shadow-sm">
-                3
+                {notifications.length}
               </span>
             </button>
 
@@ -179,18 +232,21 @@ const Navbar = () => {
                   <h3 className="font-semibold text-[#36392b]">Notifications</h3>
                 </div>
                 <div className="max-h-80 overflow-y-auto">
-                  <button className="w-full text-left px-4 py-3 hover:bg-[#eeefdd] border-b border-[#b9bba826] transition-all">
-                    <p className="text-sm font-medium text-[#36392b]">New Teacher Application</p>
-                    <p className="text-xs text-[#636656] mt-1">5 minutes ago</p>
-                  </button>
-                  <button className="w-full text-left px-4 py-3 hover:bg-[#eeefdd] border-b border-[#b9bba826] transition-all">
-                    <p className="text-sm font-medium text-[#36392b]">Bulk Import Completed</p>
-                    <p className="text-xs text-[#636656] mt-1">2 hours ago</p>
-                  </button>
-                  <button className="w-full text-left px-4 py-3 hover:bg-[#eeefdd] transition-all">
-                    <p className="text-sm font-medium text-[#36392b]">System Update Available</p>
-                    <p className="text-xs text-[#636656] mt-1">1 day ago</p>
-                  </button>
+                  {notifications.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-[#636656]">No notifications yet</div>
+                  ) : (
+                    notifications.map((item, index) => (
+                      <button
+                        key={item.id}
+                        className={`w-full text-left px-4 py-3 hover:bg-[#eeefdd] transition-all ${
+                          index !== notifications.length - 1 ? 'border-b border-[#b9bba826]' : ''
+                        }`}
+                      >
+                        <p className="text-sm font-medium text-[#36392b]">{item.title}</p>
+                        <p className="text-xs text-[#636656] mt-1">{formatRelativeTime(item.timestamp)}</p>
+                      </button>
+                    ))
+                  )}
                 </div>
               </div>
             )}

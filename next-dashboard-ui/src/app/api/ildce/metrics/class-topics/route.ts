@@ -54,16 +54,29 @@ export async function GET(request: NextRequest) {
           classId,
         });
 
+        const hasUsableQuiz = Boolean(
+          quiz &&
+          ((quiz as any).total_questions || 0) > 0
+        );
+
         return {
           topic: {
             _id: topic._id,
             topic_name: topic.topic_name,
             file_url: topic.file_url || null,
             file_name: topic.file_name || null,
+            files: Array.isArray(topic.files) && topic.files.length > 0
+              ? topic.files.map((file: any) => ({
+                  url: file.url,
+                  name: file.name || 'Attachment',
+                  type: file.type || '',
+                  size: file.size || 0,
+                }))
+              : [],
             difficulty_weight: topic.difficulty_weight,
             concepts: topic.concepts,
           },
-          quiz: quiz
+          quiz: hasUsableQuiz && quiz
             ? {
                 quizId: quiz._id,
                 totalQuestions: quiz.total_questions || 0,

@@ -70,6 +70,8 @@ interface Analytics {
 
 export default function VideoAttendancePage() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState("");
+  const [videoPreviewError, setVideoPreviewError] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [trackerStatus, setTrackerStatus] = useState<TrackerStatus | null>(null);
   const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
@@ -80,6 +82,7 @@ export default function VideoAttendancePage() {
   const [backendReady, setBackendReady] = useState(false);
   
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const statusPollRef = useRef<NodeJS.Timeout | null>(null);
   
   const BACKEND_URL = getClientCctvBackendUrl();
@@ -94,6 +97,27 @@ export default function VideoAttendancePage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (videoPreviewUrl) {
+        URL.revokeObjectURL(videoPreviewUrl);
+      }
+    };
+  }, [videoPreviewUrl]);
+
+  useEffect(() => {
+    const player = videoPreviewRef.current;
+    if (!player || !videoPreviewUrl) return;
+
+    player.load();
+    if (isProcessing) {
+      player.muted = true;
+      player.play().catch(() => {
+        setVideoPreviewError("Click Play Preview to start the video preview.");
+      });
+    }
+  }, [isProcessing, videoPreviewUrl]);
 
   // Poll while processing
   useEffect(() => {
@@ -187,8 +211,28 @@ export default function VideoAttendancePage() {
   const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      const nextPreviewUrl = URL.createObjectURL(file);
       setVideoFile(file);
+      setVideoPreviewUrl(nextPreviewUrl);
+      setVideoPreviewError("");
       setMessage({ text: "", type: "" });
+      setAnalytics(null);
+      setExtractedFaces([]);
+    }
+  };
+
+  const handlePlayPreview = async () => {
+    const player = videoPreviewRef.current;
+    if (!player) return;
+
+    try {
+      setVideoPreviewError("");
+      player.muted = isProcessing;
+      await player.play();
+    } catch {
+      setVideoPreviewError(
+        "This browser could not start the preview. Try an MP4/H.264 or WebM video, or use the video controls directly."
+      );
     }
   };
 
@@ -284,6 +328,7 @@ export default function VideoAttendancePage() {
       await fetch(`${BACKEND_URL}/clear-extracted-faces`, { method: "POST" });
       await fetch(`${BACKEND_URL}/clear-attendance`, { method: "POST" });
       setExtractedFaces([]);
+      setAnalytics(null);
       setMessage({ text: "Cleared", type: "success" });
     } catch {
       setMessage({ text: "Failed to clear", type: "error" });
@@ -381,6 +426,65 @@ export default function VideoAttendancePage() {
             </span>
           </div>
         </div>
+
+        {/* Uploaded Video Preview */}
+        {videoPreviewUrl && (
+          <div className="bg-white rounded-lg p-3 shadow-sm mb-4">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div>
+                <h3 className="font-semibold text-gray-800 text-sm">Uploaded Video Preview</h3>
+                <p className="text-xs text-gray-500 truncate max-w-[70vw]">
+                  {videoFile?.name || "Selected video"}
+                </p>
+              </div>
+              {isProcessing && (
+                <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-1 rounded">
+                  Playing while processing
+                </span>
+              )}
+            </div>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handlePlayPreview}
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-semibold"
+              >
+                <Play className="w-3 h-3" />
+                Play Preview
+              </button>
+              <span className="text-xs text-gray-500">
+                Preview runs locally in your browser; attendance processing continues separately.
+              </span>
+            </div>
+            {videoPreviewError && (
+              <div className="mb-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {videoPreviewError}
+              </div>
+            )}
+            <video
+              key={videoPreviewUrl}
+              ref={videoPreviewRef}
+              src={videoPreviewUrl}
+              controls
+              autoPlay={isProcessing}
+              muted={isProcessing}
+              playsInline
+              preload="auto"
+              onCanPlay={() => {
+                setVideoPreviewError("");
+                if (isProcessing) {
+                  void handlePlayPreview();
+                }
+              }}
+              onError={() => {
+                setVideoPreviewError(
+                  "Video preview is not playable in this browser. Use MP4/H.264 or WebM for preview playback; backend processing may still work."
+                );
+              }}
+              className="w-full max-h-[320px] rounded-lg bg-black object-contain"
+            />
+          </div>
+        )}
 
         {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">

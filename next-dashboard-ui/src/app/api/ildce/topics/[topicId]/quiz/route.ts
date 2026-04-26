@@ -421,7 +421,9 @@ export async function PATCH(
     }
 
     let quiz = await Quiz.findOne({ topicId: topic._id });
-    if (!quiz) {
+    const needsQuestions = !quiz || !Array.isArray(quiz.questions) || quiz.questions.length === 0 || Number(quiz.total_questions || 0) === 0;
+
+    if (needsQuestions) {
       const questions = await buildQuizQuestions(topic.content_text || '');
       if (!questions.length) {
         return NextResponse.json({ error: 'AI could not generate quiz questions at this time' }, { status: 500 });

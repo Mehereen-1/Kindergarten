@@ -161,10 +161,7 @@ export default function TeacherClassesPage() {
                     </p>
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <span
-                        onClick={(event) => event.preventDefault()}
-                        className="inline-flex items-center rounded-full border border-[#5f6843]/35 bg-white text-[#4f5838] px-3 py-1 text-xs font-bold"
-                      >
+                      <span className="inline-flex items-center rounded-full border border-[#5f6843]/35 bg-white text-[#4f5838] px-3 py-1 text-xs font-bold">
                         View Students
                       </span>
                       <button

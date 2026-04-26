@@ -2,18 +2,110 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, LogIn, Mail, Lock } from 'lucide-react';
+
+type SessionSnapshot = {
+  id?: string;
+  name?: string;
+  role: 'admin' | 'teacher' | 'parent';
+};
+
+function readCookie(name: string) {
+  if (typeof document === 'undefined') return null;
+  const token = `${name}=`;
+  const cookie = document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(token));
+  if (!cookie) return null;
+  return cookie.slice(token.length);
+}
+
+function dashboardByRole(role: SessionSnapshot['role']) {
+  if (role === 'admin') return '/admin/dashboard';
+  if (role === 'teacher') return '/teacher';
+  return '/parent';
+}
 
 export default function SignInPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState('');
+  const [existingSession, setExistingSession] = useState<SessionSnapshot | null>(null);
 
   const router = useRouter();
+
+  useEffect(() => {
+    let mounted = true;
+
+    const checkSession = async () => {
+      const rawUser = readCookie('user');
+      const rawRole = decodeURIComponent(readCookie('userRole') || '').toLowerCase();
+
+      if (rawUser) {
+        try {
+          const parsed = JSON.parse(decodeURIComponent(rawUser));
+          const role = String(parsed?.role || rawRole).toLowerCase();
+          if (role === 'teacher' || role === 'parent' || role === 'admin') {
+            if (mounted) {
+              setExistingSession({
+                id: parsed?.id,
+                name: parsed?.name || '',
+                role,
+              });
+            }
+            return;
+          }
+        } catch {
+          // Ignore malformed user cookie and continue probing admin session.
+        }
+      }
+
+      try {
+        const response = await fetch('/api/admin/me', { cache: 'no-store' });
+        if (!mounted || !response.ok) return;
+        const data = await response.json().catch(() => null);
+        if (data?.admin) {
+          setExistingSession({
+            id: data.admin.id,
+            name: data.admin.email || 'Admin',
+            role: 'admin',
+          });
+        }
+      } catch {
+        // Ignore; user is likely not signed in as admin.
+      }
+    };
+
+    void checkSession();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleSignOut = async () => {
+    setError('');
+    setSigningOut(true);
+
+    try {
+      await fetch('/api/auth/signout', { method: 'POST' }).catch(() => undefined);
+      await fetch('/api/admin/logout', { method: 'POST' }).catch(() => undefined);
+
+      document.cookie = 'user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC';
+      document.cookie = 'userRole=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC';
+      setExistingSession(null);
+    } catch {
+      setError('Sign out failed. Please try again.');
+    } finally {
+      setSigningOut(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,6 +212,31 @@ export default function SignInPage() {
                 </div>
               </div>
 
+              {existingSession ? (
+                <div className="space-y-5">
+                  <div className="rounded-2xl border border-[#c2c8b3] bg-[#f4f5e4] px-4 py-4 text-sm text-[#36392b]">
+                    You are already signed in
+                    {existingSession.name ? ` as ${existingSession.name}` : ''}.
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => router.push(dashboardByRole(existingSession.role))}
+                      className="inline-flex items-center justify-center rounded-full bg-[#5a685a] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(90,104,90,0.2)] hover:bg-[#4e5c4e]"
+                    >
+                      Go to Dashboard
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      disabled={signingOut}
+                      className="inline-flex items-center justify-center rounded-full border border-[#b9bba8]/40 bg-white/80 px-4 py-3 text-sm font-semibold text-[#36392b] hover:bg-[#f4f5e4] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {signingOut ? 'Signing Out...' : 'Sign Out'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-[#36392b]">Email Address</label>
@@ -173,27 +290,34 @@ export default function SignInPage() {
                   {loading ? 'Signing In...' : 'Sign In'}
                 </button>
               </form>
+              )}
 
-              <div className="mt-4 text-right">
-                <button
-                  type="button"
-                  onClick={() => router.push('/forgot-password')}
-                  className="text-sm font-semibold text-[#5a685a] transition hover:text-[#4e5c4e]"
-                >
-                  Forgot teacher password?
-                </button>
-              </div>
+              {!existingSession ? (
+                <div className="mt-4 text-right">
+                  <button
+                    type="button"
+                    onClick={() => router.push('/forgot-password')}
+                    className="text-sm font-semibold text-[#5a685a] transition hover:text-[#4e5c4e]"
+                  >
+                    Forgot teacher password?
+                  </button>
+                </div>
+              ) : null}
 
-              <p className="mt-6 rounded-2xl bg-[#f4f5e4] px-4 py-3 text-sm leading-6 text-[#636656]">
-                New teachers: use the auto-generated password from your welcome email.
-              </p>
+              {!existingSession ? (
+                <p className="mt-6 rounded-2xl bg-[#f4f5e4] px-4 py-3 text-sm leading-6 text-[#636656]">
+                  New teachers: use the auto-generated password from your welcome email.
+                </p>
+              ) : null}
 
-              <div className="mt-4 rounded-2xl border border-[#d8d3b3] bg-white/70 px-4 py-4 text-sm text-[#636656]">
-                Admins:
-                <Link href="/admin-login" className="ml-2 font-semibold text-[#5a685a] hover:text-[#4e5c4e]">
-                  Open the dedicated admin portal
-                </Link>
-              </div>
+              {!existingSession ? (
+                <div className="mt-4 rounded-2xl border border-[#d8d3b3] bg-white/70 px-4 py-4 text-sm text-[#636656]">
+                  Admins:
+                  <Link href="/admin-login" className="ml-2 font-semibold text-[#5a685a] hover:text-[#4e5c4e]">
+                    Open the dedicated admin portal
+                  </Link>
+                </div>
+              ) : null}
             </div>
           </section>
         </div>

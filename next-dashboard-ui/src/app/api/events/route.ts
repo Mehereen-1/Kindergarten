@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Event from '@/lib/models/Event';
+import { extractSessionUser } from '@/lib/auth';
 
 function parseDate(value: string | null): Date | null {
   if (!value) return null;
@@ -13,7 +14,27 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     const searchParams = request.nextUrl.searchParams;
-    const role = (searchParams.get('role') || 'all').toLowerCase();
+    const sessionUser = extractSessionUser(request.cookies.get('user')?.value);
+    const sessionRole = String(sessionUser?.role || request.cookies.get('userRole')?.value || '')
+      .trim()
+      .toLowerCase();
+
+    if (!sessionUser?.id) {
+      return NextResponse.json(
+        { error: 'Unauthorized: sign in required to access events' },
+        { status: 401 }
+      );
+    }
+
+    if (sessionRole !== 'admin' && sessionRole !== 'teacher' && sessionRole !== 'parent') {
+      return NextResponse.json(
+        { error: `Forbidden: role "${sessionRole || 'unknown'}" cannot access events` },
+        { status: 403 }
+      );
+    }
+
+    const requestedRole = (searchParams.get('role') || 'all').toLowerCase();
+    const role = sessionRole === 'admin' ? requestedRole : sessionRole;
     const fromDate = parseDate(searchParams.get('from'));
     const toDate = parseDate(searchParams.get('to'));
 
@@ -44,6 +65,25 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
 
+    const sessionUser = extractSessionUser(request.cookies.get('user')?.value);
+    const sessionRole = String(sessionUser?.role || request.cookies.get('userRole')?.value || '')
+      .trim()
+      .toLowerCase();
+
+    if (!sessionUser?.id) {
+      return NextResponse.json(
+        { error: 'Unauthorized: sign in required to create events' },
+        { status: 401 }
+      );
+    }
+
+    if (sessionRole !== 'admin' && sessionRole !== 'teacher') {
+      return NextResponse.json(
+        { error: `Forbidden: role "${sessionRole || 'unknown'}" cannot create events` },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const {
       title,
@@ -53,16 +93,10 @@ export async function POST(request: NextRequest) {
       allDay,
       location,
       targetRole,
-      createdBy,
-      createdByRole,
     } = body || {};
 
     if (!title || !startDate) {
       return NextResponse.json({ error: 'title and startDate are required' }, { status: 400 });
-    }
-
-    if (!['admin', 'teacher'].includes(String(createdByRole || ''))) {
-      return NextResponse.json({ error: 'Only admin or teacher can create events' }, { status: 403 });
     }
 
     const start = new Date(startDate);
@@ -84,8 +118,8 @@ export async function POST(request: NextRequest) {
       allDay: Boolean(allDay ?? true),
       location: String(location || '').trim(),
       targetRole: ['all', 'teacher', 'parent', 'student'].includes(targetRole) ? targetRole : 'all',
-      createdBy: createdBy || undefined,
-      createdByRole,
+      createdBy: sessionUser.id,
+      createdByRole: sessionRole,
       sourceType: 'manual',
     });
 

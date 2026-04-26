@@ -13,8 +13,41 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     const sessionUser = extractSessionUser(request.cookies.get('user')?.value);
-    const parentId = sessionUser?.id || request.nextUrl.searchParams.get('parentId');
+    const userRole = String(sessionUser?.role || request.cookies.get('userRole')?.value || '')
+      .trim()
+      .toLowerCase();
+    const requestedParentId = request.nextUrl.searchParams.get('parentId');
+    let parentId = sessionUser?.id || '';
     const academicYear = request.nextUrl.searchParams.get('academicYear') || String(new Date().getFullYear());
+
+    if (!sessionUser?.id) {
+      return NextResponse.json(
+        { error: 'Unauthorized: sign in required to access parent children data' },
+        { status: 401 }
+      );
+    }
+
+    if (userRole !== 'parent' && userRole !== 'admin') {
+      return NextResponse.json(
+        { error: `Forbidden: role "${userRole || 'unknown'}" cannot access parent children data` },
+        { status: 403 }
+      );
+    }
+
+    if (userRole === 'admin') {
+      parentId = requestedParentId || '';
+      if (!parentId) {
+        return NextResponse.json(
+          { error: 'parentId is required for admin requests' },
+          { status: 400 }
+        );
+      }
+    } else if (requestedParentId && requestedParentId !== sessionUser.id) {
+      return NextResponse.json(
+        { error: 'Forbidden: parents can only access their own children records' },
+        { status: 403 }
+      );
+    }
 
     if (!parentId) {
       return NextResponse.json(

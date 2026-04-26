@@ -76,14 +76,16 @@ export default function TopicOverviewDashboard({ classId, teacherId }: any) {
   };
 
   const handleFileUpload = async (topicId: string, event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
 
     try {
       setUploadingTopicId(topicId);
       
       const formData = new FormData();
-      formData.append('content_file', file);
+      files.forEach((file) => {
+        formData.append('content_files', file);
+      });
 
       const response = await fetch(`/api/ildce/topics?topicId=${topicId}`, {
         method: 'PUT',
@@ -97,11 +99,12 @@ export default function TopicOverviewDashboard({ classId, teacherId }: any) {
 
       // Refresh the topics list
       fetchTopics();
-      alert('File uploaded successfully!');
+      alert(`${files.length} file${files.length !== 1 ? 's' : ''} uploaded successfully!`);
     } catch (err: any) {
       alert(`Error: ${err.message}`);
     } finally {
       setUploadingTopicId(null);
+      event.target.value = '';
     }
   };
 
@@ -268,26 +271,34 @@ export default function TopicOverviewDashboard({ classId, teacherId }: any) {
                     <td className="px-6 py-4 font-medium text-gray-800">{topic.topic.topic_name}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{topic.topic.difficulty_weight}/5</td>
                     <td className="px-6 py-4 text-sm">
-                      {topic.topic.file_url ? (
-                        <div className="flex items-center gap-3">
-                          <a
-                            href={topic.topic.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-800 font-semibold"
-                          >
-                            Open File
-                          </a>
-                          <a
-                            href={`${topic.topic.file_url}${String(topic.topic.file_url).includes('?') ? '&' : '?'}download=1`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-amber-700 hover:text-amber-900 font-semibold"
-                            title="Download file"
-                          >
-                            Download
-                            <Download size={14} />
-                          </a>
+                      {(topic.topic.files?.length || topic.topic.file_url) ? (
+                        <div className="flex flex-col gap-2">
+                          {(topic.topic.files?.length
+                            ? topic.topic.files
+                            : [{ url: topic.topic.file_url, name: topic.topic.file_name || 'Attachment' }]
+                          ).map((file: any, fileIndex: number) => (
+                            <div key={`${file.url}-${fileIndex}`} className="flex items-center gap-3">
+                              <a
+                                href={file.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800 font-semibold max-w-[140px] truncate"
+                                title={file.name || 'Open file'}
+                              >
+                                {file.name || `File ${fileIndex + 1}`}
+                              </a>
+                              <a
+                                href={`${file.url}${String(file.url).includes('?') ? '&' : '?'}download=1`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-amber-700 hover:text-amber-900 font-semibold"
+                                title="Download file"
+                              >
+                                Download
+                                <Download size={14} />
+                              </a>
+                            </div>
+                          ))}
                         </div>
                       ) : (
                         <span className="text-gray-400">No file</span>
@@ -378,10 +389,11 @@ export default function TopicOverviewDashboard({ classId, teacherId }: any) {
                         ) : null}
 
                         {/* Upload/Replace File Button */}
-                        <label className="cursor-pointer text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-2 rounded transition" title={topic.topic.file_url ? "Replace file" : "Upload file"}>
+                        <label className="cursor-pointer text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-2 rounded transition" title="Add files">
                           <Upload size={18} />
                           <input
                             type="file"
+                            multiple
                             className="hidden"
                             accept=".pdf,.txt,.md,.csv"
                             onChange={(e) => handleFileUpload(topic.topic._id, e)}

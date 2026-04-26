@@ -18,11 +18,41 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const academicYear = toAcademicYear(searchParams.get('academicYear'));
-    const sessionTeacherId = extractSessionUser(request.cookies.get('user')?.value)?.id;
-    const teacherId = searchParams.get('teacherId') || sessionTeacherId;
+    const sessionUser = extractSessionUser(request.cookies.get('user')?.value);
+    const userRole = String(sessionUser?.role || request.cookies.get('userRole')?.value || '')
+      .trim()
+      .toLowerCase();
+
+    if (!sessionUser?.id) {
+      return NextResponse.json(
+        { error: 'Unauthorized: sign in required to access teacher timetable' },
+        { status: 401 }
+      );
+    }
+
+    if (userRole !== 'teacher' && userRole !== 'admin') {
+      return NextResponse.json(
+        {
+          error: `Forbidden: role "${userRole || 'unknown'}" cannot access teacher timetable`,
+        },
+        { status: 403 }
+      );
+    }
+
+    const requestedTeacherId = searchParams.get('teacherId');
+    let teacherId = sessionUser.id;
+
+    if (userRole === 'admin') {
+      teacherId = requestedTeacherId || '';
+    } else if (requestedTeacherId && requestedTeacherId !== sessionUser.id) {
+      return NextResponse.json(
+        { error: 'Forbidden: teachers can only view their own timetable' },
+        { status: 403 }
+      );
+    }
 
     if (!teacherId) {
-      return NextResponse.json({ error: 'Teacher id required' }, { status: 400 });
+      return NextResponse.json({ error: 'Teacher id is required for admin requests' }, { status: 400 });
     }
 
     const entries = await TimetableEntry.find({

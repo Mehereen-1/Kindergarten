@@ -9,7 +9,8 @@ export default function ContentUploadForm({ classId, teacherId, onSuccess }: any
   const [success, setSuccess] = useState('');
   const [classes, setClasses] = useState<any[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
-  const [contentFile, setContentFile] = useState<File | null>(null);
+  const [contentFiles, setContentFiles] = useState<File[]>([]);
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [formData, setFormData] = useState({
     topic_name: '',
     content_text: '',
@@ -90,21 +91,13 @@ export default function ContentUploadForm({ classId, teacherId, onSuccess }: any
     }
   };
 
-  const readFileAsText = (file: File) => new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Failed to read file'));
-    reader.readAsText(file);
-  });
-
-  const isTextFile = (file: File) => {
-    const name = file.name.toLowerCase();
-    return file.type.startsWith('text/') || name.endsWith('.txt') || name.endsWith('.md') || name.endsWith('.csv');
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setContentFiles(Array.from(e.target.files || []));
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null;
-    setContentFile(file);
+  const removeContentFile = (indexToRemove: number) => {
+    setContentFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
+    setFileInputKey((prev) => prev + 1);
   };
 
   const handleSubmit = async (e: any) => {
@@ -114,21 +107,10 @@ export default function ContentUploadForm({ classId, teacherId, onSuccess }: any
     setSuccess('');
 
     try {
-      let finalContent = formData.content_text?.trim() || '';
+      const finalContent = formData.content_text?.trim() || '';
 
-      if (contentFile) {
-        if (isTextFile(contentFile)) {
-          const fileText = await readFileAsText(contentFile);
-          finalContent = [
-            finalContent,
-            `\n\n---\nUploaded File: ${contentFile.name}\n---\n`,
-            fileText,
-          ].filter(Boolean).join('\n');
-        }
-      }
-
-      if (!finalContent && !contentFile) {
-        throw new Error('Please add content notes or upload a file.');
+      if (!finalContent && contentFiles.length === 0) {
+        throw new Error('Please add content notes or upload at least one file.');
       }
 
       const payload = new FormData();
@@ -141,9 +123,9 @@ export default function ContentUploadForm({ classId, teacherId, onSuccess }: any
       payload.append('classId', formData.selectedClassId || classId || '');
       payload.append('grade', formData.selectedGrade || '');
 
-      if (contentFile) {
-        payload.append('content_file', contentFile);
-      }
+      contentFiles.forEach((file) => {
+        payload.append('content_files', file);
+      });
 
       const response = await fetch('/api/ildce/topics', {
         method: 'POST',
@@ -173,7 +155,8 @@ export default function ContentUploadForm({ classId, teacherId, onSuccess }: any
         selectedClassId: classId || '',
         selectedGrade: '',
       });
-      setContentFile(null);
+      setContentFiles([]);
+      setFileInputKey((prev) => prev + 1);
 
       if (onSuccess) onSuccess(data);
     } catch (err: any) {
@@ -311,28 +294,34 @@ export default function ContentUploadForm({ classId, teacherId, onSuccess }: any
               <Paperclip className="text-gray-500" size={18} />
               <input
                 type="file"
+                key={fileInputKey}
+                multiple
                 accept=".txt,.md,.csv,.pdf,.doc,.docx,.ppt,.pptx"
                 onChange={handleFileChange}
                 className="w-full text-sm text-gray-700"
               />
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              Tip: PDFs are summarized automatically. For slides or Word files, add short notes below.
+              Tip: You can attach multiple PDFs. PDFs are summarized automatically. For slides or Word files, add short notes below.
             </p>
-            {contentFile && (
-              <div className="mt-3 flex items-center justify-between bg-white border border-gray-200 rounded px-3 py-2">
-                <div className="flex items-center gap-2 text-sm text-gray-700">
-                  <FileText size={16} />
-                  <span>{contentFile.name}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setContentFile(null)}
-                  className="text-gray-500 hover:text-gray-700"
-                  aria-label="Remove file"
-                >
-                  <X size={16} />
-                </button>
+            {contentFiles.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {contentFiles.map((file, index) => (
+                  <div key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between bg-white border border-gray-200 rounded px-3 py-2">
+                    <div className="flex items-center gap-2 text-sm text-gray-700 min-w-0">
+                      <FileText size={16} className="shrink-0" />
+                      <span className="truncate">{file.name}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeContentFile(index)}
+                      className="text-gray-500 hover:text-gray-700"
+                      aria-label={`Remove ${file.name}`}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -371,7 +360,7 @@ export default function ContentUploadForm({ classId, teacherId, onSuccess }: any
             name="content_text"
             value={formData.content_text}
             onChange={handleChange}
-            required={!contentFile}
+            required={contentFiles.length === 0}
             rows={8}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
             placeholder="Paste your content here. The AI will automatically:

@@ -4,6 +4,7 @@ import {
   ensureSecurityAlertAudioServiceReady,
   getServiceUrl,
 } from '@/lib/securityAlertServiceManager';
+import { requireSecurityAlertRoles } from '@/lib/securityAlertsAccess';
 
 export const runtime = 'nodejs';
 
@@ -41,6 +42,11 @@ function pickAudioRows(modelResults: UpstreamModelResult[]) {
 }
 
 export async function POST(request: NextRequest) {
+  const access = requireSecurityAlertRoles(request, ['admin', 'teacher'], 'analyze sound anomalies');
+  if (!access.ok) {
+    return access.response;
+  }
+
   try {
     const formData = await request.formData();
     const media = formData.get('media');

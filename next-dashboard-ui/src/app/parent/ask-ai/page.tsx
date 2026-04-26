@@ -10,6 +10,7 @@ type ClassContent = {
   uploadedAt?: string;
   teacher?: { name: string; email?: string } | null;
   file?: { url: string; name: string; type?: string; size?: number } | null;
+  files?: Array<{ url: string; name: string; type?: string; size?: number }>;
   ai?: { summary?: string; concepts?: string[] };
   rag?: { ready: boolean; chunkCount: number };
   quiz?: { quizId: string; totalQuestions: number } | null;
@@ -270,32 +271,36 @@ export default function ParentAskAIPage() {
                                 <ExternalLink size={12} />
                               </button>
 
-                              {item.file?.url && (
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      window.open(item.file?.url, '_blank', 'noopener,noreferrer');
-                                    }}
-                                    className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-900"
-                                  >
-                                    Open File
-                                    <ExternalLink size={12} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      const fileUrl = item.file?.url || '';
-                                      const separator = fileUrl.includes('?') ? '&' : '?';
-                                      window.open(`${fileUrl}${separator}download=1`, '_blank', 'noopener,noreferrer');
-                                    }}
-                                    className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-900"
-                                  >
-                                    Download
-                                    <Download size={12} />
-                                  </button>
+                              {(item.files?.length || item.file?.url) && (
+                                <div className="flex flex-col gap-1">
+                                  {(item.files?.length ? item.files : item.file ? [item.file] : []).map((file, fileIndex) => (
+                                    <div key={`${file.url}-${fileIndex}`} className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          window.open(file.url, '_blank', 'noopener,noreferrer');
+                                        }}
+                                        className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-900 max-w-[120px] truncate"
+                                        title={file.name || 'Open file'}
+                                      >
+                                        {file.name || `File ${fileIndex + 1}`}
+                                        <ExternalLink size={12} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const separator = file.url.includes('?') ? '&' : '?';
+                                          window.open(`${file.url}${separator}download=1`, '_blank', 'noopener,noreferrer');
+                                        }}
+                                        className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-900"
+                                      >
+                                        Download
+                                        <Download size={12} />
+                                      </button>
+                                    </div>
+                                  ))}
                                 </div>
                               )}
 

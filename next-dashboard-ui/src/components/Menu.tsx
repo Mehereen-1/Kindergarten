@@ -130,7 +130,7 @@ const menuItems = [
       },
       {
         icon: "/announcement.png",
-        label: "Security Alerts",
+        label: "Sound Alerts",
         href: "/admin/security-alerts",
         visible: ["admin"],
       },

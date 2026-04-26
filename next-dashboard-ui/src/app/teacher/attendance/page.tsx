@@ -116,6 +116,8 @@ function AttendancePageContent() {
   const [atd, setAtd] = useState<AttendanceRecord[]>([]);
   const [cctvMode, setCctvMode] = useState<"live" | "upload">("live");
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [uploadVideoPreviewUrl, setUploadVideoPreviewUrl] = useState("");
+  const [uploadVideoPreviewError, setUploadVideoPreviewError] = useState("");
   const [studentRecognitionCount, setStudentRecognitionCount] = useState<Record<string, number>>({});
   const [presentStudents, setPresentStudents] = useState<Set<string>>(new Set());
   const [liveConfirmationMessage, setLiveConfirmationMessage] = useState("");
@@ -304,6 +306,28 @@ function AttendancePageContent() {
   useEffect(() => {
     detectionsRef.current = detections;
   }, [detections]);
+
+  useEffect(() => {
+    return () => {
+      if (uploadVideoPreviewUrl) {
+        URL.revokeObjectURL(uploadVideoPreviewUrl);
+      }
+    };
+  }, [uploadVideoPreviewUrl]);
+
+  useEffect(() => {
+    if (!uploadVideoPreviewUrl || !videoElementRef.current) return;
+
+    const video = videoElementRef.current;
+    video.load();
+
+    if (isVideoProcessing) {
+      video.muted = true;
+      void video.play().catch(() => {
+        setUploadVideoPreviewError("Click the video controls to start the preview.");
+      });
+    }
+  }, [uploadVideoPreviewUrl, isVideoProcessing]);
 
   const clearLiveConfirmation = useCallback(() => {
     if (confirmationTimeoutRef.current !== null) {
@@ -1564,6 +1588,9 @@ interface CCTVTabProps {
   const handleVideoUpload = async (file: File | null) => {
     if (!file) return;
 
+    const localPreviewUrl = URL.createObjectURL(file);
+    setUploadVideoPreviewUrl(localPreviewUrl);
+    setUploadVideoPreviewError("");
     setLoading(true);
     setMessage("");
     setIsVideoProcessing(true);
@@ -1667,11 +1694,13 @@ interface CCTVTabProps {
         setMessage(`❌ Error: ${errorDetail}`);
         setIsVideoProcessing(false);
         setVideoUrl("");
+        setUploadVideoPreviewUrl("");
       }
     } catch (error) {
       setMessage(`❌ Error: ${String(error)}`);
       setIsVideoProcessing(false);
       setVideoUrl("");
+      setUploadVideoPreviewUrl("");
     } finally {
       setLoading(false);
     }
@@ -2613,7 +2642,7 @@ interface CCTVTabProps {
                     </>
                   ) : (
                     <>
-                      {/* Processed Video Stream with Detections */}
+                      {/* Uploaded Video Preview with Detections */}
                       <div className="bg-black rounded-lg overflow-hidden border-4 border-slate-300" style={{ maxWidth: '100%' }}>
                         <div
                           className="relative bg-black"
@@ -2624,23 +2653,34 @@ interface CCTVTabProps {
                             aspectRatio: '16/9',
                           }}
                         >
-                          {isVideoProcessing && processedVideoUrl ? (
+                          {uploadVideoPreviewUrl ? (
                             <>
-                              {/* Processed Video Stream (MJPEG from backend) */}
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                key={`stream-${isVideoProcessing}`}
-                                src={processedVideoUrl}
-                                alt="Processed video with detections"
-                                style={{
-                                  width: '100%',
-                                  height: '100%',
-                                  objectFit: 'contain',
-                                  backgroundColor: '#000',
+                              <video
+                                key={uploadVideoPreviewUrl}
+                                ref={videoElementRef}
+                                src={uploadVideoPreviewUrl}
+                                controls
+                                muted={isVideoProcessing}
+                                playsInline
+                                preload="auto"
+                                className="absolute inset-0 w-full h-full object-contain bg-black"
+                                onCanPlay={() => {
+                                  setUploadVideoPreviewError("");
+                                  if (isVideoProcessing) {
+                                    videoElementRef.current?.play().catch(() => {
+                                      setUploadVideoPreviewError("Click the video controls to start the preview.");
+                                    });
+                                  }
                                 }}
                                 onError={() => {
-                                  console.log("Stream loading...");
+                                  setUploadVideoPreviewError(
+                                    "This video format is not playable in the browser preview. Try MP4/H.264 or WebM. Backend processing may still continue."
+                                  );
                                 }}
+                              />
+                              <canvas
+                                ref={canvasRef}
+                                className="absolute inset-0 w-full h-full pointer-events-none"
                               />
 
                               {/* Detection Count Badge */}
@@ -2660,6 +2700,11 @@ interface CCTVTabProps {
                                 <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full"></div>
                                 Processing...
                               </div>
+                              {uploadVideoPreviewError && (
+                                <div className="absolute left-2 right-2 top-12 rounded-lg bg-amber-100/95 px-3 py-2 text-xs font-semibold text-amber-900">
+                                  {uploadVideoPreviewError}
+                                </div>
+                              )}
                             </>
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-400">
@@ -2695,6 +2740,8 @@ interface CCTVTabProps {
                               onClick={() => {
                                 setVideoUrl("");
                                 setVideoFile(null);
+                                setUploadVideoPreviewUrl("");
+                                setUploadVideoPreviewError("");
                                 setDetections([]);
                                 setExtractedFaces([]);
                                 setDetectedNamesById({});
@@ -2714,6 +2761,8 @@ interface CCTVTabProps {
                                 setVideoUrl("");
                                 setVideoFile(null);
                                 setProcessedVideoUrl("");
+                                setUploadVideoPreviewUrl("");
+                                setUploadVideoPreviewError("");
                               }}
                               className="px-4 py-2 bg-slate-600 text-white rounded-lg font-semibold hover:bg-slate-700 transition"
                             >

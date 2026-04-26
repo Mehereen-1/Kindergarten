@@ -49,7 +49,7 @@ const MobileTeacherSidebar = () => {
       items: [
         { icon: MessageSquare, label: "Messages", href: "/teacher/chat" },
         { icon: FileText, label: "Notices", href: "/teacher/notices" },
-        { icon: ShieldAlert, label: "Security Alerts", href: "/teacher/security-alerts" },
+        { icon: ShieldAlert, label: "Sound Alerts", href: "/teacher/security-alerts" },
       ],
     },
     {

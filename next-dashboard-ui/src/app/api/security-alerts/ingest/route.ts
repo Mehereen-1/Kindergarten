@@ -271,7 +271,7 @@ export async function POST(request: NextRequest) {
                 ${location ? `<p style="margin:0 0 6px">Location: <strong>${location}</strong></p>` : ''}
                 ${className ? `<p style="margin:0 0 6px">Class: <strong>${className}</strong></p>` : ''}
                 ${imageUrl ? `<p style="margin:0 0 6px">Snapshot: <a href="${imageUrl}">${imageUrl}</a></p>` : ''}
-                <p style="margin:14px 0 0;color:#6b7280;font-size:13px">Open Security Alerts in the website to review the incident.</p>
+                <p style="margin:14px 0 0;color:#6b7280;font-size:13px">Open Sound Alerts in the website to review the incident.</p>
               </div>
             </div>
           `,

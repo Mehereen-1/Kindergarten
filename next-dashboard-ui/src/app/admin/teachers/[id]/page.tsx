@@ -1,167 +1,175 @@
-import Announcements from "@/app/components/Announcements";
-import BigCalendar from "@/app/components/BigCalender";
-import FormModal from "@/app/components/FormModal";
-import Performance from "@/app/components/Performance";
-import { role } from "@/lib/data";
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useParams } from "next/navigation";
+import { Mail, Phone, UserSquare2, CalendarDays, GraduationCap } from "lucide-react";
+
+type TeacherDetails = {
+  _id: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  teacherId?: string;
+  subjects?: string[];
+  classes?: string[];
+  qualification?: string;
+  joiningDate?: string | null;
+  photo?: string;
+};
 
 const SingleTeacherPage = () => {
-  return (
-    <div className="flex-1 p-4 flex flex-col gap-4 xl:flex-row">
-      {/* LEFT */}
-      <div className="w-full xl:w-2/3">
-        {/* TOP */}
-        <div className="flex flex-col lg:flex-row gap-4">
-          {/* USER INFO CARD */}
-          <div className="bg-lamaSky py-6 px-4 rounded-md flex-1 flex gap-4">
-            <div className="w-1/3">
-              <Image
-                src="https://images.pexels.com/photos/2182970/pexels-photo-2182970.jpeg?auto=compress&cs=tinysrgb&w=1200"
-                alt=""
-                width={144}
-                height={144}
-                className="w-36 h-36 rounded-full object-cover"
-              />
-            </div>
-            <div className="w-2/3 flex flex-col justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <h1 className="text-xl font-semibold">Leonard Snyder</h1>
-                {role === "admin" && <FormModal
-                  table="teacher"
-                  type="update"
-                  data={{
-                    id: 1,
-                    username: "deanguerrero",
-                    email: "deanguerrero@gmail.com",
-                    password: "password",
-                    firstName: "Dean",
-                    lastName: "Guerrero",
-                    phone: "+1 234 567 89",
-                    address: "1234 Main St, Anytown, USA",
-                    bloodType: "A+",
-                    dateOfBirth: "2000-01-01",
-                    sex: "male",
-                    img: "https://images.pexels.com/photos/2182970/pexels-photo-2182970.jpeg?auto=compress&cs=tinysrgb&w=1200",
-                  }}
-                />}
-              </div>
-              <p className="text-sm text-gray-500">
-                Lorem ipsum, dolor sit amet consectetur adipisicing elit.
-              </p>
-              <div className="flex items-center justify-between gap-2 flex-wrap text-xs font-medium">
-                <div className="w-full md:w-1/3 lg:w-full 2xl:w-1/3 flex items-center gap-2">
-                  <Image src="/blood.png" alt="" width={14} height={14} />
-                  <span>A+</span>
-                </div>
-                <div className="w-full md:w-1/3 lg:w-full 2xl:w-1/3 flex items-center gap-2">
-                  <Image src="/date.png" alt="" width={14} height={14} />
-                  <span>January 2025</span>
-                </div>
-                <div className="w-full md:w-1/3 lg:w-full 2xl:w-1/3 flex items-center gap-2">
-                  <Image src="/mail.png" alt="" width={14} height={14} />
-                  <span>user@gmail.com</span>
-                </div>
-                <div className="w-full md:w-1/3 lg:w-full 2xl:w-1/3 flex items-center gap-2">
-                  <Image src="/phone.png" alt="" width={14} height={14} />
-                  <span>+1 234 567</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          {/* SMALL CARDS */}
-          <div className="flex-1 flex gap-4 justify-between flex-wrap">
-            {/* CARD */}
-            <div className="bg-white p-4 rounded-md flex gap-4 w-full md:w-[48%] xl:w-[45%] 2xl:w-[48%]">
-              <Image
-                src="/singleAttendance.png"
-                alt=""
-                width={24}
-                height={24}
-                className="w-6 h-6"
-              />
-              <div className="">
-                <h1 className="text-xl font-semibold">90%</h1>
-                <span className="text-sm text-gray-400">Attendance</span>
-              </div>
-            </div>
-            {/* CARD */}
-            <div className="bg-white p-4 rounded-md flex gap-4 w-full md:w-[48%] xl:w-[45%] 2xl:w-[48%]">
-              <Image
-                src="/singleBranch.png"
-                alt=""
-                width={24}
-                height={24}
-                className="w-6 h-6"
-              />
-              <div className="">
-                <h1 className="text-xl font-semibold">2</h1>
-                <span className="text-sm text-gray-400">Branches</span>
-              </div>
-            </div>
-            {/* CARD */}
-            <div className="bg-white p-4 rounded-md flex gap-4 w-full md:w-[48%] xl:w-[45%] 2xl:w-[48%]">
-              <Image
-                src="/singleLesson.png"
-                alt=""
-                width={24}
-                height={24}
-                className="w-6 h-6"
-              />
-              <div className="">
-                <h1 className="text-xl font-semibold">6</h1>
-                <span className="text-sm text-gray-400">Lessons</span>
-              </div>
-            </div>
-            {/* CARD */}
-            <div className="bg-white p-4 rounded-md flex gap-4 w-full md:w-[48%] xl:w-[45%] 2xl:w-[48%]">
-              <Image
-                src="/singleClass.png"
-                alt=""
-                width={24}
-                height={24}
-                className="w-6 h-6"
-              />
-              <div className="">
-                <h1 className="text-xl font-semibold">6</h1>
-                <span className="text-sm text-gray-400">Classes</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        {/* BOTTOM */}
-        <div className="mt-4 bg-white rounded-md p-4 h-[800px]">
-          <h1>Teacher&apos;s Schedule</h1>
-          <BigCalendar />
+  const params = useParams<{ id: string }>();
+  const teacherId = params?.id;
+
+  const [teacher, setTeacher] = useState<TeacherDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!teacherId) return;
+
+    const controller = new AbortController();
+
+    const loadTeacher = async () => {
+      try {
+        setLoading(true);
+        setError("");
+        const response = await fetch(`/api/admin/teachers/${teacherId}`, {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          setTeacher(null);
+          setError(data?.error || "Failed to load teacher details");
+          return;
+        }
+
+        setTeacher(data?.teacher || null);
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          setTeacher(null);
+          setError("Failed to load teacher details");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadTeacher();
+    return () => controller.abort();
+  }, [teacherId]);
+
+  const joinedOn = useMemo(() => {
+    if (!teacher?.joiningDate) return "-";
+    const date = new Date(teacher.joiningDate);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleDateString();
+  }, [teacher?.joiningDate]);
+
+  if (loading) {
+    return (
+      <div className="flex-1 p-4">
+        <div className="bg-white rounded-xl p-6 text-sm text-gray-600">Loading teacher details...</div>
+      </div>
+    );
+  }
+
+  if (error || !teacher) {
+    return (
+      <div className="flex-1 p-4">
+        <div className="bg-white rounded-xl p-6 border border-red-200">
+          <p className="text-red-700 font-medium">{error || "Teacher not found"}</p>
+          <Link href="/admin/teachers" className="inline-block mt-3 text-sm text-blue-700 hover:underline">
+            Back to all teachers
+          </Link>
         </div>
       </div>
-      {/* RIGHT */}
-      <div className="w-full xl:w-1/3 flex flex-col gap-4">
-        <div className="bg-white p-4 rounded-md">
-          <h1 className="text-xl font-semibold">Shortcuts</h1>
-          <div className="mt-4 flex gap-4 flex-wrap text-xs text-gray-500">
-            <Link className="p-3 rounded-md bg-lamaSkyLight" href="/">
-              Teacher&apos;s Classes
-            </Link>
-            <Link className="p-3 rounded-md bg-lamaPurpleLight" href="/">
-              Teacher&apos;s Students
-            </Link>
-            <Link className="p-3 rounded-md bg-lamaYellowLight" href="/">
-              Teacher&apos;s Lessons
-            </Link>
-            <Link className="p-3 rounded-md bg-pink-50" href="/">
-              Teacher&apos;s Exams
-            </Link>
-            <Link className="p-3 rounded-md bg-lamaSkyLight" href="/">
-              Teacher&apos;s Assignments
-            </Link>
+    );
+  }
+
+  return (
+    <div className="flex-1 p-4">
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex flex-col md:flex-row gap-6">
+          <div className="flex-shrink-0">
+            <Image
+              src={teacher.photo || "/avatar.png"}
+              alt={teacher.name || "Teacher"}
+              width={140}
+              height={140}
+              className="w-36 h-36 rounded-full object-cover border border-gray-200"
+            />
+          </div>
+
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-[#2f3640]">{teacher.name || "Unnamed Teacher"}</h1>
+            <p className="text-sm text-gray-600 mt-1">Teacher ID: {teacher.teacherId || "-"}</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-5 text-sm">
+              <div className="flex items-center gap-2 text-gray-700">
+                <Mail className="w-4 h-4 text-gray-500" />
+                <span>{teacher.email || "-"}</span>
+              </div>
+              <div className="flex items-center gap-2 text-gray-700">
+                <Phone className="w-4 h-4 text-gray-500" />
+                <span>{teacher.phone || "-"}</span>
+              </div>
+              <div className="flex items-center gap-2 text-gray-700">
+                <CalendarDays className="w-4 h-4 text-gray-500" />
+                <span>Joined: {joinedOn}</span>
+              </div>
+              <div className="flex items-center gap-2 text-gray-700">
+                <GraduationCap className="w-4 h-4 text-gray-500" />
+                <span>{teacher.qualification || "Qualification not set"}</span>
+              </div>
+              <div className="flex items-start gap-2 text-gray-700 md:col-span-2">
+                <UserSquare2 className="w-4 h-4 text-gray-500 mt-0.5" />
+                <span>{teacher.address || "Address not set"}</span>
+              </div>
+            </div>
           </div>
         </div>
-        <Performance />
-        <Announcements />
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+          <div className="rounded-lg border border-gray-200 p-4">
+            <h2 className="text-sm font-semibold text-gray-800 mb-2">Subjects</h2>
+            {teacher.subjects?.length ? (
+              <div className="flex flex-wrap gap-2">
+                {teacher.subjects.map((subject) => (
+                  <span key={subject} className="px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-xs">
+                    {subject}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No subjects assigned.</p>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-gray-200 p-4">
+            <h2 className="text-sm font-semibold text-gray-800 mb-2">Classes</h2>
+            {teacher.classes?.length ? (
+              <div className="flex flex-wrap gap-2">
+                {teacher.classes.map((className) => (
+                  <span key={className} className="px-2 py-1 rounded-md bg-amber-50 text-amber-700 text-xs">
+                    {className}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No classes assigned.</p>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
 };
 
 export default SingleTeacherPage;
+

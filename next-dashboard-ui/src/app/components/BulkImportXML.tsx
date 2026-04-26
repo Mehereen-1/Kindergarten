@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Upload, Download, CheckCircle, XCircle, RefreshCw, Mail, Trash2, Clock } from 'lucide-react';
 
 interface BulkImportXMLProps {
@@ -27,11 +27,12 @@ export default function BulkImportXML({ type, onImportComplete }: BulkImportXMLP
   const [resending, setResending] = useState<string | null>(null);
 
   const templateFiles = {
-    teachers: '/templates/teachers_template.xml',
+    teachers: '/templates/teachers_import.xml',
+    parents: '/templates/parents_template.xml',
     students: '/templates/students_template.xml',
   };
 
-  const fetchImportedItems = async () => {
+  const fetchImportedItems = useCallback(async () => {
     if (type === 'students') return; // No management for students
     
     setManagementLoading(true);
@@ -44,13 +45,13 @@ export default function BulkImportXML({ type, onImportComplete }: BulkImportXMLP
     } finally {
       setManagementLoading(false);
     }
-  };
+  }, [type]);
 
   useEffect(() => {
     if (showManagement) {
       fetchImportedItems();
     }
-  }, [showManagement]);
+  }, [showManagement, fetchImportedItems]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
@@ -115,11 +116,31 @@ export default function BulkImportXML({ type, onImportComplete }: BulkImportXMLP
     }
   };
 
-  const downloadTemplate = () => {
-    const link = document.createElement('a');
-    link.href = templateFiles[type];
-    link.download = `${type}_template.xml`;
-    link.click();
+  const downloadTemplate = async () => {
+    const templatePath = templateFiles[type];
+    if (!templatePath) {
+      alert(`Template is not configured for ${type}`);
+      return;
+    }
+
+    try {
+      const response = await fetch(templatePath, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error('Template file not found');
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `${type}_template.xml`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      alert(`Failed to download template for ${type}`);
+    }
   };
 
   const handleResendPassword = async (userId: string) => {

@@ -66,6 +66,21 @@ export async function GET(
               size: topic.file_size || 0,
             }
           : null,
+        files: Array.isArray(topic.files) && topic.files.length > 0
+          ? topic.files.map((file: any) => ({
+              url: file.url,
+              name: file.name || 'Attachment',
+              type: file.type || '',
+              size: file.size || 0,
+            }))
+          : topic.file_url
+            ? [{
+                url: topic.file_url,
+                name: topic.file_name || 'Attachment',
+                type: topic.file_type || '',
+                size: topic.file_size || 0,
+              }]
+            : [],
         ai: {
           summary: topic.ai_summary || '',
           keyPoints: topic.ai_key_points || [],

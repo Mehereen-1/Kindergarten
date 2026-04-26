@@ -32,6 +32,7 @@ const FormModal = ({
   type,
   data,
   id,
+  labelMode = "icon",
 }: {
   table:
     | "teacher"
@@ -49,8 +50,13 @@ const FormModal = ({
   type: "create" | "update" | "delete";
   data?: any;
   id?: number | string;
+  labelMode?: "icon" | "iconText";
 }) => {
-  const size = type === "create" ? "w-8 h-8" : "w-7 h-7";
+  const size = labelMode === "iconText"
+    ? "h-8 px-2"
+    : type === "create"
+    ? "w-8 h-8"
+    : "w-7 h-7";
   const bgColor =
     type === "create"
       ? "bg-lamaYellow"
@@ -62,6 +68,13 @@ const FormModal = ({
     update: "/edit.png",
     delete: "/delete.png",
   };
+  const actionLabelByType: Record<"create" | "update" | "delete", string> = {
+    create: "Create",
+    update: "Edit",
+    delete: "Delete",
+  };
+  const actionLabel = actionLabelByType[type];
+  const buttonLabel = `${actionLabel} ${table}`;
 
   const [open, setOpen] = useState(false);
 
@@ -87,10 +100,13 @@ const FormModal = ({
   return (
     <>
       <button
-        className={`${size} flex items-center justify-center rounded-full ${bgColor}`}
+        className={`${size} flex items-center justify-center ${labelMode === "iconText" ? "rounded-md" : "rounded-full"} ${bgColor} text-[#1f1f1f]`}
         onClick={() => setOpen(true)}
+        title={buttonLabel}
+        aria-label={buttonLabel}
       >
-        <Image src={iconByType[type]} alt="" width={16} height={16} />
+        <Image src={iconByType[type]} alt={actionLabel} width={16} height={16} />
+        {labelMode === "iconText" && <span className="text-xs font-medium">{actionLabel}</span>}
       </button>
       {open && (
         <div className="w-screen h-screen absolute left-0 top-0 bg-black bg-opacity-60 z-50 flex items-center justify-center">

@@ -2020,6 +2020,122 @@ def get_student_facial_samples(student_id: str):
     return {"student_id": student_id, "number_of_samples": record.get("number_of_samples", 0)}
 
 
+def _serialize_student_face_images(record: dict):
+    embeddings = record.get("embeddings", []) or []
+    images = []
+
+    for idx, item in enumerate(embeddings):
+        image_ref = item.get("image_file")
+        image_url = _build_signed_face_url(image_ref) if image_ref else item.get("image_url")
+        embedding_id = item.get("_id")
+        if embedding_id is not None:
+            embedding_id = str(embedding_id)
+        else:
+            embedding_id = item.get("image_sha256") or image_ref or f"face-{idx + 1}"
+
+        images.append(
+            {
+                "embedding_id": embedding_id,
+                "image_url": image_url,
+                "image_ref": image_ref,
+                "embedding_ref": item.get("embedding_file"),
+                "image_sha256": item.get("image_sha256"),
+                "uploaded_at": item.get("uploaded_at"),
+            }
+        )
+
+    preview_ref = record.get("preview_image_path")
+    preview_url = _build_signed_face_url(preview_ref) if preview_ref else record.get("preview_image_url")
+
+    return {
+        "student_id": str(record.get("student_id", "")),
+        "number_of_samples": len(images),
+        "preview_image_url": preview_url,
+        "images": images,
+    }
+
+
+@app.get("/student-face-images/{student_id}")
+def get_student_face_images(student_id: str):
+    if db is None:
+        return JSONResponse({"error": "Database not connected"}, status_code=503)
+
+    record = db["facial_database"].find_one({"student_id": student_id})
+    if not record:
+        return {"student_id": student_id, "number_of_samples": 0, "preview_image_url": None, "images": []}
+
+    return _serialize_student_face_images(record)
+
+
+@app.post("/student-face-images/{student_id}/delete")
+def delete_student_face_image(
+    student_id: str,
+    image_ref: Optional[str] = Query(None),
+    image_sha256: Optional[str] = Query(None),
+    embedding_ref: Optional[str] = Query(None),
+):
+    if db is None:
+        return JSONResponse({"error": "Database not connected"}, status_code=503)
+
+    record = db["facial_database"].find_one({"student_id": student_id})
+    if not record:
+        return JSONResponse({"error": "Student facial record not found"}, status_code=404)
+
+    embeddings = record.get("embeddings", []) or []
+    kept = []
+    target = None
+
+    for item in embeddings:
+        matches = False
+        if image_ref and item.get("image_file") == image_ref:
+            matches = True
+        if image_sha256 and item.get("image_sha256") == image_sha256:
+            matches = True
+        if embedding_ref and item.get("embedding_file") == embedding_ref:
+            matches = True
+
+        if matches and target is None:
+            target = item
+            continue
+        kept.append(item)
+
+    if target is None:
+        return JSONResponse({"error": "Face image not found for deletion"}, status_code=404)
+
+    _remove_face_file_if_exists(target.get("image_file"))
+    _remove_face_file_if_exists(target.get("embedding_file"))
+
+    preview_path = record.get("preview_image_path")
+    if preview_path and not any(x.get("image_file") == preview_path for x in kept):
+        preview_path = kept[0].get("image_file") if kept else None
+
+    db["facial_database"].update_one(
+        {"_id": record["_id"]},
+        {
+            "$set": {
+                "embeddings": kept,
+                "number_of_samples": len(kept),
+                "preview_image_path": preview_path,
+                "preview_image_url": _build_signed_face_url(preview_path) if preview_path else None,
+                "last_updated": datetime.now(),
+            }
+        },
+    )
+
+    if engine is not None:
+        try:
+            engine.load_embeddings_from_db(db)
+        except Exception as exc:
+            print(f"⚠️ Failed to reload embeddings after delete: {exc}")
+
+    refreshed = db["facial_database"].find_one({"_id": record["_id"]})
+    return {
+        "success": True,
+        "message": "Face image deleted",
+        "data": _serialize_student_face_images(refreshed) if refreshed else {"student_id": student_id, "images": []},
+    }
+
+
 @app.get("/known-faces")
 def get_known_faces():
     if db is None:

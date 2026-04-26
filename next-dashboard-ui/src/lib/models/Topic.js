@@ -40,6 +40,16 @@ const TopicSchema = new mongoose.Schema({
   file_size: {
     type: Number,
   },
+  files: [{
+    url: String,
+    name: String,
+    type: String,
+    size: Number,
+    uploaded_at: {
+      type: Date,
+      default: Date.now,
+    },
+  }],
   difficulty_weight: {
     type: Number,
     min: 1,

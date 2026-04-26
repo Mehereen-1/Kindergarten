@@ -11,6 +11,7 @@ import {
   getServiceUrl,
   getSecurityAlertPythonCandidates,
 } from '@/lib/securityAlertServiceManager';
+import { requireSecurityAlertRoles } from '@/lib/securityAlertsAccess';
 
 export const runtime = 'nodejs';
 
@@ -115,6 +116,11 @@ async function runCliFallback(videoPath: string, cameraName: string, className: 
 }
 
 export async function POST(request: NextRequest) {
+  const access = requireSecurityAlertRoles(request, ['admin', 'teacher'], 'analyze security video');
+  if (!access.ok) {
+    return access.response;
+  }
+
   let tempVideoPath: string | null = null;
   try {
     const formData = await request.formData();

@@ -354,24 +354,31 @@ function StudentListPageContent() {
       <td>
         <div className="flex items-center gap-2">
           <Link href={`/admin/students/${item.id}`}>
-            <button className="w-7 h-7 flex items-center justify-center rounded-full bg-[#e2ebcb]">
-              <Image src="/view.png" alt="" width={16} height={16} />
+            <button
+              className="h-8 px-2 flex items-center gap-1 justify-center rounded-md bg-[#e2ebcb] text-[#2f3b16]"
+              title="View student details"
+              aria-label="View student details"
+            >
+              <Image src="/view.png" alt="View" width={16} height={16} />
+              <span className="text-xs font-medium">View</span>
             </button>
           </Link>
           {role === "admin" && (
             <button
               onClick={() => openEditModal(item)}
-              className="w-7 h-7 flex items-center justify-center rounded-full bg-[#f5efd8]"
+              className="h-8 px-2 flex items-center gap-1 justify-center rounded-md bg-[#f5efd8] text-[#4f4727]"
               title="Edit class assignment"
+              aria-label="Edit class assignment"
             >
-              <Image src="/edit.png" alt="" width={16} height={16} />
+              <Image src="/edit.png" alt="Edit" width={16} height={16} />
+              <span className="text-xs font-medium">Edit</span>
             </button>
           )}
           {role === "admin" && (
             // <button className="w-7 h-7 flex items-center justify-center rounded-full bg-lamaPurple">
             //   <Image src="/delete.png" alt="" width={16} height={16} />
             // </button>
-            <FormModal table="student" type="delete" id={item.id}/>
+            <FormModal table="student" type="delete" id={item.id} labelMode="iconText" />
           )}
         </div>
       </td>
@@ -494,11 +501,19 @@ function StudentListPageContent() {
             placeholder="Search student name, class, phone..."
           />
           <div className="flex items-center gap-4 self-end">
-            <button className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]">
-              <Image src="/filter.png" alt="" width={14} height={14} />
+            <button
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]"
+              title="Filter"
+              aria-label="Filter"
+            >
+              <Image src="/filter.png" alt="Filter" width={14} height={14} />
             </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]">
-              <Image src="/sort.png" alt="" width={14} height={14} />
+            <button
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-[#f5efd8]"
+              title="Sort"
+              aria-label="Sort"
+            >
+              <Image src="/sort.png" alt="Sort" width={14} height={14} />
             </button>
             {role === "admin" && (
               // <button className="w-8 h-8 flex items-center justify-center rounded-full bg-lamaYellow">

@@ -232,7 +232,7 @@ export default function SecurityAlertsLiveAudioTester({ onAlertStored }: Securit
   const [starting, setStarting] = useState(false);
   const [running, setRunning] = useState(false);
   const [connectionState, setConnectionState] = useState<'idle' | 'connecting' | 'open' | 'error'>('idle');
-  const [message, setMessage] = useState('Ready to start the microphone test.');
+  const [message, setMessage] = useState('Ready to start the live microphone prototype.');
   const [error, setError] = useState('');
   const [lastResult, setLastResult] = useState<LiveAudioAnalysisResult | null>(null);
   const [micLevel, setMicLevel] = useState(0);
@@ -569,7 +569,7 @@ export default function SecurityAlertsLiveAudioTester({ onAlertStored }: Securit
             setStarting(false);
             setConnectionState('open');
             setMessage(
-              `Microphone connected. Streaming live audio at ${detectedSampleRate.toLocaleString()} Hz.`
+              `Prototype microphone stream connected at ${detectedSampleRate.toLocaleString()} Hz.`
             );
           } catch (graphError) {
             const graphErrorMessage = graphError instanceof Error ? graphError.message : String(graphError);
@@ -655,12 +655,12 @@ export default function SecurityAlertsLiveAudioTester({ onAlertStored }: Securit
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-300">
               <Mic className="h-4 w-4" />
-              Live microphone
+              Live microphone prototype
             </div>
             <p className="mt-2 text-lg font-black text-white">Realtime audio stream</p>
             <p className="mt-1 text-xs text-slate-400">
-              The browser keeps a low-latency audio graph open and streams raw samples directly into the anomaly
-              service.
+              This mode streams raw samples into the anomaly service, but detection quality depends on the device
+              microphone, distance, and surrounding noise.
             </p>
           </div>
 
@@ -712,8 +712,8 @@ export default function SecurityAlertsLiveAudioTester({ onAlertStored }: Securit
           <p className="mt-1 text-sm font-bold text-slate-900">{statusLabel}</p>
           <p className="mt-2 text-sm text-slate-700">{message}</p>
           <p className="mt-1 text-xs text-slate-500">
-            Microphone audio is streamed over a persistent websocket and evaluated with the same temporal audio
-            engine used by the backend service.
+            Microphone audio is streamed over a persistent websocket as a prototype realtime input. Use offline audio
+            validation for the final controlled result.
           </p>
           {error ? <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p> : null}
         </div>
@@ -774,7 +774,8 @@ export default function SecurityAlertsLiveAudioTester({ onAlertStored }: Securit
             </div>
           ) : (
             <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
-              Start the microphone to stream live audio into the anomaly engine.
+              For stable validation, use the uploaded audio test below. Start the microphone only to show realtime
+              prototype streaming.
             </div>
           )}
         </div>

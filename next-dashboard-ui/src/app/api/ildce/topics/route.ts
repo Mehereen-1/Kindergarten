@@ -15,6 +15,100 @@ const pdfParse = require('pdf-parse');
 // Connect to MongoDB
 import { connectDB } from '@/lib/mongodb';
 
+type StoredTopicFile = {
+  url: string;
+  name: string;
+  type: string;
+  size: number;
+  uploaded_at: Date;
+};
+
+function isUploadFile(value: FormDataEntryValue): value is File {
+  const maybeFile = value as File;
+  return (
+    typeof value !== 'string' &&
+    typeof maybeFile.arrayBuffer === 'function' &&
+    typeof maybeFile.name === 'string' &&
+    Number(maybeFile.size || 0) > 0
+  );
+}
+
+function getUploadFiles(formData: FormData) {
+  const files = [
+    ...formData.getAll('content_files'),
+    ...formData.getAll('content_file'),
+  ].filter(isUploadFile);
+
+  const seen = new Set<string>();
+  return files.filter((file) => {
+    const key = `${file.name}-${file.size}-${file.type}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function getExistingTopicFiles(topic: any): StoredTopicFile[] {
+  if (Array.isArray(topic.files) && topic.files.length > 0) {
+    return topic.files.map((file: any) => ({
+      url: file.url,
+      name: file.name || 'Attachment',
+      type: file.type || '',
+      size: Number(file.size || 0),
+      uploaded_at: file.uploaded_at || new Date(),
+    }));
+  }
+
+  if (topic.file_url) {
+    return [{
+      url: topic.file_url,
+      name: topic.file_name || 'Attachment',
+      type: topic.file_type || '',
+      size: Number(topic.file_size || 0),
+      uploaded_at: topic.created_at || new Date(),
+    }];
+  }
+
+  return [];
+}
+
+async function storeAndExtractTopicFiles(
+  files: File[],
+  metadata: Record<string, unknown>
+) {
+  const storedFiles: StoredTopicFile[] = [];
+  const extractedSections: string[] = [];
+
+  for (const file of files) {
+    const fileArrayBuffer = await file.arrayBuffer();
+    const fileBuffer = Buffer.from(fileArrayBuffer);
+    const storedAsset = await storeWebFileAsset(file, metadata);
+    const lowerName = file.name.toLowerCase();
+    let extractedText = '';
+
+    if (file.type === 'application/pdf' || lowerName.endsWith('.pdf')) {
+      const parsed = await pdfParse(fileBuffer);
+      extractedText = parsed.text || '';
+    } else if (file.type.startsWith('text/') || lowerName.endsWith('.txt') || lowerName.endsWith('.md') || lowerName.endsWith('.csv')) {
+      extractedText = fileBuffer.toString('utf-8');
+    }
+
+    storedFiles.push({
+      url: storedAsset.url,
+      name: file.name,
+      type: file.type || 'application/octet-stream',
+      size: file.size,
+      uploaded_at: new Date(),
+    });
+
+    if (extractedText.trim()) {
+      extractedSections.push(`---\nUploaded File: ${file.name}\n---\n${extractedText.trim()}`);
+    }
+  }
+
+  return { storedFiles, extractedSections };
+}
+
 /**
  * POST /api/ildce/topics
  * Create a new topic with content
@@ -33,7 +127,7 @@ export async function POST(request: NextRequest) {
     let content_type: string | null = null;
     let difficulty_weight: number | null = null;
     let category: string | null = null;
-    let uploadedFile: File | null = null;
+    let uploadedFiles: File[] = [];
 
     if (contentTypeHeader.includes('multipart/form-data')) {
       const formData = await request.formData();
@@ -45,7 +139,7 @@ export async function POST(request: NextRequest) {
       content_type = String(formData.get('content_type') || 'text');
       difficulty_weight = Number(formData.get('difficulty_weight') || 3);
       category = String(formData.get('category') || '');
-      uploadedFile = formData.get('content_file') as File | null;
+      uploadedFiles = getUploadFiles(formData);
     } else {
       const body = await request.json();
       teacherId = body.teacherId;
@@ -62,40 +156,35 @@ export async function POST(request: NextRequest) {
     let fileName: string | null = null;
     let fileType: string | null = null;
     let fileSize: number | null = null;
-    let extractedText = '';
+    let storedFiles: StoredTopicFile[] = [];
+    let extractedSections: string[] = [];
 
-    console.log('Uploaded file:', uploadedFile ? uploadedFile.name : 'No file');
+    console.log('Uploaded files:', uploadedFiles.map((file) => file.name));
 
-    if (uploadedFile) {
-      const fileArrayBuffer = await uploadedFile.arrayBuffer();
-      const fileBuffer = Buffer.from(fileArrayBuffer);
-      const storedAsset = await storeWebFileAsset(uploadedFile, {
+    if (uploadedFiles.length > 0) {
+      const storedResult = await storeAndExtractTopicFiles(uploadedFiles, {
         purpose: 'ildce-topic-file',
         teacherId,
         classId,
       });
-
-      fileUrl = storedAsset.url;
-      console.log('File saved to:', fileUrl);
-      fileName = uploadedFile.name;
-      fileType = uploadedFile.type || 'application/octet-stream';
-      fileSize = uploadedFile.size;
-
-      const lowerName = uploadedFile.name.toLowerCase();
-      if (uploadedFile.type === 'application/pdf' || lowerName.endsWith('.pdf')) {
-        const parsed = await pdfParse(fileBuffer);
-        extractedText = parsed.text || '';
-      } else if (uploadedFile.type.startsWith('text/') || lowerName.endsWith('.txt') || lowerName.endsWith('.md') || lowerName.endsWith('.csv')) {
-        extractedText = fileBuffer.toString('utf-8');
-      }
+      storedFiles = storedResult.storedFiles;
+      extractedSections = storedResult.extractedSections;
     }
 
-    const combinedContent = [content_text || '', extractedText].filter(Boolean).join('\n\n');
+    if (storedFiles.length > 0) {
+      const firstFile = storedFiles[0];
+      fileUrl = firstFile.url;
+      fileName = firstFile.name;
+      fileType = firstFile.type;
+      fileSize = firstFile.size;
+    }
+
+    const combinedContent = [content_text || '', ...extractedSections].filter(Boolean).join('\n\n');
 
     // Validate required fields
     if (!teacherId || !classId || !topic_name || !combinedContent) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields. Add notes, or upload PDFs/text files with readable text.' },
         { status: 400 }
       );
     }
@@ -122,6 +211,7 @@ export async function POST(request: NextRequest) {
       file_name: fileName,
       file_type: fileType,
       file_size: fileSize,
+      files: storedFiles,
       ai_summary: aiResults.summary,
       ai_key_points: aiResults.key_points,
       ai_definitions: aiResults.definitions,
@@ -133,6 +223,7 @@ export async function POST(request: NextRequest) {
       topic_name,
       file_url: fileUrl,
       file_name: fileName,
+      files: storedFiles.map((file) => file.name),
     });
 
     const savedTopic = await newTopic.save();
@@ -144,6 +235,7 @@ export async function POST(request: NextRequest) {
       file_name: savedTopic.file_name,
       file_type: savedTopic.file_type,
       file_size: savedTopic.file_size,
+      files: savedTopic.files,
     });
 
     // Verify it was saved correctly by querying it back
@@ -152,19 +244,11 @@ export async function POST(request: NextRequest) {
       _id: verifyTopic._id,
       file_url: verifyTopic.file_url,
       file_name: verifyTopic.file_name,
+      files: verifyTopic.files,
     });
 
-    // Generate quiz from AI results
-    const quiz = new Quiz({
-      topicId: savedTopic._id,
-      teacherId,
-      title: `${topic_name} - Auto-Generated Quiz`,
-      description: `AI-generated quiz for ${topic_name}`,
-      is_ai_generated: true,
-      is_published: false,
-    });
-
-    // Convert AI questions to quiz format
+    // Convert AI questions to quiz format. Do not save an empty quiz draft:
+    // the teacher dashboard should still offer "Generate Quiz Draft" if AI fails.
     const questions: Array<{
       question_text: string;
       question_type: 'mcq' | 'short_answer' | 'true_false';
@@ -176,7 +260,7 @@ export async function POST(request: NextRequest) {
     }> = [];
 
     // Add MCQ
-    aiResults.generated_questions.mcq.forEach((q) => {
+    (aiResults.generated_questions?.mcq || []).forEach((q) => {
       questions.push({
         question_text: q.question,
         question_type: 'mcq',
@@ -189,7 +273,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Add Short Answer
-    aiResults.generated_questions.short_answer.forEach((q) => {
+    (aiResults.generated_questions?.short_answer || []).forEach((q) => {
       questions.push({
         question_text: q.question,
         question_type: 'short_answer',
@@ -202,7 +286,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Add True/False
-    aiResults.generated_questions.true_false.forEach((q) => {
+    (aiResults.generated_questions?.true_false || []).forEach((q) => {
       questions.push({
         question_text: q.question,
         question_type: 'true_false',
@@ -214,9 +298,23 @@ export async function POST(request: NextRequest) {
       });
     });
 
-    quiz.questions = questions;
-    quiz.total_questions = questions.length;
-    await quiz.save();
+    let quiz: any = null;
+    if (questions.length > 0) {
+      quiz = new Quiz({
+        topicId: savedTopic._id,
+        teacherId,
+        title: `${topic_name} - Auto-Generated Quiz`,
+        description: `AI-generated quiz for ${topic_name}`,
+        questions,
+        is_ai_generated: true,
+        is_published: false,
+        total_questions: questions.length,
+      });
+
+      await quiz.save();
+    } else {
+      console.warn('Skipping empty quiz draft because AI returned no questions.');
+    }
 
     // Create embeddings for RAG
     try {
@@ -227,8 +325,8 @@ export async function POST(request: NextRequest) {
         classId,
         chunk_text: chunk,
         embedding: embeddings[idx],
-        source_type: extractedText ? 'file' : 'notes',
-        file_name: fileName || undefined,
+        source_type: extractedSections.length > 0 ? 'file' : 'notes',
+        file_name: storedFiles.map((file) => file.name).join(', ') || undefined,
       }));
 
       if (chunkDocs.length > 0) {
@@ -241,7 +339,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         topic: savedTopic,
-        quiz: quiz,
+        quiz,
         ai_processing: aiResults,
         message: 'Topic created successfully with AI-generated quiz draft',
       },
@@ -292,7 +390,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * PUT /api/ildce/topics?topicId=xxx
- * Update an existing topic (add or replace file)
+ * Update an existing topic (append one or more files)
  */
 export async function PUT(request: NextRequest) {
   try {
@@ -309,16 +407,16 @@ export async function PUT(request: NextRequest) {
     }
 
     const contentTypeHeader = request.headers.get('content-type') || '';
-    let uploadedFile: File | null = null;
+    let uploadedFiles: File[] = [];
 
     if (contentTypeHeader.includes('multipart/form-data')) {
       const formData = await request.formData();
-      uploadedFile = formData.get('content_file') as File | null;
+      uploadedFiles = getUploadFiles(formData);
     }
 
-    if (!uploadedFile) {
+    if (uploadedFiles.length === 0) {
       return NextResponse.json(
-        { error: 'No file provided' },
+        { error: 'No files provided' },
         { status: 400 }
       );
     }
@@ -332,39 +430,20 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Delete old file if exists
-    await deleteStoredAssetByUrl(existingTopic.file_url);
-
-    // Save new file
-    const fileArrayBuffer = await uploadedFile.arrayBuffer();
-    const fileBuffer = Buffer.from(fileArrayBuffer);
-    const storedAsset = await storeWebFileAsset(uploadedFile, {
+    const { storedFiles, extractedSections } = await storeAndExtractTopicFiles(uploadedFiles, {
       purpose: 'ildce-topic-file',
       teacherId: String(existingTopic.teacherId),
       classId: String(existingTopic.classId),
       topicId,
     });
 
-    const fileUrl = storedAsset.url;
-    const fileName = uploadedFile.name;
-    const fileType = uploadedFile.type || 'application/octet-stream';
-    const fileSize = uploadedFile.size;
-
-    // Extract text from PDF if applicable
-    let extractedText = '';
-    const lowerName = uploadedFile.name.toLowerCase();
-    if (uploadedFile.type === 'application/pdf' || lowerName.endsWith('.pdf')) {
-      const parsed = await pdfParse(fileBuffer);
-      extractedText = parsed.text || '';
-    }
-
     // Update content if we extracted text
     let updatedContent = existingTopic.content_text;
-    if (extractedText) {
-      updatedContent = [existingTopic.content_text, extractedText].filter(Boolean).join('\n\n');
+    if (extractedSections.length > 0) {
+      updatedContent = [existingTopic.content_text, ...extractedSections].filter(Boolean).join('\n\n');
       
-      // Generate embeddings for the extracted text
-      const chunks = chunkText(extractedText, 1000, 150);
+      // Rebuild embeddings so questions/AI can use the full accumulated content.
+      const chunks = chunkText(updatedContent, 1000, 150);
       const embeddings = await embedTexts(chunks);
       
       const chunkDocs = chunks.map((chunk, idx) => ({
@@ -374,7 +453,7 @@ export async function PUT(request: NextRequest) {
         embedding: embeddings[idx],
         chunk_index: idx,
         source_type: 'uploaded_file',
-        source_name: fileName,
+        source_name: storedFiles.map((file) => file.name).join(', '),
       }));
       
       // Delete old chunks for this topic
@@ -383,12 +462,17 @@ export async function PUT(request: NextRequest) {
       await ContentChunk.insertMany(chunkDocs);
     }
 
-    // Update topic with file metadata
-    existingTopic.file_url = fileUrl;
-    existingTopic.file_name = fileName;
-    existingTopic.file_type = fileType;
-    existingTopic.file_size = fileSize;
+    const allFiles = [...getExistingTopicFiles(existingTopic), ...storedFiles];
+    const primaryFile = allFiles[0] || null;
+
+    // Keep legacy single-file fields populated for existing parent/student views.
+    existingTopic.file_url = primaryFile?.url || null;
+    existingTopic.file_name = primaryFile?.name || null;
+    existingTopic.file_type = primaryFile?.type || null;
+    existingTopic.file_size = primaryFile?.size || null;
+    existingTopic.files = allFiles;
     existingTopic.content_text = updatedContent;
+    existingTopic.updated_at = new Date();
 
     await existingTopic.save();
 
@@ -443,8 +527,14 @@ export async function DELETE(request: NextRequest) {
     // Optionally delete associated metrics
     await TopicMetrics.deleteMany({ topic_id: topicId });
 
-    // If there was an uploaded file, delete it from disk
-    await deleteStoredAssetByUrl(deletedTopic.file_url);
+    // If there were uploaded files, delete them from storage.
+    const fileUrls = new Set<string>();
+    for (const file of getExistingTopicFiles(deletedTopic)) {
+      if (file.url) fileUrls.add(file.url);
+    }
+    if (deletedTopic.file_url) fileUrls.add(deletedTopic.file_url);
+
+    await Promise.all(Array.from(fileUrls).map((url) => deleteStoredAssetByUrl(url)));
 
     return NextResponse.json(
       { message: 'Topic deleted successfully', topic: deletedTopic },
