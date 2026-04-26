@@ -17,6 +17,7 @@
 /* Teacher Panel Theme */
 @layer base {
   :root {
+    color-scheme: light;
     --color-primary: #5a685a;
     --color-primary-dim: #4e5c4e;
     --color-secondary: #6b644b;
@@ -31,6 +32,24 @@
     --color-outline-variant: #b9bba8;
     --color-primary-container: #d7e7d5;
     --parent-main-bg: #fff7d6;
+  }
+
+  :root[data-color-mode="dark"] {
+    color-scheme: dark;
+    --color-primary: #8ea88f;
+    --color-primary-dim: #a5c0a6;
+    --color-secondary: #b8aa83;
+    --color-tertiary: #c4ab7c;
+    --color-background: #111713;
+    --color-surface: #151d18;
+    --color-surface-low: #18211c;
+    --color-surface-container: #1f2a24;
+    --color-surface-highest: #27332c;
+    --color-on-surface: #eef4ea;
+    --color-on-surface-variant: #c4cfc1;
+    --color-outline-variant: #5c6a60;
+    --color-primary-container: #2f3f34;
+    --parent-main-bg: #121a15;
   }
 
   :root[data-site-theme="ocean"] {
@@ -50,6 +69,23 @@
     --parent-main-bg: #e8f7ff;
   }
 
+  :root[data-site-theme="ocean"][data-color-mode="dark"] {
+    --color-primary: #5aa9c2;
+    --color-primary-dim: #74bfd7;
+    --color-secondary: #7bb7cb;
+    --color-tertiary: #64c5db;
+    --color-background: #081a21;
+    --color-surface: #0e242d;
+    --color-surface-low: #112d38;
+    --color-surface-container: #163846;
+    --color-surface-highest: #1d4656;
+    --color-on-surface: #e5f7ff;
+    --color-on-surface-variant: #bbd7e3;
+    --color-outline-variant: #4f7484;
+    --color-primary-container: #1e4a5a;
+    --parent-main-bg: #0b2029;
+  }
+
   :root[data-site-theme="sunrise"] {
     --color-primary: #9b4b2f;
     --color-primary-dim: #7a3923;
@@ -67,8 +103,26 @@
     --parent-main-bg: #fff1de;
   }
 
+  :root[data-site-theme="sunrise"][data-color-mode="dark"] {
+    --color-primary: #de8f6f;
+    --color-primary-dim: #f1ab88;
+    --color-secondary: #d3a07d;
+    --color-tertiary: #e39b72;
+    --color-background: #1b100c;
+    --color-surface: #241612;
+    --color-surface-low: #2b1b16;
+    --color-surface-container: #36231c;
+    --color-surface-highest: #442d24;
+    --color-on-surface: #fff1e7;
+    --color-on-surface-variant: #e8c9b8;
+    --color-outline-variant: #8c6654;
+    --color-primary-container: #533428;
+    --parent-main-bg: #20130f;
+  }
+
   body {
-    @apply bg-slate-50 text-slate-900;
+    background-color: var(--color-background);
+    color: var(--color-on-surface);
     font-family: "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     transition: background-color 220ms ease, color 220ms ease;
   }
@@ -213,6 +267,19 @@
       box-shadow: 0 10px 32px rgba(54, 57, 43, 0.06) !important;
     }
 
+    :root[data-color-mode="dark"] .teacher-theme .shadow-sm,
+    :root[data-color-mode="dark"] .teacher-theme .shadow-md,
+    :root[data-color-mode="dark"] .teacher-theme .shadow-lg,
+    :root[data-color-mode="dark"] .teacher-theme .shadow-xl,
+    :root[data-color-mode="dark"] .teacher-theme .shadow-2xl,
+    :root[data-color-mode="dark"] .parent-theme .shadow-sm,
+    :root[data-color-mode="dark"] .parent-theme .shadow-md,
+    :root[data-color-mode="dark"] .parent-theme .shadow-lg,
+    :root[data-color-mode="dark"] .parent-theme .shadow-xl,
+    :root[data-color-mode="dark"] .parent-theme .shadow-2xl {
+      box-shadow: 0 16px 44px rgba(0, 0, 0, 0.28) !important;
+    }
+
     .teacher-theme h1,
     .teacher-theme h2,
     .teacher-theme h3,
@@ -287,13 +354,14 @@
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-slate-100;
+  background: var(--color-surface-container);
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-400 rounded-lg;
+  background: color-mix(in srgb, var(--color-outline-variant) 55%, transparent);
+  border-radius: 0.5rem;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-slate-500;
+  background: color-mix(in srgb, var(--color-outline-variant) 75%, transparent);
 }

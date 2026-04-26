@@ -70,7 +70,7 @@ const MobileTeacherSidebar = () => {
       {/* Mobile Menu Button - Show on small screens */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-[#5a685a] text-white hover:bg-[#4e5c4e] transition"
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-dim)] transition shadow-lg"
         aria-label="Toggle menu"
       >
         {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -79,14 +79,14 @@ const MobileTeacherSidebar = () => {
       {/* Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-[#36392b]/30 z-30 lg:hidden"
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
 
       {/* Mobile Sidebar - Slide in from left */}
       <aside
-        className={`fixed lg:relative lg:block w-64 bg-[#fafaeb] h-screen overflow-y-auto z-40 transition-transform duration-300 transform lg:transform-none shadow-[14px_0_30px_-16px_rgba(54,57,43,0.18)] ${
+        className={`fixed lg:relative lg:block w-64 bg-[var(--color-surface-low)] h-screen overflow-y-auto z-40 transition-transform duration-300 transform lg:transform-none shadow-[14px_0_30px_-16px_rgba(0,0,0,0.35)] border-r border-[color:color-mix(in_srgb,var(--color-outline-variant)_26%,transparent)] ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -108,7 +108,7 @@ const MobileTeacherSidebar = () => {
         <nav className="space-y-6 px-4">
           {menuGroups.map((group, idx) => (
             <div key={idx}>
-              <h3 className="text-[10px] font-semibold text-[#636656] uppercase tracking-[0.09em] mb-3">
+              <h3 className="text-[10px] font-semibold text-[var(--color-on-surface-variant)] uppercase tracking-[0.09em] mb-3">
                 {group.title}
               </h3>
               <ul className="space-y-1">
@@ -119,9 +119,9 @@ const MobileTeacherSidebar = () => {
                       <Link
                         href={item.href}
                         onClick={() => setIsOpen(false)}
-                        className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-[#636656] hover:bg-[#eeefdd] hover:text-[#36392b] transition-colors duration-200 group"
+                        className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-[var(--color-on-surface-variant)] hover:bg-[var(--color-surface-container)] hover:text-[var(--color-on-surface)] transition-colors duration-200 group"
                       >
-                        <Icon className="w-5 h-5 group-hover:text-[#5a685a]" />
+                        <Icon className="w-5 h-5 group-hover:text-[var(--color-primary)]" />
                         <span className="text-sm font-medium">{item.label}</span>
                       </Link>
                     </li>

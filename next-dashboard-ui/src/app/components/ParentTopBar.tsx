@@ -247,7 +247,7 @@ const ParentTopBar = () => {
                 </Link>
                 <button
                   onClick={signOut}
-                  className="w-full text-left px-4 py-3 text-sm text-[#3a3927] hover:bg-[#be2d06] hover:text-white flex items-center gap-3 transition-colors"
+                  className="w-full text-left px-4 py-3 text-sm text-[var(--color-on-surface)] hover:bg-[#be2d06] hover:text-white flex items-center gap-3 transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
                   Logout

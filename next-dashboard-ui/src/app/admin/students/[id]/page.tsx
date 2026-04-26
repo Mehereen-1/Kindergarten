@@ -22,6 +22,71 @@ type StudentProfile = {
   } | null;
   academicYear?: string;
   rollNo?: string;
+  historyTimeline?: Array<{
+    _id: string;
+    academicYear: string;
+    rollNo?: string;
+    status?: string;
+    promotionStatus?: string;
+    promotedAt?: string | null;
+    remarks?: string;
+    classInfo?: {
+      _id?: string;
+      name?: string;
+      classId?: string;
+      grade?: string;
+    } | null;
+    promotedFromClass?: {
+      _id?: string;
+      name?: string;
+      classId?: string;
+      grade?: string;
+    } | null;
+  }>;
+  resultSnapshots?: Array<{
+    _id: string;
+    examCycle?: {
+      examName?: string;
+      academicYear?: string;
+      termName?: string;
+      examType?: string;
+    } | null;
+    percentage?: number;
+    gpa?: number | null;
+    overallGrade?: string;
+    classRank?: number | null;
+    classTotal?: number | null;
+    promotionStatus?: string | null;
+    publishedAt?: string | null;
+    subjectCount?: number;
+  }>;
+  attendanceByYear?: Array<{
+    year: string;
+    total: number;
+    present: number;
+    absent: number;
+    late: number;
+    attendanceRate: number;
+  }>;
+  activityHighlights?: Array<{
+    _id: string;
+    performanceLevel?: string;
+    remarks?: string;
+    activity?: {
+      title?: string;
+      subject?: string;
+      date?: string;
+    } | null;
+    createdAt?: string | null;
+  }>;
+  eventTimeline?: Array<{
+    _id: string;
+    eventType: string;
+    title: string;
+    summary?: string;
+    academicYear?: string;
+    occurredAt?: string | null;
+  }>;
 };
 
 type ClassOption = {
@@ -183,47 +248,182 @@ export default function AdminStudentProfilePage() {
         ) : !student ? (
           <div className="text-center py-10 text-gray-500">Student not found.</div>
         ) : (
-          <div className="bg-[#fffdf6] border border-[#d6d2b5] rounded-xl p-5 md:p-6 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input label="Name" value={form.name} onChange={(v) => setForm((prev) => ({ ...prev, name: v }))} />
-            <Input label="Email" value={form.email} onChange={(v) => setForm((prev) => ({ ...prev, email: v }))} />
-            <Input label="Phone" value={form.phone} onChange={(v) => setForm((prev) => ({ ...prev, phone: v }))} />
-            <Input label="Address" value={form.address} onChange={(v) => setForm((prev) => ({ ...prev, address: v }))} />
-            <Input label="Blood Group" value={form.bloodGroup} onChange={(v) => setForm((prev) => ({ ...prev, bloodGroup: v }))} />
-            <Input label="Date of Birth" type="date" value={form.birthday} onChange={(v) => setForm((prev) => ({ ...prev, birthday: v }))} />
-            <Select
-              label="Gender"
-              value={form.sex}
-              options={["", "male", "female"]}
-              onChange={(v) => setForm((prev) => ({ ...prev, sex: v }))}
-            />
-            <Select
-              label="Class"
-              value={form.classId}
-              options={["", ...classes.map((c) => c._id)]}
-              optionLabel={(value) => {
-                if (!value) return "Select class";
-                const cls = classes.find((c) => c._id === value);
-                return cls ? `${cls.name} (${cls.classId || '-'})` : value;
-              }}
-              onChange={(v) => setForm((prev) => ({ ...prev, classId: v }))}
-            />
-            <Input label="Roll No" value={form.rollNo} onChange={(v) => setForm((prev) => ({ ...prev, rollNo: v }))} />
-            <Select
-              label="Academic Year"
-              value={form.academicYear}
-              options={yearOptions}
-              onChange={(v) => setForm((prev) => ({ ...prev, academicYear: v }))}
-            />
+          <div className="space-y-5">
+            <div className="bg-[#fffdf6] border border-[#d6d2b5] rounded-xl p-5 md:p-6 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input label="Name" value={form.name} onChange={(v) => setForm((prev) => ({ ...prev, name: v }))} />
+              <Input label="Email" value={form.email} onChange={(v) => setForm((prev) => ({ ...prev, email: v }))} />
+              <Input label="Phone" value={form.phone} onChange={(v) => setForm((prev) => ({ ...prev, phone: v }))} />
+              <Input label="Address" value={form.address} onChange={(v) => setForm((prev) => ({ ...prev, address: v }))} />
+              <Input label="Blood Group" value={form.bloodGroup} onChange={(v) => setForm((prev) => ({ ...prev, bloodGroup: v }))} />
+              <Input label="Date of Birth" type="date" value={form.birthday} onChange={(v) => setForm((prev) => ({ ...prev, birthday: v }))} />
+              <Select
+                label="Gender"
+                value={form.sex}
+                options={["", "male", "female"]}
+                onChange={(v) => setForm((prev) => ({ ...prev, sex: v }))}
+              />
+              <Select
+                label="Class"
+                value={form.classId}
+                options={["", ...classes.map((c) => c._id)]}
+                optionLabel={(value) => {
+                  if (!value) return "Select class";
+                  const cls = classes.find((c) => c._id === value);
+                  return cls ? `${cls.name} (${cls.classId || '-'})` : value;
+                }}
+                onChange={(v) => setForm((prev) => ({ ...prev, classId: v }))}
+              />
+              <Input label="Roll No" value={form.rollNo} onChange={(v) => setForm((prev) => ({ ...prev, rollNo: v }))} />
+              <Select
+                label="Academic Year"
+                value={form.academicYear}
+                options={yearOptions}
+                onChange={(v) => setForm((prev) => ({ ...prev, academicYear: v }))}
+              />
 
-            <div className="md:col-span-2 pt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving}
-                className="px-5 py-2.5 rounded-lg bg-[#5f6843] text-white text-sm font-semibold hover:bg-[#4f5838] disabled:opacity-50"
-              >
-                {saving ? "Saving..." : "Save Student Profile"}
-              </button>
+              <div className="md:col-span-2 pt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="px-5 py-2.5 rounded-lg bg-[#5f6843] text-white text-sm font-semibold hover:bg-[#4f5838] disabled:opacity-50"
+                >
+                  {saving ? "Saving..." : "Save Student Profile"}
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-[#fffdf6] border border-[#d6d2b5] rounded-xl p-5 md:p-6 shadow-sm">
+              <h2 className="text-lg font-black text-[#3a3927] mb-3">Academic Timeline</h2>
+              {Array.isArray(student.historyTimeline) && student.historyTimeline.length ? (
+                <div className="space-y-3">
+                  {student.historyTimeline.map((entry) => (
+                    <div
+                      key={entry._id}
+                      className="rounded-lg border border-[#ddd8b8] bg-[#fefade] px-4 py-3 flex flex-col gap-2"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-semibold text-[#3a3927]">
+                          {entry.academicYear} • {entry.classInfo?.name || '-'} ({entry.classInfo?.classId || '-'})
+                        </p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[#5f6843]">
+                          {entry.promotionStatus || 'manual'}
+                        </p>
+                      </div>
+                      <div className="text-sm text-[#5b6146] flex flex-wrap items-center gap-x-4 gap-y-1">
+                        <span>Grade: {entry.classInfo?.grade || '-'}</span>
+                        <span>Roll: {entry.rollNo || '-'}</span>
+                        <span>Status: {entry.status || '-'}</span>
+                        {entry.promotedFromClass?.name && (
+                          <span>
+                            From: {entry.promotedFromClass.name} ({entry.promotedFromClass.classId || '-'})
+                          </span>
+                        )}
+                      </div>
+                      {entry.remarks && <p className="text-xs text-[#6d7358]">Notes: {entry.remarks}</p>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-[#5b6146]">No academic history found for this student yet.</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <div className="bg-[#fffdf6] border border-[#d6d2b5] rounded-xl p-5 md:p-6 shadow-sm">
+                <h2 className="text-lg font-black text-[#3a3927] mb-3">Result Snapshots</h2>
+                {Array.isArray(student.resultSnapshots) && student.resultSnapshots.length ? (
+                  <div className="space-y-3">
+                    {student.resultSnapshots.slice(0, 8).map((result) => (
+                      <div key={result._id} className="rounded-lg border border-[#ddd8b8] bg-[#fefade] px-4 py-3">
+                        <p className="font-semibold text-[#3a3927]">
+                          {result.examCycle?.examName || 'Exam'} • {result.examCycle?.academicYear || '-'}
+                        </p>
+                        <p className="text-xs text-[#6d7358] mt-0.5">
+                          {result.examCycle?.termName || '-'} • {result.examCycle?.examType || '-'} • Subjects: {result.subjectCount || 0}
+                        </p>
+                        <div className="mt-2 text-sm text-[#5b6146] flex flex-wrap items-center gap-x-4 gap-y-1">
+                          <span>Score: {typeof result.percentage === 'number' ? `${result.percentage}%` : '-'}</span>
+                          <span>GPA: {result.gpa ?? '-'}</span>
+                          <span>Grade: {result.overallGrade || '-'}</span>
+                          <span>Rank: {result.classRank ?? '-'} / {result.classTotal ?? '-'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#5b6146]">No result summaries found.</p>
+                )}
+              </div>
+
+              <div className="bg-[#fffdf6] border border-[#d6d2b5] rounded-xl p-5 md:p-6 shadow-sm">
+                <h2 className="text-lg font-black text-[#3a3927] mb-3">Attendance By Year</h2>
+                {Array.isArray(student.attendanceByYear) && student.attendanceByYear.length ? (
+                  <div className="space-y-3">
+                    {student.attendanceByYear.map((row) => (
+                      <div key={row.year} className="rounded-lg border border-[#ddd8b8] bg-[#fefade] px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-semibold text-[#3a3927]">{row.year}</p>
+                          <p className="text-xs font-semibold text-[#5f6843]">Attendance: {row.attendanceRate}%</p>
+                        </div>
+                        <div className="mt-2 text-sm text-[#5b6146] flex flex-wrap items-center gap-x-4 gap-y-1">
+                          <span>Total: {row.total}</span>
+                          <span>Present: {row.present}</span>
+                          <span>Late: {row.late}</span>
+                          <span>Absent: {row.absent}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#5b6146]">No attendance records found.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <div className="bg-[#fffdf6] border border-[#d6d2b5] rounded-xl p-5 md:p-6 shadow-sm">
+                <h2 className="text-lg font-black text-[#3a3927] mb-3">Activity Highlights</h2>
+                {Array.isArray(student.activityHighlights) && student.activityHighlights.length ? (
+                  <div className="space-y-3">
+                    {student.activityHighlights.slice(0, 10).map((row) => (
+                      <div key={row._id} className="rounded-lg border border-[#ddd8b8] bg-[#fefade] px-4 py-3">
+                        <p className="font-semibold text-[#3a3927]">{row.activity?.title || 'Activity'}</p>
+                        <p className="text-xs text-[#6d7358] mt-0.5">
+                          {row.activity?.subject || '-'} • {row.activity?.date ? new Date(row.activity.date).toLocaleDateString() : '-'}
+                        </p>
+                        <p className="text-sm text-[#5b6146] mt-2">Performance: {row.performanceLevel || '-'}</p>
+                        {row.remarks && <p className="text-xs text-[#6d7358] mt-1">Remarks: {row.remarks}</p>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#5b6146]">No activity performance data found.</p>
+                )}
+              </div>
+
+              <div className="bg-[#fffdf6] border border-[#d6d2b5] rounded-xl p-5 md:p-6 shadow-sm">
+                <h2 className="text-lg font-black text-[#3a3927] mb-3">Event Timeline</h2>
+                {Array.isArray(student.eventTimeline) && student.eventTimeline.length ? (
+                  <div className="space-y-3">
+                    {student.eventTimeline.slice(0, 12).map((event) => (
+                      <div key={event._id} className="rounded-lg border border-[#ddd8b8] bg-[#fefade] px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-semibold text-[#3a3927]">{event.title}</p>
+                          <p className="text-[11px] uppercase tracking-wide text-[#5f6843]">{event.eventType}</p>
+                        </div>
+                        <p className="text-xs text-[#6d7358] mt-0.5">
+                          {event.occurredAt ? new Date(event.occurredAt).toLocaleDateString() : '-'}
+                          {event.academicYear ? ` • ${event.academicYear}` : ''}
+                        </p>
+                        {event.summary && <p className="text-sm text-[#5b6146] mt-2">{event.summary}</p>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#5b6146]">No timeline events yet.</p>
+                )}
+              </div>
             </div>
           </div>
         )}

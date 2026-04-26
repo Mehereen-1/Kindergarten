@@ -10,54 +10,73 @@ import {
 } from 'react';
 
 export type SiteTheme = 'classic' | 'ocean' | 'sunrise';
+export type ColorMode = 'light' | 'dark';
 
 type ThemeContextValue = {
   theme: SiteTheme;
+  colorMode: ColorMode;
   setTheme: (theme: SiteTheme) => void;
+  setColorMode: (mode: ColorMode) => void;
+  toggleColorMode: () => void;
 };
 
-const STORAGE_KEY = 'site-theme';
+const THEME_STORAGE_KEY = 'site-theme';
+const MODE_STORAGE_KEY = 'site-color-mode';
 const DEFAULT_THEME: SiteTheme = 'classic';
+const DEFAULT_MODE: ColorMode = 'light';
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
-function applyTheme(theme: SiteTheme) {
+function applyTheme(theme: SiteTheme, mode: ColorMode) {
   document.documentElement.setAttribute('data-site-theme', theme);
+  document.documentElement.setAttribute('data-color-mode', mode);
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<SiteTheme>(DEFAULT_THEME);
+  const [colorMode, setColorMode] = useState<ColorMode>(DEFAULT_MODE);
 
   useEffect(() => {
+    let resolvedTheme: SiteTheme = DEFAULT_THEME;
+    let resolvedMode: ColorMode = DEFAULT_MODE;
+
     try {
-      const saved = localStorage.getItem(STORAGE_KEY) as SiteTheme | null;
+      const saved = localStorage.getItem(THEME_STORAGE_KEY) as SiteTheme | null;
       if (saved === 'classic' || saved === 'ocean' || saved === 'sunrise') {
-        setTheme(saved);
-        applyTheme(saved);
-        return;
+        resolvedTheme = saved;
+      }
+      const savedMode = localStorage.getItem(MODE_STORAGE_KEY) as ColorMode | null;
+      if (savedMode === 'light' || savedMode === 'dark') {
+        resolvedMode = savedMode;
       }
     } catch {
       // Ignore localStorage read errors.
     }
 
-    applyTheme(DEFAULT_THEME);
+    setTheme(resolvedTheme);
+    setColorMode(resolvedMode);
+    applyTheme(resolvedTheme, resolvedMode);
   }, []);
 
   useEffect(() => {
-    applyTheme(theme);
+    applyTheme(theme, colorMode);
     try {
-      localStorage.setItem(STORAGE_KEY, theme);
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+      localStorage.setItem(MODE_STORAGE_KEY, colorMode);
     } catch {
       // Ignore localStorage write errors.
     }
-  }, [theme]);
+  }, [theme, colorMode]);
 
   const value = useMemo(
     () => ({
       theme,
+      colorMode,
       setTheme,
+      setColorMode,
+      toggleColorMode: () => setColorMode((prev) => (prev === 'light' ? 'dark' : 'light')),
     }),
-    [theme]
+    [theme, colorMode]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

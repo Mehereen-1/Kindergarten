@@ -48,22 +48,8 @@ export default function ProfileView({
   const [canEdit, setCanEdit] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+  const isStudentProfile = profileType === 'student' || Boolean(childId);
   const isParentTheme = theme === 'parent';
-  const colors = {
-    spinnerTrack: isParentTheme ? 'border-[#e3dfc0]' : 'border-blue-200',
-    spinnerLead: isParentTheme ? 'border-t-[#5f6843]' : 'border-t-blue-600',
-    header: isParentTheme ? 'from-[#5f6843] to-[#6d7750]' : 'from-blue-500 to-blue-600',
-    headerText: isParentTheme ? 'text-[#eef3de]' : 'text-blue-100',
-    headerBtn: isParentTheme ? 'bg-[#eef3de]/25 hover:bg-[#eef3de]/35' : 'bg-white/20 hover:bg-white/30',
-    card: isParentTheme ? 'bg-[#fefcf5] border border-[#d6d2b5]/70 shadow-sm' : 'bg-white shadow',
-    label: isParentTheme ? 'text-[#5a6142]' : 'text-gray-700',
-    value: isParentTheme ? 'text-[#3a3927]' : 'text-gray-900',
-    inputBorder: isParentTheme ? 'border-[#c9c49f]' : 'border-gray-300',
-    inputFocus: isParentTheme ? 'focus:ring-[#5f6843]' : 'focus:ring-blue-500',
-    divider: isParentTheme ? 'border-[#e2ddbf]' : 'border-gray-200',
-    saveBtn: isParentTheme ? 'bg-[#5f6843] hover:bg-[#4f5838] disabled:bg-[#8d9573]' : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400',
-    cancelBtn: isParentTheme ? 'bg-[#ede9c8] hover:bg-[#e3dfbd] text-[#3a3927]' : 'bg-gray-200 hover:bg-gray-300 text-gray-900',
-  };
 
   const fetchProfile = async () => {
     try {
@@ -121,9 +107,10 @@ export default function ProfileView({
     if (!editData?.name?.trim()) {
       errors.name = 'Name is required';
     }
-    if (!editData?.email?.trim()) {
+    const emailValue = editData?.email?.trim() || '';
+    if (!isStudentProfile && !emailValue) {
       errors.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editData.email)) {
+    } else if (emailValue && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
       errors.email = 'Invalid email format';
     }
     if (editData?.phone && !/^\d{10,}$/.test(editData.phone.replace(/\D/g, ''))) {
@@ -185,7 +172,7 @@ export default function ProfileView({
     return (
       <div className="flex items-center justify-center py-12">
         <div className="animate-spin">
-          <div className={`w-8 h-8 border-4 ${colors.spinnerTrack} ${colors.spinnerLead} rounded-full`}></div>
+          <div className="w-8 h-8 border-4 border-[color:color-mix(in_srgb,var(--color-outline-variant)_24%,transparent)] border-t-[var(--color-primary)] rounded-full"></div>
         </div>
       </div>
     );
@@ -193,8 +180,8 @@ export default function ProfileView({
 
   if (!profile) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-700">Profile not found</p>
+      <div className="rounded-xl border border-red-300/60 bg-red-50/60 p-4">
+        <p className="text-red-700">Profile not found.</p>
       </div>
     );
   }
@@ -202,10 +189,10 @@ export default function ProfileView({
   const displayName = profile.name || 'Profile';
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-4xl mx-auto">
       {/* Error Message */}
       {error && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex gap-3">
+        <div className="mb-6 rounded-xl border border-red-300/60 bg-red-50/70 p-4 flex gap-3">
           <AlertCircle className="text-red-600 flex-shrink-0" size={20} />
           <div>
             <h3 className="font-semibold text-red-900">Error</h3>
@@ -215,21 +202,24 @@ export default function ProfileView({
       )}
 
       {/* Profile Header */}
-      <div className={`bg-gradient-to-r ${colors.header} rounded-lg p-8 mb-6 text-white`}>
+      <div className="rounded-2xl p-6 md:p-8 mb-6 border border-[color:color-mix(in_srgb,var(--color-outline-variant)_24%,transparent)] bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-dim)] text-white shadow-[0_16px_36px_rgba(0,0,0,0.22)]">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-3xl font-bold mb-2">{displayName}</h1>
-            <p className={colors.headerText}>{profile.email}</p>
+            <h1 className="text-3xl font-black mb-2">{displayName}</h1>
+            <p className="text-white/85 break-all">{profile.email || 'No email set'}</p>
             {profile.role && (
-              <p className={`${colors.headerText} capitalize mt-1`}>
+              <p className="text-white/85 capitalize mt-1">
                 Role: <strong>{profile.role}</strong>
               </p>
+            )}
+            {isStudentProfile && (
+              <p className="text-white/85 mt-1">Student Profile</p>
             )}
           </div>
           {canEdit && (
             <button
               onClick={() => setIsEditing(!isEditing)}
-              className={`${colors.headerBtn} text-white px-4 py-2 rounded-lg flex items-center gap-2 transition`}
+              className="bg-white/18 hover:bg-white/30 text-white px-4 py-2 rounded-xl flex items-center gap-2 transition"
             >
               {isEditing ? (
                 <>
@@ -248,14 +238,12 @@ export default function ProfileView({
       </div>
 
       {/* Profile Form */}
-      <div className={`${colors.card} rounded-lg p-8 space-y-6`}>
-        {/* Basic Information */}
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Basic Information</h2>
-          <div className="space-y-4">
-            {/* Name */}
+      <div className="rounded-2xl border border-[color:color-mix(in_srgb,var(--color-outline-variant)_24%,transparent)] bg-[var(--color-surface-low)] p-6 md:p-8 space-y-6 shadow-[0_12px_34px_rgba(0,0,0,0.14)]">
+        <section>
+          <h2 className="text-xl font-black text-[var(--color-on-surface)] mb-4">Basic Information</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className={`block text-sm font-medium ${colors.label} mb-2`}>
+              <label className="block text-sm font-semibold text-[var(--color-on-surface-variant)] mb-2">
                 Full Name
               </label>
               {isEditing ? (
@@ -264,22 +252,19 @@ export default function ProfileView({
                     type="text"
                     value={editData?.name || ''}
                     onChange={(e) => handleEditChange('name', e.target.value)}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 ${colors.inputFocus} focus:border-transparent ${
-                      fieldErrors.name ? 'border-red-500' : colors.inputBorder
+                    className={`w-full px-4 py-2.5 rounded-xl border bg-[var(--color-surface)] text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
+                      fieldErrors.name ? 'border-red-500' : 'border-[color:color-mix(in_srgb,var(--color-outline-variant)_30%,transparent)]'
                     }`}
                   />
-                  {fieldErrors.name && (
-                    <p className="text-red-600 text-sm mt-1">{fieldErrors.name}</p>
-                  )}
+                  {fieldErrors.name && <p className="text-red-600 text-sm mt-1">{fieldErrors.name}</p>}
                 </div>
               ) : (
-                <p className={`${colors.value} font-medium`}>{profile.name}</p>
+                <p className="text-[var(--color-on-surface)] font-semibold">{profile.name || '-'}</p>
               )}
             </div>
 
-            {/* Email */}
             <div>
-              <label className={`block text-sm font-medium ${colors.label} mb-2`}>
+              <label className="block text-sm font-semibold text-[var(--color-on-surface-variant)] mb-2">
                 Email Address
               </label>
               {isEditing ? (
@@ -288,22 +273,20 @@ export default function ProfileView({
                     type="email"
                     value={editData?.email || ''}
                     onChange={(e) => handleEditChange('email', e.target.value)}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 ${colors.inputFocus} focus:border-transparent ${
-                      fieldErrors.email ? 'border-red-500' : colors.inputBorder
+                    className={`w-full px-4 py-2.5 rounded-xl border bg-[var(--color-surface)] text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
+                      fieldErrors.email ? 'border-red-500' : 'border-[color:color-mix(in_srgb,var(--color-outline-variant)_30%,transparent)]'
                     }`}
+                    placeholder={isStudentProfile ? 'Optional email' : 'example@email.com'}
                   />
-                  {fieldErrors.email && (
-                    <p className="text-red-600 text-sm mt-1">{fieldErrors.email}</p>
-                  )}
+                  {fieldErrors.email && <p className="text-red-600 text-sm mt-1">{fieldErrors.email}</p>}
                 </div>
               ) : (
-                <p className={`${colors.value} font-medium`}>{profile.email}</p>
+                <p className="text-[var(--color-on-surface)] font-semibold break-all">{profile.email || '-'}</p>
               )}
             </div>
 
-            {/* Phone */}
             <div>
-              <label className={`block text-sm font-medium ${colors.label} mb-2`}>
+              <label className="block text-sm font-semibold text-[var(--color-on-surface-variant)] mb-2">
                 Phone Number
               </label>
               {isEditing ? (
@@ -313,48 +296,43 @@ export default function ProfileView({
                     value={editData?.phone || ''}
                     onChange={(e) => handleEditChange('phone', e.target.value)}
                     placeholder="+1 (555) 000-0000"
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 ${colors.inputFocus} focus:border-transparent ${
-                      fieldErrors.phone ? 'border-red-500' : colors.inputBorder
+                    className={`w-full px-4 py-2.5 rounded-xl border bg-[var(--color-surface)] text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
+                      fieldErrors.phone ? 'border-red-500' : 'border-[color:color-mix(in_srgb,var(--color-outline-variant)_30%,transparent)]'
                     }`}
                   />
-                  {fieldErrors.phone && (
-                    <p className="text-red-600 text-sm mt-1">{fieldErrors.phone}</p>
-                  )}
+                  {fieldErrors.phone && <p className="text-red-600 text-sm mt-1">{fieldErrors.phone}</p>}
                 </div>
               ) : (
-                <p className={`${colors.value} font-medium`}>{profile.phone || '-'}</p>
+                <p className="text-[var(--color-on-surface)] font-semibold">{profile.phone || '-'}</p>
               )}
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Personal Details */}
-        <div className={`border-t ${colors.divider} pt-6`}>
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Personal Details</h2>
+        <section className="border-t border-[color:color-mix(in_srgb,var(--color-outline-variant)_24%,transparent)] pt-6">
+          <h2 className="text-xl font-black text-[var(--color-on-surface)] mb-4">Personal Details</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Sex */}
             <div>
-              <label className={`block text-sm font-medium ${colors.label} mb-2`}>
+              <label className="block text-sm font-semibold text-[var(--color-on-surface-variant)] mb-2">
                 Gender
               </label>
               {isEditing ? (
                 <select
                   value={editData?.sex || ''}
                   onChange={(e) => handleEditChange('sex', e.target.value)}
-                  className={`w-full px-4 py-2 border ${colors.inputBorder} rounded-lg focus:ring-2 ${colors.inputFocus}`}
+                  className="w-full px-4 py-2.5 rounded-xl border border-[color:color-mix(in_srgb,var(--color-outline-variant)_30%,transparent)] bg-[var(--color-surface)] text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                 >
                   <option value="">Select Gender</option>
                   <option value="male">Male</option>
                   <option value="female">Female</option>
                 </select>
               ) : (
-                <p className={`${colors.value} font-medium capitalize`}>{profile.sex || '-'}</p>
+                <p className="text-[var(--color-on-surface)] font-semibold capitalize">{profile.sex || '-'}</p>
               )}
             </div>
 
-            {/* Birthday */}
             <div>
-              <label className={`block text-sm font-medium ${colors.label} mb-2`}>
+              <label className="block text-sm font-semibold text-[var(--color-on-surface-variant)] mb-2">
                 Date of Birth
               </label>
               {isEditing ? (
@@ -362,25 +340,24 @@ export default function ProfileView({
                   type="date"
                   value={editData?.birthday ? editData.birthday.split('T')[0] : ''}
                   onChange={(e) => handleEditChange('birthday', e.target.value)}
-                  className={`w-full px-4 py-2 border ${colors.inputBorder} rounded-lg focus:ring-2 ${colors.inputFocus}`}
+                  className="w-full px-4 py-2.5 rounded-xl border border-[color:color-mix(in_srgb,var(--color-outline-variant)_30%,transparent)] bg-[var(--color-surface)] text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                 />
               ) : (
-                <p className={`${colors.value} font-medium`}>
+                <p className="text-[var(--color-on-surface)] font-semibold">
                   {profile.birthday ? new Date(profile.birthday).toLocaleDateString() : '-'}
                 </p>
               )}
             </div>
 
-            {/* Blood Group */}
             <div>
-              <label className={`block text-sm font-medium ${colors.label} mb-2`}>
+              <label className="block text-sm font-semibold text-[var(--color-on-surface-variant)] mb-2">
                 Blood Group
               </label>
               {isEditing ? (
                 <select
                   value={editData?.bloodGroup || ''}
                   onChange={(e) => handleEditChange('bloodGroup', e.target.value)}
-                  className={`w-full px-4 py-2 border ${colors.inputBorder} rounded-lg focus:ring-2 ${colors.inputFocus}`}
+                  className="w-full px-4 py-2.5 rounded-xl border border-[color:color-mix(in_srgb,var(--color-outline-variant)_30%,transparent)] bg-[var(--color-surface)] text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                 >
                   <option value="">Select Blood Group</option>
                   <option value="A+">A+</option>
@@ -393,37 +370,36 @@ export default function ProfileView({
                   <option value="O-">O-</option>
                 </select>
               ) : (
-                <p className={`${colors.value} font-medium`}>{profile.bloodGroup || '-'}</p>
+                <p className="text-[var(--color-on-surface)] font-semibold">{profile.bloodGroup || '-'}</p>
               )}
             </div>
-
-            {/* Student Grade (read-only) */}
-            {profile.grade && (
-              <div>
-                <label className={`block text-sm font-medium ${colors.label} mb-2`}>
-                  Grade
-                </label>
-                <p className={`${colors.value} font-medium`}>{profile.grade}</p>
-              </div>
-            )}
-
-            {/* Student Roll (read-only) */}
-            {profile.roll && (
-              <div>
-                <label className={`block text-sm font-medium ${colors.label} mb-2`}>
-                  Roll Number
-                </label>
-                <p className={`${colors.value} font-medium`}>{profile.roll}</p>
-              </div>
-            )}
           </div>
-        </div>
+        </section>
 
-        {/* Address */}
-        <div className={`border-t ${colors.divider} pt-6`}>
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Address</h2>
+        {isStudentProfile && (
+          <section className="border-t border-[color:color-mix(in_srgb,var(--color-outline-variant)_24%,transparent)] pt-6">
+            <h2 className="text-xl font-black text-[var(--color-on-surface)] mb-4">Academic Information</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="rounded-xl bg-[var(--color-surface-container)] border border-[color:color-mix(in_srgb,var(--color-outline-variant)_22%,transparent)] p-4">
+                <p className="text-xs uppercase tracking-[0.08em] font-bold text-[var(--color-on-surface-variant)]">Grade</p>
+                <p className="text-xl font-black text-[var(--color-on-surface)] mt-2">{profile.grade || '-'}</p>
+              </div>
+              <div className="rounded-xl bg-[var(--color-surface-container)] border border-[color:color-mix(in_srgb,var(--color-outline-variant)_22%,transparent)] p-4">
+                <p className="text-xs uppercase tracking-[0.08em] font-bold text-[var(--color-on-surface-variant)]">Roll Number</p>
+                <p className="text-xl font-black text-[var(--color-on-surface)] mt-2">{profile.roll || '-'}</p>
+              </div>
+              <div className="rounded-xl bg-[var(--color-surface-container)] border border-[color:color-mix(in_srgb,var(--color-outline-variant)_22%,transparent)] p-4">
+                <p className="text-xs uppercase tracking-[0.08em] font-bold text-[var(--color-on-surface-variant)]">Class</p>
+                <p className="text-xl font-black text-[var(--color-on-surface)] mt-2">{profile.classId || '-'}</p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        <section className="border-t border-[color:color-mix(in_srgb,var(--color-outline-variant)_24%,transparent)] pt-6">
+          <h2 className="text-xl font-black text-[var(--color-on-surface)] mb-4">Address</h2>
           <div>
-            <label className={`block text-sm font-medium ${colors.label} mb-2`}>
+            <label className="block text-sm font-semibold text-[var(--color-on-surface-variant)] mb-2">
               Full Address
             </label>
             {isEditing ? (
@@ -431,18 +407,18 @@ export default function ProfileView({
                 value={editData?.address || ''}
                 onChange={(e) => handleEditChange('address', e.target.value)}
                 rows={3}
-                className={`w-full px-4 py-2 border ${colors.inputBorder} rounded-lg focus:ring-2 ${colors.inputFocus}`}
+                className="w-full px-4 py-2.5 rounded-xl border border-[color:color-mix(in_srgb,var(--color-outline-variant)_30%,transparent)] bg-[var(--color-surface)] text-[var(--color-on-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                 placeholder="Street address, city, state..."
               />
             ) : (
-              <p className={`${colors.value} font-medium`}>{profile.address || '-'}</p>
+              <p className="text-[var(--color-on-surface)] font-semibold">{profile.address || '-'}</p>
             )}
           </div>
-        </div>
+        </section>
 
         {/* Restricted Fields Warning (for parents) */}
-        {isEditing && (profile as any).grade && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3">
+        {isEditing && isParentTheme && isStudentProfile && (
+          <div className="bg-amber-50/90 border border-amber-300/80 rounded-xl p-4 flex gap-3">
             <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={18} />
             <div className="text-sm text-amber-800">
               <p className="font-semibold mb-1">Some fields cannot be edited:</p>
@@ -453,11 +429,11 @@ export default function ProfileView({
 
         {/* Action Buttons */}
         {isEditing && canEdit && (
-          <div className={`border-t ${colors.divider} pt-6 flex gap-3`}>
+          <div className="border-t border-[color:color-mix(in_srgb,var(--color-outline-variant)_24%,transparent)] pt-6 flex gap-3">
             <button
               onClick={handleSave}
               disabled={isSaving}
-              className={`flex-1 ${colors.saveBtn} text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition`}
+              className="flex-1 bg-[var(--color-primary)] hover:bg-[var(--color-primary-dim)] disabled:opacity-60 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition"
             >
               {isSaving ? (
                 <>
@@ -476,7 +452,7 @@ export default function ProfileView({
             <button
               onClick={handleCancel}
               disabled={isSaving}
-              className={`flex-1 ${colors.cancelBtn} font-semibold py-3 px-4 rounded-lg transition`}
+              className="flex-1 bg-[var(--color-surface-container)] hover:bg-[var(--color-surface-highest)] text-[var(--color-on-surface)] font-semibold py-3 px-4 rounded-xl transition"
             >
               Cancel
             </button>

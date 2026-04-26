@@ -226,7 +226,7 @@ const Menu = ({
     <div className="mt-2 text-sm min-w-0">
       {menuItems.map((i) => (
         <div className="flex flex-col gap-2 min-w-0" key={i.title}>
-          <span className="hidden lg:block text-[#7d8460] text-[11px] font-bold tracking-[0.14em] my-4 uppercase">
+          <span className="hidden lg:block text-[var(--color-on-surface-variant)] text-[11px] font-bold tracking-[0.14em] my-4 uppercase">
             {i.title}
           </span>
           {i.items.map((item) => {
@@ -236,11 +236,11 @@ const Menu = ({
                   href={item.href}
                   onClick={onNavigate}
                   key={`${item.label}-${item.href}`}
-                  className={`w-full min-w-0 flex items-center gap-3 text-[#525b3e] py-2.5 px-3 rounded-xl hover:bg-[#e8efd4] hover:text-[#3a3927] transition-colors ${
+                  className={`w-full min-w-0 flex items-center gap-3 text-[var(--color-on-surface-variant)] py-2.5 px-3 rounded-xl hover:bg-[var(--color-surface-container)] hover:text-[var(--color-on-surface)] transition-colors ${
                     compactOnMobile ? "justify-center lg:justify-start" : "justify-start"
                   }`}
                 >
-                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#f2eedc] border border-[#d8d3b3]">
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface)] border border-[color:color-mix(in_srgb,var(--color-outline-variant)_26%,transparent)]">
                     <Image src={item.icon} alt="" width={16} height={16} />
                   </span>
                   <span className={`${compactOnMobile ? "hidden lg:block" : "block"} font-semibold truncate`}>

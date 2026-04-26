@@ -16,17 +16,17 @@ export default function ParentProfilePage() {
   }, [user]);
 
   return (
-    <div className="min-h-screen bg-gray-50 overflow-y-auto">
+    <div className="min-h-screen bg-[var(--parent-main-bg)] overflow-y-auto">
       <ParentTopBar />
-      
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Page Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">My Profile</h1>
-          <p className="text-gray-600 mt-2">View and update your personal information</p>
+
+      <div className="max-w-6xl mx-auto px-4 py-8 lg:py-10">
+        <div className="mb-8 rounded-2xl border border-[color:color-mix(in_srgb,var(--color-outline-variant)_24%,transparent)] bg-[var(--color-surface-low)] p-6 shadow-[0_10px_30px_rgba(0,0,0,0.14)]">
+          <p className="text-xs font-black uppercase tracking-[0.12em] text-[var(--color-on-surface-variant)]">Parent Panel</p>
+          <h1 className="text-3xl font-black text-[var(--color-on-surface)] mt-1">My Profile</h1>
+          <p className="text-[var(--color-on-surface-variant)] mt-2">Review and update your personal details with the same visual style as the rest of your portal.</p>
         </div>
 
-        {userId && <ProfileView userId={userId} />}
+        {userId && <ProfileView userId={userId} theme="parent" />}
       </div>
     </div>
   );

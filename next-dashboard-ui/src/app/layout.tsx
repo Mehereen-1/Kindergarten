@@ -3,6 +3,7 @@ import "./globals.css";
 import { NotificationProvider } from "@/app/providers/NotificationProvider";
 import { ThemeProvider } from "@/app/providers/ThemeProvider";
 import { ToastContainer } from "@/app/components/ToastNotification";
+import ThemeSwitcher from "@/app/components/ThemeSwitcher";
 
 export const metadata: Metadata = {
   title: "Kinder vision",
@@ -20,6 +21,7 @@ export default function RootLayout({
         <ThemeProvider>
           <NotificationProvider>
             <ToastContainer />
+            <ThemeSwitcher />
             {children}
           </NotificationProvider>
         </ThemeProvider>

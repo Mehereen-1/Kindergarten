@@ -49,29 +49,29 @@ export default function ParentChildProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#fef9e8] overflow-y-auto">
+    <div className="min-h-screen bg-[var(--parent-main-bg)] overflow-y-auto">
       <ParentTopBar />
       
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Page Header */}
-        <div className="mb-8">
-          <p className="text-xs font-bold tracking-[0.14em] uppercase text-[#6d7750]">Parent Access</p>
-          <h1 className="text-3xl font-black text-[#3a3927] mt-1">Child&apos;s Profile</h1>
-          <p className="text-[#5b6146] mt-2">View each child&apos;s profile and update basic information only. Academic details are managed by school administration.</p>
+        <div className="mb-8 rounded-2xl border border-[color:color-mix(in_srgb,var(--color-outline-variant)_24%,transparent)] bg-[var(--color-surface-low)] p-6 shadow-[0_10px_30px_rgba(0,0,0,0.14)]">
+          <p className="text-xs font-black tracking-[0.14em] uppercase text-[var(--color-on-surface-variant)]">Parent Access</p>
+          <h1 className="text-3xl font-black text-[var(--color-on-surface)] mt-1">Child&apos;s Profile</h1>
+          <p className="text-[var(--color-on-surface-variant)] mt-2">View each child&apos;s profile and update basic information only. Academic details are managed by school administration.</p>
         </div>
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin">
-              <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full"></div>
+              <div className="w-8 h-8 border-4 border-[color:color-mix(in_srgb,var(--color-outline-variant)_24%,transparent)] border-t-[var(--color-primary)] rounded-full"></div>
             </div>
           </div>
         ) : children.length === 0 ? (
-          <div className="bg-[#fffdf6] rounded-2xl border border-[#d6d2b5] shadow-sm p-8 text-center">
-            <p className="text-[#5b6146] mb-4">No children found in the system.</p>
+          <div className="bg-[var(--color-surface-low)] rounded-2xl border border-[color:color-mix(in_srgb,var(--color-outline-variant)_24%,transparent)] shadow-sm p-8 text-center">
+            <p className="text-[var(--color-on-surface-variant)] mb-4">No children found in the system.</p>
             <Link
               href="/parent/child"
-              className="inline-flex items-center gap-2 text-[#5f6843] hover:text-[#4f5838] font-semibold"
+              className="inline-flex items-center gap-2 text-[var(--color-primary)] hover:text-[var(--color-primary-dim)] font-semibold"
             >
               Manage Children
               <ChevronRight size={18} />
@@ -88,16 +88,16 @@ export default function ParentChildProfilePage() {
                     onClick={() => setSelectedChildId(child._id)}
                     className={`p-4 rounded-2xl border-2 text-left transition shadow-sm ${
                       selectedChildId === child._id
-                        ? 'border-[#5f6843] bg-[#edf3dd]'
-                        : 'border-[#d6d2b5] bg-[#fffdf6] hover:border-[#c6c197]'
+                        ? 'border-[var(--color-primary)] bg-[var(--color-primary-container)]'
+                        : 'border-[color:color-mix(in_srgb,var(--color-outline-variant)_24%,transparent)] bg-[var(--color-surface-low)] hover:border-[color:color-mix(in_srgb,var(--color-outline-variant)_45%,transparent)]'
                     }`}
                   >
-                    <p className="font-semibold text-[#3a3927]">{child.name}</p>
+                    <p className="font-semibold text-[var(--color-on-surface)]">{child.name}</p>
                     {child.grade && (
-                      <p className="text-sm text-[#5b6146]">Grade: {child.grade}</p>
+                      <p className="text-sm text-[var(--color-on-surface-variant)]">Grade: {child.grade}</p>
                     )}
                     {child.roll && (
-                      <p className="text-sm text-[#5b6146]">Roll: {child.roll}</p>
+                      <p className="text-sm text-[var(--color-on-surface-variant)]">Roll: {child.roll}</p>
                     )}
                   </button>
                 ))}

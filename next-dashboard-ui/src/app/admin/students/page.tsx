@@ -31,6 +31,17 @@ type Student = {
   address?: string;
 };
 
+type PromotionPreviewRow = {
+  studentId: string;
+  studentName: string;
+  fromClassName: string;
+  fromRollNo: string;
+  toClassName: string;
+  targetExists: boolean;
+  predictedRollNo: string;
+  action: 'create' | 'update' | 'skip';
+};
+
 const columns = [
   {
     header: "Info",
@@ -84,6 +95,23 @@ function StudentListPageContent() {
   const [selectedClassFilter, setSelectedClassFilter] = useState(classIdParam);
   const [selectedSectionFilter, setSelectedSectionFilter] = useState('all');
   const [loadError, setLoadError] = useState('');
+  const [promotionFromYear, setPromotionFromYear] = useState(academicYearParam);
+  const [promotionToYear, setPromotionToYear] = useState(String(Number.parseInt(academicYearParam, 10) + 1 || new Date().getFullYear() + 1));
+  const [promotionFromClassId, setPromotionFromClassId] = useState('');
+  const [promotionToClassId, setPromotionToClassId] = useState('');
+  const [promotionStatus, setPromotionStatus] = useState<'promoted' | 'retained' | 'transferred' | 'graduated' | 'manual'>('promoted');
+  const [retainRollNo, setRetainRollNo] = useState(true);
+  const [overwriteTarget, setOverwriteTarget] = useState(false);
+  const [promotionRemarks, setPromotionRemarks] = useState('');
+  const [promotionPreview, setPromotionPreview] = useState<PromotionPreviewRow[]>([]);
+  const [promotionSummary, setPromotionSummary] = useState<{
+    totalCandidates: number;
+    createCount: number;
+    updateCount: number;
+    skipCount: number;
+  } | null>(null);
+  const [promotionRunning, setPromotionRunning] = useState(false);
+  const [promotionMessage, setPromotionMessage] = useState('');
 
   const yearOptions = useMemo(() => {
     const current = new Date().getFullYear();
@@ -306,6 +334,135 @@ function StudentListPageContent() {
     }
   };
 
+  const refreshStudents = useCallback(async () => {
+    const response = await fetch(`/api/admin/students?academicYear=${academicYear}`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    const rawStudents = Array.isArray(data?.students) ? data.students : [];
+    const mapped = rawStudents.map((student: any) => ({
+      id: student._id,
+      name: student.name,
+      email: student.email,
+      phone: student.phone,
+      address: student.address,
+      photo: student.profilePic || "/avatar.png",
+      classRefId: student.currentClass?._id || "",
+      classId: student.currentClass?.classId || "",
+      className: student.currentClass?.name || "",
+      grade: student.currentClass?.grade || "",
+      rollNo: student.rollNo || "",
+    }));
+
+    const filtered = classIdParam
+      ? mapped.filter((student: Student) => student.classId === classIdParam || student.classRefId === classIdParam)
+      : mapped;
+
+    setStudents(filtered);
+  }, [academicYear, classIdParam]);
+
+  const handlePreviewPromotion = async () => {
+    if (!promotionToClassId || !promotionFromYear || !promotionToYear) {
+      alert('Select source year, target year, and target class first.');
+      return;
+    }
+    if (!selectedStudentIds.length) {
+      alert('No students in the current filter scope.');
+      return;
+    }
+
+    try {
+      setPromotionRunning(true);
+      setPromotionMessage('');
+      const response = await fetch('/api/admin/students/promote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromAcademicYear: promotionFromYear,
+          toAcademicYear: promotionToYear,
+          fromClassId: promotionFromClassId || undefined,
+          toClassId: promotionToClassId,
+          selectedStudentIds,
+          retainRollNo,
+          overwriteTarget,
+          promotionStatus,
+          remarks: promotionRemarks || undefined,
+          previewOnly: true,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to preview promotion.');
+      }
+
+      setPromotionPreview(Array.isArray(data?.rows) ? data.rows : []);
+      setPromotionSummary(data?.summary || null);
+      setPromotionMessage(`Preview ready for ${data?.summary?.totalCandidates || 0} students.`);
+    } catch (error: any) {
+      alert(error?.message || 'Failed to preview promotion.');
+    } finally {
+      setPromotionRunning(false);
+    }
+  };
+
+  const handleApplyPromotion = async () => {
+    if (!promotionToClassId || !promotionFromYear || !promotionToYear) {
+      alert('Select source year, target year, and target class first.');
+      return;
+    }
+
+    if (!promotionPreview.length) {
+      alert('Run preview first before applying promotion.');
+      return;
+    }
+    if (!selectedStudentIds.length) {
+      alert('No students in the current filter scope.');
+      return;
+    }
+
+    if (!confirm('Apply this promotion now? This will create/update student history for the target year.')) {
+      return;
+    }
+
+    try {
+      setPromotionRunning(true);
+      setPromotionMessage('');
+      const response = await fetch('/api/admin/students/promote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromAcademicYear: promotionFromYear,
+          toAcademicYear: promotionToYear,
+          fromClassId: promotionFromClassId || undefined,
+          toClassId: promotionToClassId,
+          selectedStudentIds,
+          retainRollNo,
+          overwriteTarget,
+          promotionStatus,
+          remarks: promotionRemarks || undefined,
+          previewOnly: false,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to apply promotion.');
+      }
+
+      setPromotionMessage(
+        `Promotion completed. Applied: ${data?.summary?.appliedCount || 0}, Skipped: ${data?.summary?.skippedCount || 0}`
+      );
+      await refreshStudents();
+      setPendingClassChanges({});
+    } catch (error: any) {
+      alert(error?.message || 'Failed to apply promotion.');
+    } finally {
+      setPromotionRunning(false);
+    }
+  };
+
   const renderRow = (item: Student) => (
     <tr
       key={item.id}
@@ -407,6 +564,11 @@ function StudentListPageContent() {
     });
   }, [students, selectedClassFilter, selectedSectionFilter]);
 
+  const selectedStudentIds = useMemo(
+    () => filteredStudents.map((student) => student.id),
+    [filteredStudents]
+  );
+
   return (
     <div className="bg-[#fffdf6] border border-[#d6d2b5]/70 p-4 md:p-5 rounded-2xl flex-1 m-4 mt-0 shadow-sm">
       {/* TOP */}
@@ -491,6 +653,188 @@ function StudentListPageContent() {
           </div>
         </div>
       </div>
+
+      {role === "admin" && (
+        <div className="mt-4 rounded-xl border border-[#d8d2ad] bg-[#fefade] p-4 space-y-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.14em] font-bold text-[#6d7750]">Promotion Manager</p>
+            <h2 className="text-lg font-black text-[#3a3927]">Bulk Class Upgrade With History Preservation</h2>
+            <p className="text-xs text-[#5b6146] mt-1">
+              Promotes filtered students by creating new academic-year history records without overwriting old records.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 xl:grid-cols-6 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5a6142] mb-1">From Year</label>
+              <select
+                value={promotionFromYear}
+                onChange={(event) => setPromotionFromYear(event.target.value)}
+                className="w-full border border-[#c8c39d] bg-white rounded px-2 py-1.5 text-sm text-[#3a3927]"
+              >
+                {yearOptions.map((year) => (
+                  <option key={`from-${year}`} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5a6142] mb-1">To Year</label>
+              <select
+                value={promotionToYear}
+                onChange={(event) => setPromotionToYear(event.target.value)}
+                className="w-full border border-[#c8c39d] bg-white rounded px-2 py-1.5 text-sm text-[#3a3927]"
+              >
+                {yearOptions.map((year) => (
+                  <option key={`to-${year}`} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5a6142] mb-1">From Class (Optional)</label>
+              <select
+                value={promotionFromClassId}
+                onChange={(event) => setPromotionFromClassId(event.target.value)}
+                className="w-full border border-[#c8c39d] bg-white rounded px-2 py-1.5 text-sm text-[#3a3927]"
+              >
+                <option value="">All Classes</option>
+                {classes.map((cls) => (
+                  <option key={`from-class-${cls._id}`} value={cls._id}>
+                    {cls.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5a6142] mb-1">Target Class</label>
+              <select
+                value={promotionToClassId}
+                onChange={(event) => setPromotionToClassId(event.target.value)}
+                className="w-full border border-[#c8c39d] bg-white rounded px-2 py-1.5 text-sm text-[#3a3927]"
+              >
+                <option value="">Select class</option>
+                {classes.map((cls) => (
+                  <option key={`to-class-${cls._id}`} value={cls._id}>
+                    {cls.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5a6142] mb-1">Promotion Status</label>
+              <select
+                value={promotionStatus}
+                onChange={(event) =>
+                  setPromotionStatus(
+                    event.target.value as 'promoted' | 'retained' | 'transferred' | 'graduated' | 'manual'
+                  )
+                }
+                className="w-full border border-[#c8c39d] bg-white rounded px-2 py-1.5 text-sm text-[#3a3927]"
+              >
+                <option value="promoted">Promoted</option>
+                <option value="retained">Retained</option>
+                <option value="transferred">Transferred</option>
+                <option value="graduated">Graduated</option>
+                <option value="manual">Manual</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5a6142] mb-1">Remarks</label>
+              <input
+                value={promotionRemarks}
+                onChange={(event) => setPromotionRemarks(event.target.value)}
+                className="w-full border border-[#c8c39d] bg-white rounded px-2 py-1.5 text-sm text-[#3a3927]"
+                placeholder="Optional note"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4 text-sm text-[#4f553f]">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={retainRollNo}
+                onChange={(event) => setRetainRollNo(event.target.checked)}
+              />
+              Retain existing roll no when possible
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={overwriteTarget}
+                onChange={(event) => setOverwriteTarget(event.target.checked)}
+              />
+              Overwrite existing target-year record
+            </label>
+            <span className="text-xs text-[#6d7358]">Scope: {selectedStudentIds.length} filtered student(s)</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handlePreviewPromotion}
+              disabled={promotionRunning || !promotionToClassId || selectedStudentIds.length === 0}
+              className="px-3 py-1.5 rounded bg-[#5f6843] text-white text-sm font-semibold disabled:opacity-50"
+            >
+              {promotionRunning ? "Working..." : "Preview Promotion"}
+            </button>
+            <button
+              onClick={handleApplyPromotion}
+              disabled={promotionRunning || !promotionPreview.length}
+              className="px-3 py-1.5 rounded bg-[#3a7a4b] text-white text-sm font-semibold disabled:opacity-50"
+            >
+              Apply Promotion
+            </button>
+            {promotionSummary && (
+              <span className="text-xs text-[#4f553f]">
+                Candidates: {promotionSummary.totalCandidates} • Create: {promotionSummary.createCount} • Update: {promotionSummary.updateCount} • Skip: {promotionSummary.skipCount}
+              </span>
+            )}
+          </div>
+
+          {promotionMessage && (
+            <div className="rounded-lg border border-[#b8c59a] bg-[#eef5db] text-[#3f532f] text-sm px-3 py-2">
+              {promotionMessage}
+            </div>
+          )}
+
+          {promotionPreview.length > 0 && (
+            <div className="max-h-56 overflow-auto rounded-lg border border-[#d8d2ad] bg-white">
+              <table className="min-w-full text-xs">
+                <thead className="bg-[#f6f3df] sticky top-0">
+                  <tr className="text-left text-[#5a6142]">
+                    <th className="px-3 py-2">Student</th>
+                    <th className="px-3 py-2">From</th>
+                    <th className="px-3 py-2">To</th>
+                    <th className="px-3 py-2">Predicted Roll</th>
+                    <th className="px-3 py-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {promotionPreview.map((row) => (
+                    <tr key={row.studentId} className="border-t border-[#ece8cc]">
+                      <td className="px-3 py-2 text-[#3a3927]">{row.studentName}</td>
+                      <td className="px-3 py-2 text-[#5b6146]">{row.fromClassName || '-'} ({row.fromRollNo || '-'})</td>
+                      <td className="px-3 py-2 text-[#5b6146]">{row.toClassName || '-'}</td>
+                      <td className="px-3 py-2 text-[#3a3927]">{row.predictedRollNo || '-'}</td>
+                      <td className="px-3 py-2">
+                        <span className={`px-2 py-0.5 rounded-full ${
+                          row.action === 'create'
+                            ? 'bg-[#e6f3dc] text-[#2e6639]'
+                            : row.action === 'update'
+                              ? 'bg-[#fff2cc] text-[#7a5a1f]'
+                              : 'bg-[#f1ece0] text-[#6c6a5e]'
+                        }`}>
+                          {row.action}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {loadError && (
         <div className="mt-4 rounded-lg border border-[#a14a2f]/30 bg-[#f5e7e2] text-[#8b3c25] text-sm px-3 py-2">
           {loadError}
