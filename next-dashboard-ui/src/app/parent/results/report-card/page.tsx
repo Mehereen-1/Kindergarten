@@ -6,6 +6,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import axios from 'axios';
 import ResultCardView from '@/app/components/results/ResultCardView';
+import ParentTopBar from '@/app/components/ParentTopBar';
 
 function ParentReportCardPageContent() {
   const searchParams = useSearchParams();
@@ -44,25 +45,45 @@ function ParentReportCardPageContent() {
   }, [studentId, examCycleId]);
 
   if (loading) {
-    return <div className="p-8 text-center text-slate-500">Loading report card...</div>;
+    return (
+      <>
+        <ParentTopBar />
+        <div className="p-8 text-center text-slate-500">Loading report card...</div>
+      </>
+    );
   }
 
   if (error || !cardData) {
     return (
-      <div className="p-8">
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
-          {error || 'Report card not found'}
+      <>
+        <ParentTopBar />
+        <div className="p-8">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
+            {error || 'Report card not found'}
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
-  return <ResultCardView data={cardData} onPrint={() => window.print()} />;
+  return (
+    <>
+      <ParentTopBar />
+      <ResultCardView data={cardData} onPrint={() => window.print()} />
+    </>
+  );
 }
 
 export default function ParentReportCardPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-slate-500">Loading report card...</div>}>
+    <Suspense
+      fallback={
+        <>
+          <ParentTopBar />
+          <div className="p-8 text-center text-slate-500">Loading report card...</div>
+        </>
+      }
+    >
       <ParentReportCardPageContent />
     </Suspense>
   );

@@ -67,6 +67,40 @@
     --parent-main-bg: #fff1de;
   }
 
+  :root[data-site-theme="contrast-light"] {
+    --color-primary: #0037cc;
+    --color-primary-dim: #002b9b;
+    --color-secondary: #111111;
+    --color-tertiary: #002060;
+    --color-background: #ffffff;
+    --color-surface: #ffffff;
+    --color-surface-low: #ffffff;
+    --color-surface-container: #f1f3f5;
+    --color-surface-highest: #e7ebef;
+    --color-on-surface: #000000;
+    --color-on-surface-variant: #1f2933;
+    --color-outline-variant: #4a5568;
+    --color-primary-container: #dce7ff;
+    --parent-main-bg: #ffffff;
+  }
+
+  :root[data-site-theme="contrast-dark"] {
+    --color-primary: #4f8cff;
+    --color-primary-dim: #2f6fe8;
+    --color-secondary: #1f2937;
+    --color-tertiary: #334155;
+    --color-background: #090f1a;
+    --color-surface: #0d1422;
+    --color-surface-low: #111a2b;
+    --color-surface-container: #182438;
+    --color-surface-highest: #223049;
+    --color-on-surface: #f8fbff;
+    --color-on-surface-variant: #c9d5e6;
+    --color-outline-variant: #6f82a1;
+    --color-primary-container: #1a2f57;
+    --parent-main-bg: #090f1a;
+  }
+
   body {
     @apply bg-slate-50 text-slate-900;
     font-family: "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
@@ -278,6 +312,92 @@
     .teacher-theme .teacher-attendance .tracking-wider,
     .teacher-theme .teacher-attendance .tracking-widest {
       letter-spacing: 0.05em;
+    }
+
+    :root[data-site-theme="contrast-dark"] .teacher-theme .bg-gray-200,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .bg-slate-200 {
+      background-color: color-mix(in srgb, var(--color-outline-variant) 20%, #000000) !important;
+    }
+
+    :root[data-site-theme="contrast-dark"] .teacher-theme .bg-indigo-50,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .bg-indigo-100,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .bg-blue-50,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .bg-blue-100 {
+      background-color: color-mix(in srgb, var(--color-primary-container) 72%, #000000) !important;
+    }
+
+    :root[data-site-theme="contrast-dark"] .teacher-theme [class*="bg-white/"] {
+      background-color: color-mix(in srgb, var(--color-surface-low) 90%, transparent) !important;
+    }
+
+    :root[data-site-theme="contrast-dark"] .teacher-theme [class*="bg-slate-50/"],
+    :root[data-site-theme="contrast-dark"] .teacher-theme [class*="bg-gray-50/"],
+    :root[data-site-theme="contrast-dark"] .teacher-theme [class*="bg-slate-100/"],
+    :root[data-site-theme="contrast-dark"] .teacher-theme [class*="bg-gray-100/"] {
+      background-color: color-mix(in srgb, var(--color-surface-container) 86%, transparent) !important;
+    }
+
+    :root[data-site-theme="contrast-dark"] .teacher-theme [class*="from-white"],
+    :root[data-site-theme="contrast-dark"] .teacher-theme [class*="to-white"] {
+      --tw-gradient-from: var(--color-surface-low) var(--tw-gradient-from-position) !important;
+      --tw-gradient-to: color-mix(in srgb, var(--color-surface-container) 86%, transparent)
+        var(--tw-gradient-to-position) !important;
+      --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+    }
+
+    :root[data-site-theme="contrast-dark"] .teacher-theme .text-slate-700,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .text-slate-600,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .text-gray-700,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .text-gray-600,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .text-slate-500,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .text-gray-500 {
+      color: #b8c7dc !important;
+    }
+
+    :root[data-site-theme="contrast-dark"] .teacher-theme .border,
+    :root[data-site-theme="contrast-dark"] .teacher-theme [class*="border-"] {
+      border-color: color-mix(in srgb, var(--color-outline-variant) 38%, transparent) !important;
+    }
+
+    :root[data-site-theme="contrast-dark"] .teacher-theme .bg-amber-50,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .bg-amber-100,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .bg-amber-200,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .bg-yellow-50,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .bg-yellow-100,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .bg-yellow-200 {
+      background-color: #2b2415 !important;
+    }
+
+    :root[data-site-theme="contrast-dark"] .teacher-theme .text-amber-900,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .text-amber-800,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .text-yellow-900,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .text-yellow-800,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .text-yellow-700 {
+      color: #f4d28a !important;
+    }
+
+    :root[data-site-theme="contrast-dark"] .teacher-theme .border-amber-200,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .border-amber-300,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .border-yellow-200,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .border-yellow-300 {
+      border-color: #5a4a2a !important;
+    }
+
+    :root[data-site-theme="contrast-dark"] .teacher-theme .shadow-sm,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .shadow-md,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .shadow-lg,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .shadow-xl,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .shadow-2xl,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .teacher-attendance .shadow-sm,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .teacher-attendance .shadow-md,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .teacher-attendance .shadow-lg,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .teacher-attendance .shadow-xl,
+    :root[data-site-theme="contrast-dark"] .teacher-theme .teacher-attendance .shadow-2xl {
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4) !important;
+    }
+
+    :root[data-site-theme="contrast-dark"] .teacher-theme .teacher-attendance .text-indigo-100 {
+      color: #d9e8ff !important;
     }
   }
 

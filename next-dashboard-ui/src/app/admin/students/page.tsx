@@ -82,6 +82,7 @@ function StudentListPageContent() {
   const [saving, setSaving] = useState(false);
   const [pendingClassChanges, setPendingClassChanges] = useState<Record<string, string>>({});
   const [savingAllChanges, setSavingAllChanges] = useState(false);
+  const [deletingStudentId, setDeletingStudentId] = useState<string | null>(null);
   const [selectedClassFilter, setSelectedClassFilter] = useState(classIdParam);
   const [selectedSectionFilter, setSelectedSectionFilter] = useState('all');
   const [loadError, setLoadError] = useState('');
@@ -307,6 +308,34 @@ function StudentListPageContent() {
     }
   };
 
+  const handleDeleteStudent = async (student: Student) => {
+    const confirmed = window.confirm(`Delete ${student.name}? This will remove the student from the admin list.`);
+    if (!confirmed) return;
+
+    try {
+      setDeletingStudentId(student.id);
+      const response = await fetch(`/api/admin/students/${encodeURIComponent(student.id)}`, {
+        method: "DELETE",
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to delete student");
+      }
+
+      setStudents((prev) => prev.filter((row) => row.id !== student.id));
+      setPendingClassChanges((prev) => {
+        const next = { ...prev };
+        delete next[student.id];
+        return next;
+      });
+    } catch (error: any) {
+      alert(error?.message || "Failed to delete student");
+    } finally {
+      setDeletingStudentId(null);
+    }
+  };
+
   const renderRow = (item: Student) => (
     <tr
       key={item.id}
@@ -375,10 +404,19 @@ function StudentListPageContent() {
             </button>
           )}
           {role === "admin" && (
-            // <button className="w-7 h-7 flex items-center justify-center rounded-full bg-lamaPurple">
-            //   <Image src="/delete.png" alt="" width={16} height={16} />
-            // </button>
-            <FormModal table="student" type="delete" id={item.id} labelMode="iconText" />
+            <button
+              type="button"
+              onClick={() => void handleDeleteStudent(item)}
+              disabled={deletingStudentId === item.id}
+              className="h-8 px-2 flex items-center gap-1 justify-center rounded-md bg-lamaPurple text-[#1f1f1f] disabled:opacity-50"
+              title="Delete student"
+              aria-label="Delete student"
+            >
+              <Image src="/delete.png" alt="Delete" width={16} height={16} />
+              <span className="text-xs font-medium">
+                {deletingStudentId === item.id ? "Deleting..." : "Delete"}
+              </span>
+            </button>
           )}
         </div>
       </td>

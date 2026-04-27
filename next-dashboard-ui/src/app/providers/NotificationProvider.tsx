@@ -1,34 +1,17 @@
 'use client';
 
 import { ReactNode, useEffect } from 'react';
-import { useNotification } from '@/hooks/useNotification';
-
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
-
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const output = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; i++) {
-    output[i] = rawData.charCodeAt(i);
-  }
-  return output;
-}
+import { addToast } from '@/app/components/ToastNotification';
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const { sendNotification } = useNotification();
-
   useEffect(() => {
-    const DEVICE_REMINDER_KEY = 'device-reminders-enabled';
-
     const getCookie = (name: string): string => {
-      const pair = document.cookie.split('; ').find((r) => r.startsWith(name + '='));
+      const pair = document.cookie.split('; ').find((item) => item.startsWith(`${name}=`));
       return pair ? decodeURIComponent(pair.split('=')[1]) : '';
     };
 
     const role = getCookie('userRole') || 'all';
-    const seenKey = 'seen-notice-ids';
+    const seenKey = `seen-normal-notice-ids-${role}`;
 
     const getSeen = (): Set<string> => {
       try {
@@ -38,112 +21,49 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         return new Set();
       }
     };
-    const setSeen = (set: Set<string>) =>
-      localStorage.setItem(seenKey, JSON.stringify(Array.from(set).slice(-500)));
 
-    // ── 1. Register service worker + subscribe to Web Push ──────────────────
-    const setupPush = async () => {
-      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-      if (!VAPID_PUBLIC_KEY) return;
-
-      const deviceRemindersEnabled = localStorage.getItem(DEVICE_REMINDER_KEY) === 'true';
-      if (!deviceRemindersEnabled) return;
-
+    const setSeen = (set: Set<string>) => {
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js');
-        console.log('[SW] Registered:', reg.scope);
-
-        const permission = Notification.permission === 'granted'
-          ? 'granted'
-          : await Notification.requestPermission();
-
-        if (permission !== 'granted') return;
-        let sub = await reg.pushManager.getSubscription();
-        if (!sub) {
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-          });
-        }
-        const json = sub.toJSON();
-        await fetch('/api/push/subscribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
-        });
-        console.log('[Push] Subscribed and saved');
-      } catch (err) {
-        console.error('[Push] Setup error:', err);
+        localStorage.setItem(seenKey, JSON.stringify(Array.from(set).slice(-500)));
+      } catch {
+        /* ignore storage errors */
       }
     };
 
-    const disablePush = async () => {
-      if (!('serviceWorker' in navigator)) return;
-      try {
-        const reg = await navigator.serviceWorker.ready;
-        const sub = await reg.pushManager.getSubscription();
-        if (!sub) return;
-
-        const endpoint = sub.endpoint;
-        await sub.unsubscribe();
-        await fetch('/api/push/subscribe', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endpoint }),
-        });
-      } catch (err) {
-        console.error('[Push] Disable error:', err);
-      }
-    };
-
-    setupPush();
-
-    const onDeviceReminderSettingChanged = () => {
-      if (localStorage.getItem(DEVICE_REMINDER_KEY) === 'true') {
-        setupPush();
-      } else {
-        disablePush();
-      }
-    };
-
-    window.addEventListener('device-reminder-setting-changed', onDeviceReminderSettingChanged as EventListener);
-
-    // ── 2. Poll for new notices → in-app toast ───────────────────────────────
     const checkNotices = async () => {
       try {
-        const res = await fetch('/api/notices?role=' + role + '&limit=50');
-        const data = await res.json();
-        if (!res.ok) return;
+        const response = await fetch(`/api/notices?role=${role}&limit=50`, { cache: 'no-store' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) return;
+
+        const notices: any[] = Array.isArray(data?.notices) ? data.notices : [];
         const seen = getSeen();
-        const notices: any[] = Array.isArray(data.notices) ? data.notices : [];
+
         for (const notice of notices) {
-          if (!['event-reminder', 'anomaly-alert'].includes(String(notice?.type || ''))) continue;
           const id = String(notice?._id || '');
           if (!id || seen.has(id)) continue;
 
-          const isAnomaly = notice?.type === 'anomaly-alert';
-          sendNotification({
-            title: notice.title || (isAnomaly ? 'Security Alert' : 'Event Reminder'),
-            body: notice.description || (isAnomaly
-              ? 'Anomaly detection has raised a new alert.'
-              : 'You have an upcoming school event.'),
-            tag: (isAnomaly ? 'anomaly-alert-' : 'event-reminder-') + id,
-          });
+          const type = String(notice?.type || 'notice');
+          if (!['notice', 'event-reminder', 'anomaly-alert'].includes(type)) continue;
+
+          addToast(
+            notice?.title || 'Notification',
+            notice?.description || 'You have a new update.',
+            type === 'anomaly-alert' ? 'sound' : 'notification'
+          );
           seen.add(id);
         }
+
         setSeen(seen);
       } catch {
         /* ignore polling errors */
       }
     };
 
-    checkNotices();
-    const timer = setInterval(checkNotices, 30000);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener('device-reminder-setting-changed', onDeviceReminderSettingChanged as EventListener);
-    };
-  }, [sendNotification]);
+    void checkNotices();
+    const timer = window.setInterval(checkNotices, 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   return <>{children}</>;
 }

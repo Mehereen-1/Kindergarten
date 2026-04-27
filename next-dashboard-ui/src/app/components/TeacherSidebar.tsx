@@ -32,7 +32,6 @@ const TeacherSidebar = () => {
       title: "Communication",
       items: [
         { icon: MessageSquare, label: "Messages", href: "/teacher/chat" },
-        { icon: FileText, label: "Notices", href: "/teacher/notices" },
         { icon: ShieldAlert, label: "Sound Alerts", href: "/teacher/security-alerts" },
       ],
     },
@@ -50,10 +49,10 @@ const TeacherSidebar = () => {
   ];
 
   return (
-    <aside className="hidden lg:flex lg:flex-col w-80 bg-[#fafaeb] rounded-r-[2.25rem] sticky top-0 h-screen shadow-[14px_0_30px_-16px_rgba(54,57,43,0.18)]">
+    <aside className="sticky top-0 hidden h-screen w-80 rounded-r-[2.25rem] bg-[var(--color-surface-low)] shadow-[14px_0_30px_-16px_rgba(54,57,43,0.18)] lg:flex lg:flex-col">
       {/* Logo Section */}
       <div className="w-full px-4 pt-4 pb-4 relative overflow-hidden group">
-        <div className="absolute inset-0 bg-[#f4f5e4] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+        <div className="absolute inset-0 bg-[var(--color-surface-container)] opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
 
         <div className="relative z-10">
           <div className="flex items-center justify-center">
@@ -77,7 +76,7 @@ const TeacherSidebar = () => {
           <div key={idx} className="animate-in fade-in slide-in-from-left-5 duration-500" style={{ animationDelay: `${idx * 100}ms` }}>
             {/* Group Title */}
             <div className="mb-4">
-              <h3 className="text-[10px] font-black text-[#636656] uppercase tracking-[0.09em]">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.09em] text-[var(--color-on-surface-variant)]">
                 {group.title}
               </h3>
             </div>
@@ -87,11 +86,11 @@ const TeacherSidebar = () => {
               {group.items.map((item, itemIdx) => {
                 const Icon = item.icon;
                 const colors = [
-                  "text-[#36392b] bg-[#eeefdd]",
-                  "text-[#36392b] bg-[#e8ead5]",
-                  "text-[#36392b] bg-[#f4f5e4]",
-                  "text-[#36392b] bg-[#eeefdd]",
-                  "text-[#36392b] bg-[#e8ead5]",
+                  "text-[var(--color-on-surface)] bg-[var(--color-surface-container)]",
+                  "text-[var(--color-on-surface)] bg-[var(--color-surface-highest)]",
+                  "text-[var(--color-on-surface)] bg-[var(--color-surface-low)]",
+                  "text-[var(--color-on-surface)] bg-[var(--color-surface-container)]",
+                  "text-[var(--color-on-surface)] bg-[var(--color-surface-highest)]",
                 ];
                 const colorClass = colors[itemIdx % colors.length];
 
@@ -99,10 +98,10 @@ const TeacherSidebar = () => {
                   <li key={itemIdx}>
                     <Link
                       href={item.href}
-                      className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-[#636656] hover:${colorClass} transition-all duration-300 group relative overflow-hidden`}
+                      className={`group relative flex items-center gap-3 overflow-hidden rounded-xl px-4 py-2.5 text-[var(--color-on-surface-variant)] transition-all duration-300 hover:${colorClass}`}
                     >
                       {/* Subtle background on hover */}
-                      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 bg-[#eeefdd] rounded-xl"></div>
+                      <div className="absolute inset-0 -z-10 rounded-xl bg-[var(--color-surface-container)] opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
 
                       {/* Icon */}
                       <Icon className="w-5 h-5 group-hover:scale-110 transition-transform duration-300" />
@@ -113,7 +112,7 @@ const TeacherSidebar = () => {
                       </span>
 
                       {/* Right accent line on hover */}
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-[#726246] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      <div className="absolute right-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-[var(--color-primary)] opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
                     </Link>
                   </li>
                 );
@@ -125,13 +124,13 @@ const TeacherSidebar = () => {
 
       {/* Footer Section */}
       <div className="p-6">
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-[#eeefdd] hover:bg-[#e8ead5] transition-all duration-300 cursor-pointer group shadow-[0_8px_20px_rgba(54,57,43,0.06)]">
-          <div className="w-10 h-10 rounded-full bg-[#d7e7d5] flex items-center justify-center text-[#354336] font-bold shadow-sm group-hover:scale-110 transition-transform">
+        <div className="group flex cursor-pointer items-center gap-3 rounded-xl bg-[var(--color-surface-container)] p-3 shadow-[0_8px_20px_rgba(54,57,43,0.06)] transition-all duration-300 hover:bg-[var(--color-surface-highest)]">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--color-primary-container)] font-bold text-[var(--color-on-surface)] shadow-sm transition-transform group-hover:scale-110">
             T
           </div>
           <div>
-            <p className="text-sm font-bold text-[#36392b]">Teacher</p>
-            <p className="text-xs text-[#636656]">Profile</p>
+            <p className="text-sm font-bold text-[var(--color-on-surface)]">Teacher</p>
+            <p className="text-xs text-[var(--color-on-surface-variant)]">Profile</p>
           </div>
         </div>
       </div>

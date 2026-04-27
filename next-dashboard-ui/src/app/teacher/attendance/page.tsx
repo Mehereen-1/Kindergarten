@@ -2653,7 +2653,53 @@ interface CCTVTabProps {
                             aspectRatio: '16/9',
                           }}
                         >
-                          {uploadVideoPreviewUrl ? (
+                          {isVideoProcessing && processedVideoUrl ? (
+                            <>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                key={processedVideoUrl}
+                                src={processedVideoUrl}
+                                alt="Processed CCTV video stream"
+                                className="absolute inset-0 w-full h-full object-contain bg-black"
+                                onError={() => {
+                                  setUploadVideoPreviewError(
+                                    "Could not load the synchronized processed video stream. Check the CCTV backend."
+                                  );
+                                }}
+                              />
+
+                              {/* Detection Count Badge */}
+                              <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-4 py-2 rounded-lg text-sm">
+                                <p className="font-bold">ðŸŽ¯ Detections: {detections.length}</p>
+                                <p className="text-xs">Students: {new Set(detections.map(d => d.student_id)).size}</p>
+                              </div>
+
+                              {liveConfirmationMessage && (
+                                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-green-600/95 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg border border-green-300">
+                                  {liveConfirmationMessage}
+                                </div>
+                              )}
+
+                              {/* Processing Status */}
+                              <div className="absolute bottom-2 left-2 flex items-center gap-2 bg-blue-600 bg-opacity-90 text-white px-3 py-1 rounded-lg text-xs font-semibold">
+                                <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full"></div>
+                                Processing in sync...
+                              </div>
+                              {uploadVideoPreviewError && (
+                                <div className="absolute left-2 right-2 top-12 rounded-lg bg-amber-100/95 px-3 py-2 text-xs font-semibold text-amber-900">
+                                  {uploadVideoPreviewError}
+                                </div>
+                              )}
+                            </>
+                          ) : isVideoProcessing ? (
+                            <div className="w-full h-full flex items-center justify-center text-gray-300">
+                              <div className="text-center">
+                                <div className="mx-auto mb-3 animate-spin h-7 w-7 border-2 border-white border-t-transparent rounded-full"></div>
+                                <p className="text-lg font-semibold">Preparing synchronized stream...</p>
+                                <p className="text-sm">Video will render at backend processing speed.</p>
+                              </div>
+                            </div>
+                          ) : uploadVideoPreviewUrl ? (
                             <>
                               <video
                                 key={uploadVideoPreviewUrl}
@@ -2696,10 +2742,12 @@ interface CCTVTabProps {
                               )}
 
                               {/* Processing Status */}
-                              <div className="absolute bottom-2 left-2 flex items-center gap-2 bg-blue-600 bg-opacity-90 text-white px-3 py-1 rounded-lg text-xs font-semibold">
-                                <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full"></div>
-                                Processing...
-                              </div>
+                              {isVideoProcessing && (
+                                <div className="absolute bottom-2 left-2 flex items-center gap-2 bg-blue-600 bg-opacity-90 text-white px-3 py-1 rounded-lg text-xs font-semibold">
+                                  <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full"></div>
+                                  Processing...
+                                </div>
+                              )}
                               {uploadVideoPreviewError && (
                                 <div className="absolute left-2 right-2 top-12 rounded-lg bg-amber-100/95 px-3 py-2 text-xs font-semibold text-amber-900">
                                   {uploadVideoPreviewError}
@@ -3473,3 +3521,4 @@ export default function AttendancePage() {
     </Suspense>
   );
 }
+

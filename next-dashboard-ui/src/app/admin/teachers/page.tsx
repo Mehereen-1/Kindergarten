@@ -61,6 +61,17 @@ const columns = [
 const TeacherListPage = () => {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loadError, setLoadError] = useState('');
+  const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
+  const [savingTeacher, setSavingTeacher] = useState(false);
+  const [deletingTeacherId, setDeletingTeacherId] = useState<string | null>(null);
+  const [teacherForm, setTeacherForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    teacherId: '',
+    subjects: '',
+  });
 
   const {
     query: searchQuery,
@@ -107,6 +118,97 @@ const TeacherListPage = () => {
     return () => controller.abort();
   }, []);
 
+  const openEditTeacher = (teacher: Teacher) => {
+    setEditingTeacher(teacher);
+    setTeacherForm({
+      name: teacher.name || '',
+      email: teacher.email || '',
+      phone: teacher.phone || '',
+      address: teacher.address || '',
+      teacherId: teacher.teacherId || '',
+      subjects: teacher.subjects?.join(', ') || '',
+    });
+  };
+
+  const closeEditTeacher = () => {
+    setEditingTeacher(null);
+    setTeacherForm({
+      name: '',
+      email: '',
+      phone: '',
+      address: '',
+      teacherId: '',
+      subjects: '',
+    });
+  };
+
+  const handleSaveTeacher = async () => {
+    if (!editingTeacher) return;
+
+    try {
+      setSavingTeacher(true);
+      const response = await fetch(`/api/admin/teachers/${encodeURIComponent(editingTeacher._id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(teacherForm),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to update teacher');
+      }
+
+      const nextSubjects = teacherForm.subjects
+        .split(',')
+        .map((subject) => subject.trim())
+        .filter(Boolean);
+
+      setTeachers((prev) =>
+        prev.map((teacher) =>
+          teacher._id === editingTeacher._id
+            ? {
+                ...teacher,
+                name: teacherForm.name,
+                email: teacherForm.email,
+                phone: teacherForm.phone,
+                address: teacherForm.address,
+                teacherId: teacherForm.teacherId,
+                subjects: nextSubjects,
+              }
+            : teacher
+        )
+      );
+      closeEditTeacher();
+    } catch (error: any) {
+      alert(error?.message || 'Failed to update teacher');
+    } finally {
+      setSavingTeacher(false);
+    }
+  };
+
+  const handleDeleteTeacher = async (teacher: Teacher) => {
+    const confirmed = window.confirm(`Delete ${teacher.name || 'this teacher'}?`);
+    if (!confirmed) return;
+
+    try {
+      setDeletingTeacherId(teacher._id);
+      const response = await fetch(`/api/admin/teachers/${encodeURIComponent(teacher._id)}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to delete teacher');
+      }
+
+      setTeachers((prev) => prev.filter((row) => row._id !== teacher._id));
+    } catch (error: any) {
+      alert(error?.message || 'Failed to delete teacher');
+    } finally {
+      setDeletingTeacherId(null);
+    }
+  };
+
   const renderRow = (item: Teacher) => (
     <tr
       key={item._id}
@@ -143,10 +245,31 @@ const TeacherListPage = () => {
             </button>
           </Link>
           {role === "admin" && (
-            // <button className="w-7 h-7 flex items-center justify-center rounded-full bg-lamaPurple">
-            //   <Image src="/delete.png" alt="" width={16} height={16} />
-            // </button>
-            <FormModal table="teacher" type="delete" id={item._id} labelMode="iconText" />
+            <>
+              <button
+                type="button"
+                onClick={() => openEditTeacher(item)}
+                className="h-8 px-2 flex items-center gap-1 justify-center rounded-md bg-[#f5efd8] text-[#4f4727] border border-[#d8d3b3]"
+                title="Edit teacher"
+                aria-label="Edit teacher"
+              >
+                <Image src="/edit.png" alt="Edit" width={16} height={16} />
+                <span className="text-xs font-semibold">Edit</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteTeacher(item)}
+                disabled={deletingTeacherId === item._id}
+                className="h-8 px-2 flex items-center gap-1 justify-center rounded-md bg-[#fdf0eb] text-[#8b3c25] border border-[#b64f2f]/40 disabled:opacity-50"
+                title="Delete teacher"
+                aria-label="Delete teacher"
+              >
+                <Image src="/delete.png" alt="Delete" width={16} height={16} />
+                <span className="text-xs font-semibold">
+                  {deletingTeacherId === item._id ? 'Deleting...' : 'Delete'}
+                </span>
+              </button>
+            </>
           )}
         </div>
       </td>
@@ -207,8 +330,63 @@ const TeacherListPage = () => {
       <Table columns={columns} renderRow={renderRow} data={filteredTeachers} />
       {/* PAGINATION */}
       <Pagination />
+
+      {editingTeacher && (
+        <div className="fixed inset-0 bg-black/55 z-50 flex items-center justify-center px-4">
+          <div className="bg-[#fffdf6] border border-[#d6d2b5] rounded-xl w-full max-w-lg p-5 shadow-xl">
+            <h2 className="text-lg font-bold text-[#3a3927] mb-4">Edit Teacher</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <EditInput label="Name" value={teacherForm.name} onChange={(value) => setTeacherForm((prev) => ({ ...prev, name: value }))} />
+              <EditInput label="Email" value={teacherForm.email} onChange={(value) => setTeacherForm((prev) => ({ ...prev, email: value }))} />
+              <EditInput label="Phone" value={teacherForm.phone} onChange={(value) => setTeacherForm((prev) => ({ ...prev, phone: value }))} />
+              <EditInput label="Teacher ID" value={teacherForm.teacherId} onChange={(value) => setTeacherForm((prev) => ({ ...prev, teacherId: value }))} />
+              <EditInput label="Subjects" value={teacherForm.subjects} onChange={(value) => setTeacherForm((prev) => ({ ...prev, subjects: value }))} />
+              <EditInput label="Address" value={teacherForm.address} onChange={(value) => setTeacherForm((prev) => ({ ...prev, address: value }))} />
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeEditTeacher}
+                disabled={savingTeacher}
+                className="px-4 py-2 rounded-lg border border-[#c8c39d] text-[#4f4727] hover:bg-[#f8f3e1]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveTeacher()}
+                disabled={savingTeacher}
+                className="px-4 py-2 rounded-lg bg-[#5f6843] text-white font-semibold disabled:opacity-50"
+              >
+                {savingTeacher ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+function EditInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold uppercase tracking-wide text-[#6c7352] mb-1.5">{label}</label>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full border border-[#c8c39d] bg-[#fefade] rounded-lg px-3 py-2 text-sm text-[#3a3927]"
+      />
+    </div>
+  );
+}
 
 export default TeacherListPage;

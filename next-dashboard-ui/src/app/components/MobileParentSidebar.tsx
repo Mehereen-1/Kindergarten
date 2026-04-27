@@ -13,7 +13,6 @@ const MobileParentSidebar = ({ open, onClose }: { open: boolean; onClose: () => 
     { icon: Bell, label: "Events", href: "/parent/events" },
     { icon: Brain, label: "Class Content", href: "/parent/ask-ai" },
     { icon: MessageSquare, label: "Messages", href: "/parent/chat" },
-    { icon: ClipboardList, label: "Notices", href: "/parent/notices" },
     { icon: Settings, label: "Settings", href: "/parent/settings" },
   ];
 

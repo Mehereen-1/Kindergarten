@@ -9,7 +9,12 @@ import {
   useState,
 } from 'react';
 
-export type SiteTheme = 'classic' | 'ocean' | 'sunrise';
+export type SiteTheme =
+  | 'classic'
+  | 'ocean'
+  | 'sunrise'
+  | 'contrast-light'
+  | 'contrast-dark';
 
 type ThemeContextValue = {
   theme: SiteTheme;
@@ -18,6 +23,14 @@ type ThemeContextValue = {
 
 const STORAGE_KEY = 'site-theme';
 const DEFAULT_THEME: SiteTheme = 'classic';
+
+const VALID_THEMES: SiteTheme[] = [
+  'classic',
+  'ocean',
+  'sunrise',
+  'contrast-light',
+  'contrast-dark',
+];
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
@@ -31,7 +44,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY) as SiteTheme | null;
-      if (saved === 'classic' || saved === 'ocean' || saved === 'sunrise') {
+      if (saved && VALID_THEMES.includes(saved)) {
         setTheme(saved);
         applyTheme(saved);
         return;

@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import Notice from '@/lib/models/Notice';
 import User from '@/lib/models/User';
-import PushSubscriptionModel from '@/lib/models/PushSubscription';
 import { sendEmail } from '@/lib/email';
-import { sendPush } from '@/lib/webpush';
 
 const DEFAULT_THRESHOLD = 0.10;
 
@@ -292,49 +290,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const pushPayload = {
-      title: 'Security Alert',
-      body: `${topAlert.title}${location ? ` - ${location}` : ''}`,
-      tag: `anomaly-${createdNotices[0]?._id}`,
-      url: '/admin/security-alerts',
-    };
-
-    const subscriptions = await PushSubscriptionModel.find({
-      userRole: { $in: ['admin', 'teacher'] },
-    }).lean();
-
-    const pushResult = { attempted: subscriptions.length, sent: 0, failed: 0 };
-    for (const subDoc of subscriptions) {
-      const ok = await sendPush(
-        {
-          endpoint: subDoc.endpoint,
-          keys: subDoc.keys,
-        } as any,
-        pushPayload
-      ).catch(async (error) => {
-        if (error?.statusCode === 404 || error?.statusCode === 410) {
-          await PushSubscriptionModel.deleteOne({ endpoint: subDoc.endpoint });
-          return false;
-        }
-        return false;
-      });
-
-      if (ok) {
-        pushResult.sent += 1;
-      } else {
-        pushResult.failed += 1;
-      }
-    }
-
     await Notice.updateMany(
       { _id: { $in: createdNotices.map((notice) => notice._id) } },
       {
         $set: {
           'metadata.emailSent': emailResult.sent,
           'metadata.emailAttempted': emailResult.attempted,
-          'metadata.webSent': pushResult.sent > 0,
-          'metadata.webSentCount': pushResult.sent,
-          'metadata.webAttempted': pushResult.attempted,
+          'metadata.webSent': true,
+          'metadata.webSentCount': createdNotices.length,
+          'metadata.webAttempted': createdNotices.length,
         },
       }
     );
@@ -346,7 +310,7 @@ export async function POST(request: NextRequest) {
       alertsStored: normalized.alerts.length,
       noticeIds: createdNotices.map((notice) => notice._id),
       email: emailResult,
-      push: pushResult,
+      normalNotifications: { stored: createdNotices.length },
     });
   } catch (error: any) {
     return NextResponse.json(

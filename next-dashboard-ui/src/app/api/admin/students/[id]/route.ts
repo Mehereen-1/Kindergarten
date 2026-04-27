@@ -2,6 +2,8 @@ import { connectDB } from '@/lib/mongodb';
 import Student from '@/lib/models/Student';
 import Class from '@/lib/models/Class';
 import StudentClassHistory from '@/lib/models/StudentClassHistory';
+import ParentProfile from '@/lib/models/ParentProfile';
+import FacialDatabase from '@/lib/models/FacialDatabase';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
@@ -103,6 +105,12 @@ export async function DELETE(
     if (!student) {
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
+
+    await Promise.all([
+      StudentClassHistory.deleteMany({ studentId: params.id }),
+      ParentProfile.updateMany({ children: student._id }, { $pull: { children: student._id } }),
+      FacialDatabase.deleteOne({ student_id: params.id }),
+    ]);
     
     return NextResponse.json({ message: 'Student deleted successfully' });
   } catch (error) {

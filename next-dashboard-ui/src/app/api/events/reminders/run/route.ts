@@ -3,9 +3,7 @@ import { connectDB } from '@/lib/mongodb';
 import Event from '@/lib/models/Event';
 import Notice from '@/lib/models/Notice';
 import User from '@/lib/models/User';
-import PushSubscriptionModel from '@/lib/models/PushSubscription';
 import { sendEmail, buildReminderEmail } from '@/lib/email';
-import { sendPush } from '@/lib/webpush';
 
 function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
@@ -25,8 +23,7 @@ async function processEvents(
   events: any[],
   timing: ReminderTiming,
   now: Date,
-  emailResults: string[],
-  pushResults: { sent: number; failed: number }
+  emailResults: string[]
 ) {
   const fallbackCreator = await User.findOne().select('_id').lean();
 
@@ -78,32 +75,7 @@ async function processEvents(
       }
     }
 
-    // 4. Send Web Push to subscribed devices
-    const targetRoles = targetRole === 'all' ? ['admin', 'teacher', 'parent', 'student'] : [targetRole];
-    const pushPayload = {
-      title: timing === 'day-before' ? `Reminder: ${event.title} is tomorrow` : `Today: ${event.title}`,
-      body: event.description || (timing === 'day-before' ? 'Upcoming event at your school.' : 'Event is happening today!'),
-      tag: `event-${event._id}-${timing}`,
-      url: '/list/events',
-    };
-
-    const subscriptions = await PushSubscriptionModel.find({
-      userRole: { $in: targetRoles },
-    }).lean();
-
-    for (const subDoc of subscriptions) {
-      const sub = { endpoint: subDoc.endpoint, keys: subDoc.keys } as any;
-      const ok = await sendPush(sub, pushPayload);
-      if (ok) {
-        pushResults.sent += 1;
-      } else {
-        pushResults.failed += 1;
-        // Clean up expired subscriptions
-        await PushSubscriptionModel.deleteOne({ endpoint: subDoc.endpoint });
-      }
-    }
-
-    // 5. Mark event as reminded
+    // 4. Mark event as reminded. The normal notification is the Notice record above.
     if (timing === 'day-before') {
       event.reminderDayBeforeSentAt = now;
     } else {
@@ -136,10 +108,9 @@ async function runReminderJob(request: NextRequest) {
   });
 
   const emailResults: string[] = [];
-  const pushResults = { sent: 0, failed: 0 };
 
-  await processEvents(dayBeforeEvents, 'day-before', now, emailResults, pushResults);
-  await processEvents(dayOfEvents, 'day-of', now, emailResults, pushResults);
+  await processEvents(dayBeforeEvents, 'day-before', now, emailResults);
+  await processEvents(dayOfEvents, 'day-of', now, emailResults);
 
   return NextResponse.json({
     success: true,
@@ -148,7 +119,9 @@ async function runReminderJob(request: NextRequest) {
     dayBeforeEventsProcessed: dayBeforeEvents.length,
     dayOfEventsProcessed: dayOfEvents.length,
     emailsSent: emailResults,
-    pushNotifications: pushResults,
+    normalNotifications: {
+      stored: dayBeforeEvents.length + dayOfEvents.length,
+    },
   });
 }
 

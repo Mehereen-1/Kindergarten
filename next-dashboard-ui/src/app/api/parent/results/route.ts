@@ -1,6 +1,7 @@
 import { connectDB } from '@/lib/mongodb';
 import ResultSummary from '@/lib/models/ResultSummary';
 import Student from '@/lib/models/Student';
+import '@/lib/models/ExamCycle';
 import '@/lib/models/ResultSummary';
 import { NextRequest, NextResponse } from 'next/server';
 import { extractSessionUser } from '@/lib/auth';

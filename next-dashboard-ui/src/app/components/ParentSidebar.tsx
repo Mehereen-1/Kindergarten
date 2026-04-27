@@ -30,7 +30,6 @@ const ParentSidebar = () => {
       items: [
         { icon: Brain, label: "Class Content", href: "/parent/ask-ai" },
         { icon: Bell, label: "Events", href: "/parent/events" },
-        { icon: ClipboardList, label: "Notices", href: "/parent/notices" },
       ],
     },
     {

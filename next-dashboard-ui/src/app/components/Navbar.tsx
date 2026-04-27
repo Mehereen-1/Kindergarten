@@ -1,19 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Bell, Settings, LogOut, Users, ChevronDown } from 'lucide-react';
+import { Search, Settings, LogOut, Users, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import NormalNotifications from '@/app/components/NormalNotifications';
 
 type AdminProfile = {
   id: string;
   email: string;
-};
-
-type NotificationItem = {
-  id: string;
-  title: string;
-  timestamp: string;
 };
 
 const Navbar = () => {
@@ -21,9 +16,7 @@ const Navbar = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [profileMenu, setProfileMenu] = useState(false);
-  const [notificationMenu, setNotificationMenu] = useState(false);
   const [admin, setAdmin] = useState<AdminProfile | null>(null);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
     let isActive = true;
@@ -52,54 +45,6 @@ const Navbar = () => {
       isActive = false;
     };
   }, []);
-
-  useEffect(() => {
-    let isActive = true;
-
-    const loadNotifications = async () => {
-      try {
-        const response = await fetch('/api/admin/events?role=all', { cache: 'no-store' });
-        if (!response.ok) return;
-
-        const events = await response.json();
-        if (!Array.isArray(events)) return;
-
-        const mapped: NotificationItem[] = events
-          .map((event: any, index: number) => ({
-            id: String(event?._id || event?.id || `${event?.title || 'event'}-${index}`),
-            title: String(event?.title || 'Event update'),
-            timestamp: String(event?.startDate || event?.createdAt || new Date().toISOString()),
-          }))
-          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-          .slice(0, 8);
-
-        if (isActive) {
-          setNotifications(mapped);
-        }
-      } catch {
-        if (isActive) {
-          setNotifications([]);
-        }
-      }
-    };
-
-    void loadNotifications();
-    return () => {
-      isActive = false;
-    };
-  }, []);
-
-  const formatRelativeTime = (value: string) => {
-    const timestamp = new Date(value).getTime();
-    if (Number.isNaN(timestamp)) return '';
-
-    const diffMinutes = Math.max(1, Math.floor((Date.now() - timestamp) / 60000));
-    if (diffMinutes < 60) return `${diffMinutes} min ago`;
-    const diffHours = Math.floor(diffMinutes / 60);
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-  };
 
   const adminDisplayName = useMemo(() => {
     if (!admin?.email) return 'Admin';
@@ -214,43 +159,7 @@ const Navbar = () => {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="relative">
-            <button
-              onClick={() => setNotificationMenu(!notificationMenu)}
-              className="relative flex items-center justify-center w-10 h-10 rounded-full bg-[#eeefdd] text-[#636656] hover:bg-[#5a685a] hover:text-white transition-all hover:scale-105 shadow-sm"
-              title="Notifications"
-            >
-              <Bell className="w-5 h-5" />
-              <span className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center bg-[#ae4025] text-white rounded-full text-xs font-bold shadow-sm">
-                {notifications.length}
-              </span>
-            </button>
-
-            {notificationMenu && (
-              <div className="absolute top-full mt-2 right-0 bg-[#fafaebf2] backdrop-blur-md border border-[#b9bba826] rounded-xl shadow-[0_14px_34px_rgba(54,57,43,0.12)] overflow-hidden z-50 w-72 animate-in fade-in slide-in-from-top-2 duration-200">
-                <div className="px-4 py-3 border-b border-[#b9bba826] bg-[#eeefdd]">
-                  <h3 className="font-semibold text-[#36392b]">Notifications</h3>
-                </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {notifications.length === 0 ? (
-                    <div className="px-4 py-3 text-sm text-[#636656]">No notifications yet</div>
-                  ) : (
-                    notifications.map((item, index) => (
-                      <button
-                        key={item.id}
-                        className={`w-full text-left px-4 py-3 hover:bg-[#eeefdd] transition-all ${
-                          index !== notifications.length - 1 ? 'border-b border-[#b9bba826]' : ''
-                        }`}
-                      >
-                        <p className="text-sm font-medium text-[#36392b]">{item.title}</p>
-                        <p className="text-xs text-[#636656] mt-1">{formatRelativeTime(item.timestamp)}</p>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          <NormalNotifications role="admin" />
 
           <Link
             href="/admin/students"

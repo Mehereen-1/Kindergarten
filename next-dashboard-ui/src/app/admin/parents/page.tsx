@@ -29,6 +29,15 @@ const columns = [
 export default function ParentListPage() {
   const [parents, setParents] = useState<Parent[]>([]);
   const [loadError, setLoadError] = useState("");
+  const [editingParent, setEditingParent] = useState<Parent | null>(null);
+  const [savingParent, setSavingParent] = useState(false);
+  const [deletingParentId, setDeletingParentId] = useState<string | null>(null);
+  const [parentForm, setParentForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    address: "",
+  });
 
   const {
     query: searchQuery,
@@ -70,6 +79,81 @@ export default function ParentListPage() {
     return () => controller.abort();
   }, []);
 
+  const openEditParent = (parent: Parent) => {
+    setEditingParent(parent);
+    setParentForm({
+      name: parent.name || "",
+      email: parent.email || "",
+      phone: parent.phone || "",
+      address: parent.address || "",
+    });
+  };
+
+  const closeEditParent = () => {
+    setEditingParent(null);
+    setParentForm({ name: "", email: "", phone: "", address: "" });
+  };
+
+  const handleSaveParent = async () => {
+    if (!editingParent) return;
+
+    try {
+      setSavingParent(true);
+      const response = await fetch(`/api/admin/parents/${encodeURIComponent(editingParent._id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parentForm),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to update parent");
+      }
+
+      setParents((prev) =>
+        prev.map((parent) =>
+          parent._id === editingParent._id
+            ? {
+                ...parent,
+                name: parentForm.name,
+                email: parentForm.email,
+                phone: parentForm.phone,
+                address: parentForm.address,
+              }
+            : parent
+        )
+      );
+      closeEditParent();
+    } catch (error: any) {
+      alert(error?.message || "Failed to update parent");
+    } finally {
+      setSavingParent(false);
+    }
+  };
+
+  const handleDeleteParent = async (parent: Parent) => {
+    const confirmed = window.confirm(`Delete ${parent.name || "this parent"}?`);
+    if (!confirmed) return;
+
+    try {
+      setDeletingParentId(parent._id);
+      const response = await fetch(`/api/admin/parents/${encodeURIComponent(parent._id)}`, {
+        method: "DELETE",
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to delete parent");
+      }
+
+      setParents((prev) => prev.filter((row) => row._id !== parent._id));
+    } catch (error: any) {
+      alert(error?.message || "Failed to delete parent");
+    } finally {
+      setDeletingParentId(null);
+    }
+  };
+
   const renderRow = (item: Parent) => (
     <tr key={item._id} className="border-b border-gray-200 even:bg-slate-50 text-sm hover:bg-lamaPurpleLight">
       <td className="flex items-center gap-4 p-4">
@@ -85,8 +169,29 @@ export default function ParentListPage() {
         <div className="flex items-center gap-2">
           {role === "admin" && (
             <>
-              <FormModal table="parent" type="update" data={item as any} />
-              <FormModal table="parent" type="delete" id={item._id} />
+              <button
+                type="button"
+                onClick={() => openEditParent(item)}
+                className="h-8 px-2 flex items-center gap-1 justify-center rounded-md bg-[#f5efd8] text-[#4f4727] border border-[#d8d3b3]"
+                title="Edit parent"
+                aria-label="Edit parent"
+              >
+                <Image src="/edit.png" alt="Edit" width={16} height={16} />
+                <span className="text-xs font-semibold">Edit</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteParent(item)}
+                disabled={deletingParentId === item._id}
+                className="h-8 px-2 flex items-center gap-1 justify-center rounded-md bg-[#fdf0eb] text-[#8b3c25] border border-[#b64f2f]/40 disabled:opacity-50"
+                title="Delete parent"
+                aria-label="Delete parent"
+              >
+                <Image src="/delete.png" alt="Delete" width={16} height={16} />
+                <span className="text-xs font-semibold">
+                  {deletingParentId === item._id ? "Deleting..." : "Delete"}
+                </span>
+              </button>
             </>
           )}
         </div>
@@ -135,6 +240,59 @@ export default function ParentListPage() {
 
       <Table columns={columns} renderRow={renderRow} data={filteredParents} />
       <Pagination />
+
+      {editingParent && (
+        <div className="fixed inset-0 bg-black/55 z-50 flex items-center justify-center px-4">
+          <div className="bg-[#fffdf6] border border-[#d6d2b5] rounded-xl w-full max-w-lg p-5 shadow-xl">
+            <h2 className="text-lg font-bold text-[#3a3927] mb-4">Edit Parent</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <EditInput label="Name" value={parentForm.name} onChange={(value) => setParentForm((prev) => ({ ...prev, name: value }))} />
+              <EditInput label="Email" value={parentForm.email} onChange={(value) => setParentForm((prev) => ({ ...prev, email: value }))} />
+              <EditInput label="Phone" value={parentForm.phone} onChange={(value) => setParentForm((prev) => ({ ...prev, phone: value }))} />
+              <EditInput label="Address" value={parentForm.address} onChange={(value) => setParentForm((prev) => ({ ...prev, address: value }))} />
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeEditParent}
+                disabled={savingParent}
+                className="px-4 py-2 rounded-lg border border-[#c8c39d] text-[#4f4727] hover:bg-[#f8f3e1]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveParent()}
+                disabled={savingParent}
+                className="px-4 py-2 rounded-lg bg-[#5f6843] text-white font-semibold disabled:opacity-50"
+              >
+                {savingParent ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold uppercase tracking-wide text-[#6c7352] mb-1.5">{label}</label>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full border border-[#c8c39d] bg-[#fefade] rounded-lg px-3 py-2 text-sm text-[#3a3927]"
+      />
     </div>
   );
 }

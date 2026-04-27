@@ -5,6 +5,8 @@ import { SiteTheme, useTheme } from '@/app/providers/ThemeProvider';
 
 const THEMES: Array<{ value: SiteTheme; label: string }> = [
   { value: 'classic', label: 'Classic (Default)' },
+  { value: 'contrast-light', label: 'High Contrast Light' },
+  { value: 'contrast-dark', label: 'High Contrast Dark' },
   { value: 'ocean', label: 'Ocean' },
   { value: 'sunrise', label: 'Sunrise' },
 ];

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import axios from 'axios';
 import { useAuth } from '@/hooks/useAuth';
+import ParentTopBar from '@/app/components/ParentTopBar';
 
 interface ChildRecord {
   _id: string;
@@ -106,12 +107,18 @@ export default function ParentResultsPage() {
     children.find((child) => child._id === selectedStudentId) || children[0] || null;
 
   if (authLoading || loadingChildren) {
-    return <div className="p-8 text-center text-slate-500">Loading results...</div>;
+    return (
+      <>
+        <ParentTopBar />
+        <div className="p-8 text-center text-slate-500">Loading results...</div>
+      </>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f1dc] p-6">
-      <div className="mx-auto max-w-6xl">
+    <div className="min-h-screen bg-[#f8f1dc]">
+      <ParentTopBar />
+      <div className="mx-auto max-w-6xl p-6">
         <div className="rounded-[28px] border border-[#ead8b5] bg-white/90 p-6 shadow-lg">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
